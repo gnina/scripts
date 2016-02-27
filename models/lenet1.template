@@ -1,0 +1,156 @@
+layer {
+  name: "data"
+  type: "NDimData"
+  top: "data"
+  top: "label"
+  include {
+    phase: TEST
+  }
+  ndim_data_param {
+    source: "TESTFILE"
+    batch_size: 1
+    shape {
+      dim: 34
+      dim: 49
+      dim: 49
+      dim: 49
+    }
+    shuffle: false
+    balanced: false
+  }
+}
+layer {
+  name: "data"
+  type: "NDimData"
+  top: "data"
+  top: "label"
+  include {
+    phase: TRAIN
+  }
+  ndim_data_param {
+    source: "TRAINFILE"
+    batch_size: 10
+    shape {
+      dim: 34
+      dim: 49
+      dim: 49
+      dim: 49
+    }
+    shuffle: true
+    balanced: true
+    rotate: 24
+  }
+}
+
+layer {
+  name: "convdownsample"
+  type: "Convolution"
+  bottom: "data"
+  top: "convdownsample"
+  convolution_param {
+    num_output: 33
+    kernel_size: 5
+    stride: 3
+    weight_filler {
+      type: "xavier"
+    }
+  }
+}
+layer {
+  name: "conv1"
+  type: "Convolution"
+  bottom: "convdownsample"
+  top: "conv1"
+  convolution_param {
+    num_output: 20
+    kernel_size: 5
+    weight_filler {
+      type: "xavier"
+    }
+  }
+}
+layer {
+  name: "conv2"
+  type: "Convolution"
+  bottom: "conv1"
+  top: "conv2"
+  convolution_param {
+    num_output: 50
+    kernel_size: 5
+    weight_filler {
+      type: "xavier"
+    }
+  }
+}
+layer {
+  name: "ip1"
+  type: "InnerProduct"
+  bottom: "conv2"
+  top: "ip1"
+  inner_product_param {
+    num_output: 500
+    weight_filler {
+      type: "xavier"
+    }
+  }
+}
+layer {
+  name: "drop"
+  type: "Dropout"
+  bottom: "ip1"
+  top: "drop"
+  dropout_param {
+    dropout_ratio: 0.5
+  }
+}
+layer {
+  name: "sig1"
+  type: "Sigmoid"
+  bottom: "drop"
+  top: "sig1"
+}
+layer {
+  name: "ip2"
+  type: "InnerProduct"
+  bottom: "sig1"
+  top: "ip2"
+  inner_product_param {
+    num_output: 2
+    weight_filler {
+      type: "xavier"
+    }
+  }
+}
+
+layer {
+  name: "loss"
+  type: "SoftmaxWithLoss"
+  bottom: "ip2"
+  bottom: "label"
+  top: "loss"
+}
+layer {
+  name: "output"
+  type: "Softmax"
+  bottom: "ip2"
+  top: "output"
+}
+layer {
+  name: "accuracy"
+  type: "Accuracy"
+  bottom: "ip2"
+  bottom: "label"
+  top: "accuracy"
+  include {
+    phase: TEST
+  }
+}
+layer {
+  name: "labelout"
+  type: "Reshape"
+  bottom: "label"
+  top: "labelout"
+  include {
+    phase: TEST
+  }
+}
