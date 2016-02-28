@@ -14,7 +14,7 @@ A model template is provided along with training and test sets of the form
 Test area, as measured by AUC, is periodically assessed.   At the end graphs are made.
 Default is to do dynamic stepping of learning rate, but can explore other methods.
 '''
-def eval_model(args, trainfile, testfile, out):
+def eval_model(args, trainfile, testfile, outname):
     '''run solver for iterations steps, on the given training file,
     every testiter evaluate the roc of bothe the trainfile and the testfile
     return the full predictions for every tested iteration'''
@@ -25,11 +25,8 @@ def eval_model(args, trainfile, testfile, out):
     testmodel = model.replace('TESTFILE',testfile)
     trainmodel = model.replace('TESTFILE',trainfile) #for test on train
     
-    dynamiclr = args.lr_policy == ''
-    if dynamiclr: 
-        lr_policy = 'fixed'
-    else:
-        lr_policy = args.lr_policy
+    out = open('%s.out' % outname,'w')
+
     pid = os.getpid()
     #very obnoxiously, python interface requires network definition to be in a file
     with open('traintest.%d.prototxt' % pid,'w') as f:
@@ -58,7 +55,8 @@ def eval_model(args, trainfile, testfile, out):
     random_seed: %d
     # The maximum number of iterations
     max_iter: %d
-    ''' % (pid,pid,pid, args.base_lr, args.momentum, args.weight_decay, lr_policy, args.gamma, args.power, args.seed, iterations)
+    snapshot_prefix: "%s"
+    ''' % (pid,pid,pid, args.base_lr, args.momentum, args.weight_decay, args.lr_policy, args.gamma, args.power, args.seed, iterations,outname)
     with open(solverf,'w') as f:
         f.write(solver_text)
         
@@ -86,10 +84,6 @@ def eval_model(args, trainfile, testfile, out):
             
         testauc = sklearn.metrics.roc_auc_score(y_true,y_score)
         testvals.append((testauc,y_true,y_score))
-
-        if testauc > bestauc:
-            bestauc = testauc
-            bestauci = i
         
         #evaluate train set
         y_true = []
@@ -106,18 +100,25 @@ def eval_model(args, trainfile, testfile, out):
         loss = np.mean(losses)
         trainvals.append((trainauc,y_true,y_score,loss))
         
-        if dynamiclr: #check for improvement
+        if trainauc > bestauc:
+            bestauc = trainauc
+            bestauci = i
+            
+        if args.dynamic: #check for improvement
             lr = solver.get_base_lr()
             if (i-bestauci) > args.step_when: #reduce learning rate
                 lr *= args.step_reduce
                 solver.set_base_lr(lr)
-                bestauci = i+args.step_when #reset and add some slack to give net chance to improve
+                bestauci = i #reset 
+                bestauc = trainauc #the value too, so we can consider the recovery
             if lr < args.step_end:
                 break #end early  
             
         out.write('%.4f %.4f %.6f %.6f\n'%(testauc,trainauc,loss,solver.get_base_lr()))
         out.flush()
     
+    out.close()
+    solver.snapshot()
     del solver #free mem
     return testvals,trainvals
 
@@ -133,10 +134,11 @@ if __name__ == '__main__':
     parser.add_argument('-o','--outprefix',type=str,help="Prefix for output files, default <model>.<pid>",default='')
     parser.add_argument('-g','--gpu',type=int,help='Specify GPU to run on',default=-1)
     #parser.add_argument('-v,--verbose',action='store_true',default=False,help='Verbose output')
-    parser.add_argument('--lr_policy',type=str,help="Learning policy to use. Default is dynamic stepping.",default='')
-    parser.add_argument('--step_reduce',type=float,help="Reduce the learning rate by this factor with dynamic stepping, default 0.1",default='0.1')
+    parser.add_argument('--dynamic',action='store_true',default=False,help='Attempt to adjust the base_lr in response to training progress')
+    parser.add_argument('--lr_policy',type=str,help="Learning policy to use. Default is inv.",default='inv')
+    parser.add_argument('--step_reduce',type=float,help="Reduce the learning rate by this factor with dynamic stepping, default 0.5",default='0.5')
     parser.add_argument('--step_end',type=float,help='Terminate training if learning rate gets below this amount',default=0)
-    parser.add_argument('--step_when',type=int,help="Perform a dynamic step (reduce learning rate) when this many test iterations have failed to find improvement, default 10",default=10)
+    parser.add_argument('--step_when',type=int,help="Perform a dynamic step (reduce base_lr) when training has not improved after this many test iterations, default 10",default=10)
     parser.add_argument('--base_lr',type=float,help='Initial learning rate, default 0.01',default=0.01)
     parser.add_argument('--momentum',type=float,help="Momentum parameters, default 0.9",default=0.9)
     parser.add_argument('--weight_decay',type=float,help="Weight decay, default 0.005",default=0.005)
@@ -146,7 +148,7 @@ if __name__ == '__main__':
     
     #identify all train/test pair
     if args.number >= 0:
-        pairs = [('%strain%d.binmaps'%args.num,'%stest%d.binmaps'%args.num)]
+        pairs = [('%strain%d.binmaps'%(args.prefix,args.number),'%stest%d.binmaps'%(args.prefix,args.number))]
     else:
         pairs = []
         for train in glob.glob('%strain[0-9]*.binmaps' % args.prefix):
@@ -165,8 +167,8 @@ if __name__ == '__main__':
     alltest = []
     for (train,test) in pairs:
         m = re.search('%strain(\d+)'%args.prefix,train)
-        out = open('%s.%s.out' % (outprefix,m.group(1)),'w')
-        test,train = eval_model(args, train, test, out)
+        outname = '%s.%s' % (outprefix,m.group(1))
+        test,train = eval_model(args, train, test, outname)
         testaucs.append([x[0] for x in test])
         trainaucs.append([x[0] for x in train])
         alltest.append(test)
