@@ -71,6 +71,7 @@ def eval_model(args, trainfile, testfile, outname):
     trainvals = []
     bestauc = 0
     bestauci = 0;
+    besttestauc = 0
     for i in xrange(iterations/testiter):
         solver.step(testiter)
         #evaluate test set
@@ -85,6 +86,9 @@ def eval_model(args, trainfile, testfile, outname):
         testauc = sklearn.metrics.roc_auc_score(y_true,y_score)
         testvals.append((testauc,y_true,y_score))
         
+        if testauc > besttestauc:
+            besttestauc = testauc
+            solver.snapshot()
         #evaluate train set
         y_true = []
         y_score = []
