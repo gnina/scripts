@@ -40,6 +40,7 @@ def eval_model(args, trainfile, testfile, outname):
     test_net: "traintest.%d.prototxt"
     test_net: "traintrain.%d.prototxt"
     # The base learning rate, momentum and the weight decay of the network.
+    type: "%s"
     base_lr: %f
     momentum: %f
     test_iter: 1
@@ -56,7 +57,7 @@ def eval_model(args, trainfile, testfile, outname):
     # The maximum number of iterations
     max_iter: %d
     snapshot_prefix: "%s"
-    ''' % (pid,pid,pid, args.base_lr, args.momentum, args.weight_decay, args.lr_policy, args.gamma, args.power, args.seed, iterations,outname)
+    ''' % (pid,pid,pid, args.solver,args.base_lr, args.momentum, args.weight_decay, args.lr_policy, args.gamma, args.power, args.seed, iterations,outname)
     with open(solverf,'w') as f:
         f.write(solver_text)
         
@@ -139,6 +140,7 @@ if __name__ == '__main__':
     parser.add_argument('-g','--gpu',type=int,help='Specify GPU to run on',default=-1)
     #parser.add_argument('-v,--verbose',action='store_true',default=False,help='Verbose output')
     parser.add_argument('--dynamic',action='store_true',default=False,help='Attempt to adjust the base_lr in response to training progress')
+    parser.add_argument('--solver',type=str,help="Solver type. Default is SGD",default='SGD')
     parser.add_argument('--lr_policy',type=str,help="Learning policy to use. Default is inv.",default='inv')
     parser.add_argument('--step_reduce',type=float,help="Reduce the learning rate by this factor with dynamic stepping, default 0.5",default='0.5')
     parser.add_argument('--step_end',type=float,help='Terminate training if learning rate gets below this amount',default=0)
@@ -176,6 +178,10 @@ if __name__ == '__main__':
         testaucs.append([x[0] for x in test])
         trainaucs.append([x[0] for x in train])
         alltest.append(test)
+        with open('%s.%s.finaltest' % (outprefix,m.group(1)), 'w') as out:
+            for (label,score) in zip(test[-1][1],test[-1][2]):
+                out.write('%f %f\n'%(label,score))
+            out.write('# AUC %f\n'%test[-1][0])
 
     #average aucs, train and test
 
