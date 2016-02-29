@@ -89,7 +89,8 @@ def eval_model(args, trainfile, testfile, outname):
         
         if testauc > besttestauc:
             besttestauc = testauc
-            solver.snapshot()
+            if args.keep_best:
+                solver.snapshot() #a bit too much - gigabytes of data
         #evaluate train set
         y_true = []
         y_score = []
@@ -139,6 +140,7 @@ if __name__ == '__main__':
     parser.add_argument('-o','--outprefix',type=str,help="Prefix for output files, default <model>.<pid>",default='')
     parser.add_argument('-g','--gpu',type=int,help='Specify GPU to run on',default=-1)
     #parser.add_argument('-v,--verbose',action='store_true',default=False,help='Verbose output')
+    parser.add_argument('--keep_best',action='store_true',default=False,help='Store snapshots everytime test AUC improves')
     parser.add_argument('--dynamic',action='store_true',default=False,help='Attempt to adjust the base_lr in response to training progress')
     parser.add_argument('--solver',type=str,help="Solver type. Default is SGD",default='SGD')
     parser.add_argument('--lr_policy',type=str,help="Learning policy to use. Default is inv.",default='inv')
