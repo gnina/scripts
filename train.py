@@ -24,8 +24,14 @@ def eval_model(args, trainfile, testfile, outname):
     model = open(template).read().replace('TRAINFILE',trainfile)
     testmodel = model.replace('TESTFILE',testfile)
     trainmodel = model.replace('TESTFILE',trainfile) #for test on train
-    
-    out = open('%s.out' % outname,'w')
+
+    mode = 'w'
+    if args.cont:
+        mode = 'a'    
+        modelname = '%s_iter_%d.caffemodel' % (outname,args.cont)
+        solvername = '%s_iter_%d.solverstate' % (outname,args.cont)
+        
+    out = open('%s.out' % outname,mode)
 
     pid = os.getpid()
     #very obnoxiously, python interface requires network definition to be in a file
@@ -57,14 +63,19 @@ def eval_model(args, trainfile, testfile, outname):
     # The maximum number of iterations
     max_iter: %d
     snapshot_prefix: "%s"
-    ''' % (pid,pid,pid, args.solver,args.base_lr, args.momentum, args.weight_decay, args.lr_policy, args.gamma, args.power, args.seed, iterations,outname)
+    ''' % (pid,pid,pid, args.solver,args.base_lr, args.momentum, args.weight_decay, args.lr_policy, args.gamma, args.power, args.seed, iterations+args.cont,outname)
     with open(solverf,'w') as f:
         f.write(solver_text)
         
     if args.gpu >= 0:
         caffe.set_device(args.gpu)
     caffe.set_mode_gpu()
-    solver = caffe.SGDSolver(solverf) #this loads the net
+    
+    solver = caffe.get_solver(solverf)
+        
+    if args.cont:
+        solver.restore(solvername)
+        
     ntests = sum(1 for line in open(testfile))
     ntrains = sum(1 for line in open(trainfile))
 
@@ -139,6 +150,7 @@ if __name__ == '__main__':
     parser.add_argument('-t','--test_interval',type=int,help="How frequently to test (iterations), default 40",default=40)
     parser.add_argument('-o','--outprefix',type=str,help="Prefix for output files, default <model>.<pid>",default='')
     parser.add_argument('-g','--gpu',type=int,help='Specify GPU to run on',default=-1)
+    parser.add_argument('-c','--cont',type=int,help='Continue a previous simulation from the provided iteration (snapshot must exist)',default=0)
     #parser.add_argument('-v,--verbose',action='store_true',default=False,help='Verbose output')
     parser.add_argument('--keep_best',action='store_true',default=False,help='Store snapshots everytime test AUC improves')
     parser.add_argument('--dynamic',action='store_true',default=False,help='Attempt to adjust the base_lr in response to training progress')
@@ -169,6 +181,11 @@ if __name__ == '__main__':
     outprefix = args.outprefix
     if outprefix == '':
         outprefix = '%s.%d' % (os.path.splitext(os.path.basename(args.model))[0],os.getpid())
+        
+    mode = 'w'
+    if args.cont:
+        mode = 'a'
+        
     #train each Pair
     testaucs = []
     trainaucs = []
@@ -180,7 +197,7 @@ if __name__ == '__main__':
         testaucs.append([x[0] for x in test])
         trainaucs.append([x[0] for x in train])
         alltest.append(test)
-        with open('%s.%s.finaltest' % (outprefix,m.group(1)), 'w') as out:
+        with open('%s.%s.finaltest' % (outprefix,m.group(1)), mode) as out:
             for (label,score) in zip(test[-1][1],test[-1][2]):
                 out.write('%f %f\n'%(label,score))
             out.write('# AUC %f\n'%test[-1][0])
@@ -191,11 +208,11 @@ if __name__ == '__main__':
     testaucs = np.array(zip(*testaucs))
     trainaucs = np.array(zip(*trainaucs))
     
-    with open('%s.test' % outprefix,'w') as out:
+    with open('%s.test' % outprefix,mode) as out:
         for r in testaucs:
             out.write('%s %s\n' % (np.mean(r),' '.join([str(x) for x in r])))
 
-    with open('%s.train' % outprefix,'w') as out:
+    with open('%s.train' % outprefix,mode) as out:
         for r in trainaucs:
             out.write('%s %s\n' % (np.mean(r),' '.join([str(x) for x in r])))
             
@@ -215,7 +232,7 @@ if __name__ == '__main__':
     fpr, tpr, _ = sklearn.metrics.roc_curve(ytrue,yscore)
     auc = sklearn.metrics.roc_auc_score(ytrue,yscore)
     
-    with open('%s.finaltest' % outprefix,'w') as out:
+    with open('%s.finaltest' % outprefix,mode) as out:
         for (label,score) in zip(ytrue,yscore):
             out.write('%f %f\n'%(label,score))
         out.write('# AUC %f\n'%auc)
