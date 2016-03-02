@@ -75,6 +75,7 @@ def eval_model(args, trainfile, testfile, outname):
         
     if args.cont:
         solver.restore(solvername)
+        solver.testall() #link testnets to train net
         
     ntests = sum(1 for line in open(testfile))
     ntrains = sum(1 for line in open(trainfile))
