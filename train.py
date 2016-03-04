@@ -172,7 +172,7 @@ if __name__ == '__main__':
     parser.add_argument('--momentum',type=float,help="Momentum parameters, default 0.9",default=0.9)
     parser.add_argument('--weight_decay',type=float,help="Weight decay, default 0.005",default=0.005)
     parser.add_argument('--gamma',type=float,help="Gamma, default 0.001",default=0.001)
-    parser.add_argument('--power',type=float,help="Power, default 2",default=2)
+    parser.add_argument('--power',type=float,help="Power, default 1",default=1)
     args = parser.parse_args()
     
     #identify all train/test pair
