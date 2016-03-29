@@ -21,6 +21,9 @@ def eval_model(args, trainfile, testfile, outname):
     template = args.model
     testiter = args.test_interval
     iterations = args.iterations
+    
+    if testiter > iterations: #need to test once
+        testiter = iterations
     model = open(template).read().replace('TRAINFILE',trainfile)
     testmodel = model.replace('TESTFILE',testfile)
     trainmodel = model.replace('TESTFILE',trainfile) #for test on train
