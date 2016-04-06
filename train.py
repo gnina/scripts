@@ -38,11 +38,11 @@ def eval_model(args, trainfile, testfile, outname):
 
     pid = os.getpid()
     #very obnoxiously, python interface requires network definition to be in a file
-    testfile = 'traintest.%d.prototxt' % pid
-    trainfile = 'traintrain.%d.prototxt' % pid
-    with open(testfile,'w') as f:
+    testproto = 'traintest.%d.prototxt' % pid
+    trainproto = 'traintrain.%d.prototxt' % pid
+    with open(testproto,'w') as f:
         f.write(testmodel)    
-    with open(trainfile,'w') as f:
+    with open(trainproto,'w') as f:
         f.write(trainmodel)
     solverf = 'solver.%d.prototxt'%pid
     solver_text = '''
