@@ -34,7 +34,7 @@ def eval_model(args, trainfile, testfile, outname):
         modelname = '%s_iter_%d.caffemodel' % (outname,args.cont)
         solvername = '%s_iter_%d.solverstate' % (outname,args.cont)
         
-    out = open('%s.out' % outname,mode)
+    out = open('%s.out' % outname,mode,0)
 
     pid = os.getpid()
     #very obnoxiously, python interface requires network definition to be in a file
