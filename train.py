@@ -146,8 +146,8 @@ def eval_model(args, trainfile, testfile, outname):
     
     if not args.keep:
         os.remove(solverf)
-        os.remove(testfile)
-        os.remove(trainfile)
+        os.remove(testproto)
+        os.remove(trainproto)
     return testvals,trainvals
 
 
@@ -189,7 +189,11 @@ if __name__ == '__main__':
                 print test,' test file does not exist'
                 sys.exit(1)
             pairs.append((train,test))
-            
+    
+    if len(pairs) == 0:
+        print "Missing train/test files"
+        sys.exit(1)
+                
     outprefix = args.outprefix
     if outprefix == '':
         outprefix = '%s.%d' % (os.path.splitext(os.path.basename(args.model))[0],os.getpid())
@@ -229,8 +233,8 @@ if __name__ == '__main__':
             out.write('%s %s\n' % (np.mean(r),' '.join([str(x) for x in r])))
             
     #make training plot
-    plt.plot(trainaucs.mean(axis=0),label='Train')
-    plt.plot(testaucs.mean(axis=0),label='Test')
+    plt.plot(trainaucs.mean(axis=1),label='Train')
+    plt.plot(testaucs.mean(axis=1),label='Test')
     plt.legend(loc='best')
     plt.savefig('%s_train.pdf'%outprefix,bbox_inches='tight')
                         
