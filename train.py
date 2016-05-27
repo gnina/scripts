@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import glob, re, sklearn, collections, argparse, sys, os
 import sklearn.metrics
 import caffe
+import time
 
 '''Script for training a neural net model from gnina grid data.
 A model template is provided along with training and test sets of the form
@@ -14,7 +15,7 @@ A model template is provided along with training and test sets of the form
 Test area, as measured by AUC, is periodically assessed.   At the end graphs are made.
 Default is to do dynamic stepping of learning rate, but can explore other methods.
 '''
-def eval_model(args, trainfile, testfile, outname):
+def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, outname):
     '''run solver for iterations steps, on the given training file,
     every testiter evaluate the roc of bothe the trainfile and the testfile
     return the full predictions for every tested iteration'''
@@ -27,7 +28,16 @@ def eval_model(args, trainfile, testfile, outname):
     model = open(template).read().replace('TRAINFILE',trainfile)
     testmodel = model.replace('TESTFILE',testfile)
     trainmodel = model.replace('TESTFILE',trainfile) #for test on train
-
+    if reducedtrainfile != '':        
+        reducedtrainmodel = model.replace('TESTFILE', reducedtrainfile)
+    else:
+        reducedtrainmodel = trainmodel
+        reducedtrainfile = trainfile
+    if reducedtestfile != '':        
+        reducedtestmodel = model.replace('TESTFILE', reducedtestfile)
+    else:
+        reducedtestmodel = testmodel
+        reducedtestfile = testfile
     mode = 'w'
     if args.cont:
         mode = 'a'    
@@ -40,20 +50,30 @@ def eval_model(args, trainfile, testfile, outname):
     #very obnoxiously, python interface requires network definition to be in a file
     testproto = 'traintest.%d.prototxt' % pid
     trainproto = 'traintrain.%d.prototxt' % pid
+    reducedtestproto = 'trainreducedtest.%d.prototxt' % pid
+    reducedtrainproto = 'trainreducedtrain.%d.prototxt' % pid
     with open(testproto,'w') as f:
         f.write(testmodel)    
     with open(trainproto,'w') as f:
         f.write(trainmodel)
+    with open(reducedtestproto, 'w') as f:
+        f.write(reducedtestmodel) 
+    with open(reducedtrainproto, 'w') as f:
+        f.write(reducedtrainmodel) 
     solverf = 'solver.%d.prototxt'%pid
     solver_text = '''
     # The train/test net protocol buffer definition
     train_net: "traintest.%d.prototxt"
     test_net: "traintest.%d.prototxt"
     test_net: "traintrain.%d.prototxt"
+    test_net: "trainreducedtest.%d.prototxt"
+    test_net: "trainreducedtrain.%d.prototxt"
     # The base learning rate, momentum and the weight decay of the network.
     type: "%s"
     base_lr: %f
     momentum: %f
+    test_iter: 1
+    test_iter: 1
     test_iter: 1
     test_iter: 1
     test_interval: 100000 #we will test manually, these are just here to make caffe happy
@@ -68,7 +88,7 @@ def eval_model(args, trainfile, testfile, outname):
     # The maximum number of iterations
     max_iter: %d
     snapshot_prefix: "%s"
-    ''' % (pid,pid,pid, args.solver,args.base_lr, args.momentum, args.weight_decay, args.lr_policy, args.gamma, args.power, args.seed, iterations+args.cont,outname)
+    ''' % (pid,pid,pid,pid,pid, args.solver,args.base_lr, args.momentum, args.weight_decay, args.lr_policy, args.gamma, args.power, args.seed, iterations+args.cont,outname)
     with open(solverf,'w') as f:
         f.write(solver_text)
         
@@ -81,26 +101,37 @@ def eval_model(args, trainfile, testfile, outname):
     if args.cont:
         solver.restore(solvername)
         solver.testall() #link testnets to train net
-        
-    ntests = sum(1 for line in open(testfile))
-    ntrains = sum(1 for line in open(trainfile))
+
+    
+    ntests = sum(1 for line in open(reducedtestfile))
+    ntrains = sum(1 for line in open(reducedtrainfile))
 
     testvals = []
     trainvals = []
     bestauc = 0
     bestauci = 0;
     besttestauc = 0
+    print "cnts %d,%d" % (ntrains,ntests)
     for i in xrange(iterations/testiter):
+        start = time.time()
         solver.step(testiter)
+        print "Train time: %f" % (time.time()-start)
+
+        start = time.time()
         #evaluate test set
+        if i == (iterations/testiter)-1 and args.reduced:
+            testnet = solver.test_nets[0]
+        else:
+            testnet = solver.test_nets[2]
         y_true = []
         y_score = []
-        for _ in xrange(ntests):
-            res = solver.test_nets[0].forward()
+        for x in xrange(ntests):
+            res = testnet.forward()
             #MUST copy values out of res as it is return by ref
             y_true.append(float(res['labelout']))
             y_score.append(float(res['output'][0][1]))
             
+        print "Test time: %f" % (time.time()-start)
         testauc = sklearn.metrics.roc_auc_score(y_true,y_score)
         testvals.append((testauc,y_true,y_score))
         
@@ -109,16 +140,22 @@ def eval_model(args, trainfile, testfile, outname):
             if args.keep_best:
                 solver.snapshot() #a bit too much - gigabytes of data
         #evaluate train set
+        start = time.time()
+        if i == (iterations/testiter)-1 and args.reduced:
+            testnet = solver.test_nets[1]
+        else:
+            testnet = solver.test_nets[3]
         y_true = []
         y_score = []
         losses = []
-        for _ in xrange(ntrains):
-            res = solver.test_nets[1].forward()
+        for x in xrange(ntrains):
+            res = testnet.forward()            
             #MUST copy values out of res as it is return by ref
             y_true.append(float(res['labelout']))
             y_score.append(float(res['output'][0][1]))
             losses.append(float(res['loss']))
         
+        print "Test train time: %f" % (time.time()-start)
         trainauc = sklearn.metrics.roc_auc_score(y_true,y_score)            
         loss = np.mean(losses)
         trainvals.append((trainauc,y_true,y_score,loss))
@@ -148,6 +185,8 @@ def eval_model(args, trainfile, testfile, outname):
         os.remove(solverf)
         os.remove(testproto)
         os.remove(trainproto)
+        os.remove(reducedtestproto)
+        os.remove(reducedtrainproto)
     return testvals,trainvals
 
 
@@ -163,6 +202,7 @@ if __name__ == '__main__':
     parser.add_argument('-g','--gpu',type=int,help='Specify GPU to run on',default=-1)
     parser.add_argument('-c','--cont',type=int,help='Continue a previous simulation from the provided iteration (snapshot must exist)',default=0)
     parser.add_argument('-k','--keep',action='store_true',default=False,help="Don't delete prototxt files")
+    parser.add_argument('-r', '--reduced', action='store_true',default=False,help="use a reduced file for model evaluation if exists(<prefix>[_reducedtrain|_reducedtest][num].binmaps)")
     #parser.add_argument('-v,--verbose',action='store_true',default=False,help='Verbose output')
     parser.add_argument('--keep_best',action='store_true',default=False,help='Store snapshots everytime test AUC improves')
     parser.add_argument('--dynamic',action='store_true',default=False,help='Attempt to adjust the base_lr in response to training progress')
@@ -189,7 +229,7 @@ if __name__ == '__main__':
                 print test,' test file does not exist'
                 sys.exit(1)
             pairs.append((train,test))
-    
+
     if len(pairs) == 0:
         print "Missing train/test files"
         sys.exit(1)
@@ -209,7 +249,15 @@ if __name__ == '__main__':
     for (train,test) in pairs:
         m = re.search('%strain(\d+)'%args.prefix,train)
         outname = '%s.%s' % (outprefix,m.group(1))
-        test,train = eval_model(args, train, test, outname)
+
+        reducedtrainfile = train.replace('%strain' % args.prefix,'%s_reducedtrain' % args.prefix)
+        reducedtestfile = train.replace('%strain' % args.prefix,'%s_reducedtest' % args.prefix)
+        if not os.path.isfile(reducedtestfile):       
+            reducedtestfile = '' 
+        if not os.path.isfile(reducedtrainfile):       
+            reducedtrainfile = ''
+
+        test,train = eval_model(args, train, test, reducedtrainfile, reducedtestfile, outname)
         testaucs.append([x[0] for x in test])
         trainaucs.append([x[0] for x in train])
         alltest.append(test)
