@@ -7,10 +7,11 @@ import matplotlib.pyplot as plt
 import glob, re, sklearn, collections, argparse, sys, os
 import sklearn.metrics
 import caffe
+import time
 
 '''Script for training a neural net model from gnina grid data.
 A model template is provided along with training and test sets of the form
-<prefix>[train|test][num].binmaps
+<prefix>[train|test][num].mols
 Test area, as measured by AUC, is periodically assessed.   At the end graphs are made.
 Default is to do dynamic stepping of learning rate, but can explore other methods.
 '''
@@ -91,7 +92,12 @@ def eval_model(args, trainfile, testfile, outname):
     bestauci = 0;
     besttestauc = 0
     for i in xrange(iterations/testiter):
+        start = time.time()
         solver.step(testiter)
+        
+        print "Train step: %f s" % (time.time()-start)
+        
+        start = time.time()
         #evaluate test set
         y_true = []
         y_score = []
@@ -104,10 +110,14 @@ def eval_model(args, trainfile, testfile, outname):
         testauc = sklearn.metrics.roc_auc_score(y_true,y_score)
         testvals.append((testauc,y_true,y_score))
         
+        print "Test eval: %f s" % (time.time()-start)
+        
         if testauc > besttestauc:
             besttestauc = testauc
             if args.keep_best:
                 solver.snapshot() #a bit too much - gigabytes of data
+        
+        start = time.time()
         #evaluate train set
         y_true = []
         y_score = []
@@ -122,6 +132,8 @@ def eval_model(args, trainfile, testfile, outname):
         trainauc = sklearn.metrics.roc_auc_score(y_true,y_score)            
         loss = np.mean(losses)
         trainvals.append((trainauc,y_true,y_score,loss))
+        
+        print "Train eval: %f s" % (time.time()-start)
         
         if trainauc > bestauc:
             bestauc = trainauc
@@ -152,9 +164,9 @@ def eval_model(args, trainfile, testfile, outname):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Train neural net on binmap data.')
+    parser = argparse.ArgumentParser(description='Train neural net on mols data.')
     parser.add_argument('-m','--model',type=str,required=True,help="Model template. Must use TRAINFILE and TESTFILE")
-    parser.add_argument('-p','--prefix',type=str,required=True,help="Prefix for training/test files: <prefix>[train|test][num].binmaps")
+    parser.add_argument('-p','--prefix',type=str,required=True,help="Prefix for training/test files: <prefix>[train|test][num].mols")
     parser.add_argument('-n','--number',type=int,required=False,help="Fold number to run, default is all",default=-1)
     parser.add_argument('-i','--iterations',type=int,required=False,help="Number of iterations to run,default 10,000",default=10000)
     parser.add_argument('-s','--seed',type=int,help="Random seed, default 42",default=42)
@@ -174,16 +186,16 @@ if __name__ == '__main__':
     parser.add_argument('--base_lr',type=float,help='Initial learning rate, default 0.01',default=0.01)
     parser.add_argument('--momentum',type=float,help="Momentum parameters, default 0.9",default=0.9)
     parser.add_argument('--weight_decay',type=float,help="Weight decay, default 0.005",default=0.005)
-    parser.add_argument('--gamma',type=float,help="Gamma, default 0.001",default=0.001)
-    parser.add_argument('--power',type=float,help="Power, default 1",default=1)
+    parser.add_argument('--gamma',type=float,help="Gamma, default 0.0001",default=0.0001)
+    parser.add_argument('--power',type=float,help="Power, default 0.75",default=0.75)
     args = parser.parse_args()
     
     #identify all train/test pair
     if args.number >= 0:
-        pairs = [('%strain%d.binmaps'%(args.prefix,args.number),'%stest%d.binmaps'%(args.prefix,args.number))]
+        pairs = [('%strain%d.mols'%(args.prefix,args.number),'%stest%d.mols'%(args.prefix,args.number))]
     else:
         pairs = []
-        for train in glob.glob('%strain[0-9]*.binmaps' % args.prefix):
+        for train in glob.glob('%strain[0-9]*.mols' % args.prefix):
             test = train.replace('%strain' % args.prefix,'%stest' % args.prefix)
             if not os.path.isfile(test):
                 print test,' test file does not exist'

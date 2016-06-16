@@ -36,7 +36,9 @@ if __name__ == '__main__':
         out = sys.stdout
     else:
         out = open(args.output,'w')
-        
+    
+    ytrue = []
+    yscore = []
     for line in open(args.input):
         predict = net.forward()['output']
         if predict.shape[0] != 1:
@@ -44,10 +46,13 @@ if __name__ == '__main__':
             sys.exit(1)
         
         out.write('%f %s' % (predict[0][1],line))
+        ytrue.append(float(line.split()[0]))
+        yscore.append(predict[0][1])
     
     if not args.keep:
         os.remove(testfile)
 
-    
+    auc = sklearn.metrics.roc_auc_score(ytrue,yscore)
+    out.write("# AUC %f\n" % auc)
     
     
