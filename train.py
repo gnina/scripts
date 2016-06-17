@@ -11,11 +11,11 @@ import time
 
 '''Script for training a neural net model from gnina grid data.
 A model template is provided along with training and test sets of the form
-<prefix>[train|test][num].mols
+<prefix>[train|test][num].types
 Test area, as measured by AUC, is periodically assessed.   At the end graphs are made.
 Default is to do dynamic stepping of learning rate, but can explore other methods.
 '''
-def eval_model(args, trainfile, testfile, outname):
+def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, outname):
     '''run solver for iterations steps, on the given training file,
     every testiter evaluate the roc of bothe the trainfile and the testfile
     return the full predictions for every tested iteration'''
@@ -28,6 +28,35 @@ def eval_model(args, trainfile, testfile, outname):
     model = open(template).read().replace('TRAINFILE',trainfile)
     testmodel = model.replace('TESTFILE',testfile)
     trainmodel = model.replace('TESTFILE',trainfile) #for test on train
+    if reducedtrainfile != '':        
+        reducedtrainmodel = model.replace('TESTFILE', reducedtrainfile)
+    else:
+        reducedtrainmodel = trainmodel
+        reducedtrainfile = trainfile
+    if reducedtestfile != '':        
+        reducedtestmodel = model.replace('TESTFILE', reducedtestfile)
+    else:
+        reducedtestmodel = testmodel
+        reducedtestfile = testfile
+        
+    if args.avg_rotations:
+        rotations = 24 
+        index=testmodel.find(testfile) #add 'rotate = 24' to testmodels if not already there
+        endindex=testmodel.find('layer', index)
+        rot = testmodel.find("rotate:", index, endindex)
+        if rot == -1:
+            index = testmodel.find('balanced:', index, endindex)
+            index = testmodel.find('\n', index, endindex)
+            testmodel = testmodel[:index+1] + '    rotate: %d'% rotations + testmodel[index:]
+        
+        index=reducedtestmodel.find(reducedtestfile)
+        endindex=reducedtestmodel.find('layer', index)
+        rot = reducedtestmodel.find("rotate:", index, endindex)
+        if rot == -1:
+            index = reducedtestmodel.find('balanced:', index, endindex)
+            index = reducedtestmodel.find('\n', index, endindex)
+            reducedtestmodel = reducedtestmodel[:index+1] + '    rotate: %d' %rotations + reducedtestmodel[index:]
+		    
 
     mode = 'w'
     if args.cont:
@@ -41,20 +70,30 @@ def eval_model(args, trainfile, testfile, outname):
     #very obnoxiously, python interface requires network definition to be in a file
     testproto = 'traintest.%d.prototxt' % pid
     trainproto = 'traintrain.%d.prototxt' % pid
+    reducedtestproto = 'trainreducedtest.%d.prototxt' % pid
+    reducedtrainproto = 'trainreducedtrain.%d.prototxt' % pid
     with open(testproto,'w') as f:
         f.write(testmodel)    
     with open(trainproto,'w') as f:
         f.write(trainmodel)
+    with open(reducedtestproto, 'w') as f:
+        f.write(reducedtestmodel) 
+    with open(reducedtrainproto, 'w') as f:
+        f.write(reducedtrainmodel) 
     solverf = 'solver.%d.prototxt'%pid
     solver_text = '''
     # The train/test net protocol buffer definition
     train_net: "traintest.%d.prototxt"
     test_net: "traintest.%d.prototxt"
     test_net: "traintrain.%d.prototxt"
+    test_net: "trainreducedtest.%d.prototxt"
+    test_net: "trainreducedtrain.%d.prototxt"
     # The base learning rate, momentum and the weight decay of the network.
     type: "%s"
     base_lr: %f
     momentum: %f
+    test_iter: 1
+    test_iter: 1
     test_iter: 1
     test_iter: 1
     test_interval: 100000 #we will test manually, these are just here to make caffe happy
@@ -69,7 +108,7 @@ def eval_model(args, trainfile, testfile, outname):
     # The maximum number of iterations
     max_iter: %d
     snapshot_prefix: "%s"
-    ''' % (pid,pid,pid, args.solver,args.base_lr, args.momentum, args.weight_decay, args.lr_policy, args.gamma, args.power, args.seed, iterations+args.cont,outname)
+    ''' % (pid,pid,pid,pid,pid, args.solver,args.base_lr, args.momentum, args.weight_decay, args.lr_policy, args.gamma, args.power, args.seed, iterations+args.cont,outname)
     with open(solverf,'w') as f:
         f.write(solver_text)
         
@@ -82,31 +121,55 @@ def eval_model(args, trainfile, testfile, outname):
     if args.cont:
         solver.restore(solvername)
         solver.testall() #link testnets to train net
-        
-    ntests = sum(1 for line in open(testfile))
-    ntrains = sum(1 for line in open(trainfile))
+
+    
+    ntests = sum(1 for line in open(reducedtestfile))
+    ntrains = sum(1 for line in open(reducedtrainfile))
 
     testvals = []
     trainvals = []
     bestauc = 0
     bestauci = 0;
     besttestauc = 0
+    
+    print "cnts %d,%d" % (ntrains,ntests)
     for i in xrange(iterations/testiter):
         start = time.time()
         solver.step(testiter)
-        
-        print "Train step: %f s" % (time.time()-start)
-        
+
+        print "Train time: %f" % (time.time()-start)
+
         start = time.time()
         #evaluate test set
+        if i == (iterations/testiter)-1 and args.reduced:
+            testnet = solver.test_nets[0]
+            ntests = sum(1 for line in open(testfile))
+        else:
+            testnet = solver.test_nets[2]
         y_true = []
         y_score = []
-        for _ in xrange(ntests):
-            res = solver.test_nets[0].forward()
+        y_scores = [[] for _ in xrange(ntests)]
+        for x in xrange(ntests):
+            res = testnet.forward()
             #MUST copy values out of res as it is return by ref
             y_true.append(float(res['labelout']))
-            y_score.append(float(res['output'][0][1]))
+            y_scores[x].append(float(res['output'][0][1])) 
+        if args.avg_rotations:
+            for _ in xrange(rotations-1):
+                print ntests #check if ntests is correct
+                for x in xrange(ntests):
+                    res = testnet.forward()
+                    yt = float(res['labelout'])
+                    if yt != y_true[x]:
+                        print "%dERROR: %f,y_true: %f" %(x,yt, y_true[x]) #sanity check
+                    y_scores[x].append(float(res['output'][0][1]))
+            #average the scores for the 24 rotations
+            for x in xrange(ntests):
+                y_score.append(np.mean(y_scores[x]))
+        else:
+            y_score = [row[0]for row in y_scores[0:]]
             
+        print "Test time: %f" % (time.time()-start)
         testauc = sklearn.metrics.roc_auc_score(y_true,y_score)
         testvals.append((testauc,y_true,y_score))
         
@@ -119,16 +182,23 @@ def eval_model(args, trainfile, testfile, outname):
         
         start = time.time()
         #evaluate train set
+        start = time.time()
+        if i == (iterations/testiter)-1 and args.reduced:
+            testnet = solver.test_nets[1]
+            ntrains= sum(1 for line in open(trainfile))
+        else:
+            testnet = solver.test_nets[3]
         y_true = []
         y_score = []
         losses = []
-        for _ in xrange(ntrains):
-            res = solver.test_nets[1].forward()
+        for x in xrange(ntrains):
+            res = testnet.forward()            
             #MUST copy values out of res as it is return by ref
             y_true.append(float(res['labelout']))
             y_score.append(float(res['output'][0][1]))
             losses.append(float(res['loss']))
         
+        print "Test train time: %f" % (time.time()-start)
         trainauc = sklearn.metrics.roc_auc_score(y_true,y_score)            
         loss = np.mean(losses)
         trainvals.append((trainauc,y_true,y_score,loss))
@@ -160,13 +230,15 @@ def eval_model(args, trainfile, testfile, outname):
         os.remove(solverf)
         os.remove(testproto)
         os.remove(trainproto)
+        os.remove(reducedtestproto)
+        os.remove(reducedtrainproto)
     return testvals,trainvals
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Train neural net on mols data.')
+    parser = argparse.ArgumentParser(description='Train neural net on .types data.')
     parser.add_argument('-m','--model',type=str,required=True,help="Model template. Must use TRAINFILE and TESTFILE")
-    parser.add_argument('-p','--prefix',type=str,required=True,help="Prefix for training/test files: <prefix>[train|test][num].mols")
+    parser.add_argument('-p','--prefix',type=str,required=True,help="Prefix for training/test files: <prefix>[train|test][num].types")
     parser.add_argument('-n','--number',type=int,required=False,help="Fold number to run, default is all",default=-1)
     parser.add_argument('-i','--iterations',type=int,required=False,help="Number of iterations to run,default 10,000",default=10000)
     parser.add_argument('-s','--seed',type=int,help="Random seed, default 42",default=42)
@@ -175,6 +247,8 @@ if __name__ == '__main__':
     parser.add_argument('-g','--gpu',type=int,help='Specify GPU to run on',default=-1)
     parser.add_argument('-c','--cont',type=int,help='Continue a previous simulation from the provided iteration (snapshot must exist)',default=0)
     parser.add_argument('-k','--keep',action='store_true',default=False,help="Don't delete prototxt files")
+    parser.add_argument('-r', '--reduced', action='store_true',default=False,help="Use a reduced file for model evaluation if exists(<prefix>[_reducedtrain|_reducedtest][num].types)")
+    parser.add_argument('--avg_rotations', action='store_true',default=False, help="Use the average of the testfile's 24 rotations in its evaluation results")
     #parser.add_argument('-v,--verbose',action='store_true',default=False,help='Verbose output')
     parser.add_argument('--keep_best',action='store_true',default=False,help='Store snapshots everytime test AUC improves')
     parser.add_argument('--dynamic',action='store_true',default=False,help='Attempt to adjust the base_lr in response to training progress')
@@ -192,16 +266,16 @@ if __name__ == '__main__':
     
     #identify all train/test pair
     if args.number >= 0:
-        pairs = [('%strain%d.mols'%(args.prefix,args.number),'%stest%d.mols'%(args.prefix,args.number))]
+        pairs = [('%strain%d.types'%(args.prefix,args.number),'%stest%d.types'%(args.prefix,args.number))]
     else:
         pairs = []
-        for train in glob.glob('%strain[0-9]*.mols' % args.prefix):
+        for train in glob.glob('%strain[0-9]*.types' % args.prefix):
             test = train.replace('%strain' % args.prefix,'%stest' % args.prefix)
             if not os.path.isfile(test):
                 print test,' test file does not exist'
                 sys.exit(1)
             pairs.append((train,test))
-    
+
     if len(pairs) == 0:
         print "Missing train/test files"
         sys.exit(1)
@@ -221,7 +295,15 @@ if __name__ == '__main__':
     for (train,test) in pairs:
         m = re.search('%strain(\d+)'%args.prefix,train)
         outname = '%s.%s' % (outprefix,m.group(1))
-        test,train = eval_model(args, train, test, outname)
+
+        reducedtrainfile = train.replace('%strain' % args.prefix,'%s_reducedtrain' % args.prefix)
+        reducedtestfile = train.replace('%strain' % args.prefix,'%s_reducedtest' % args.prefix)
+        if not os.path.isfile(reducedtestfile):       
+            reducedtestfile = '' 
+        if not os.path.isfile(reducedtrainfile):       
+            reducedtrainfile = ''
+
+        test,train = eval_model(args, train, test, reducedtrainfile, reducedtestfile, outname)
         testaucs.append([x[0] for x in test])
         trainaucs.append([x[0] for x in train])
         alltest.append(test)
