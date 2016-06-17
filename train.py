@@ -312,6 +312,18 @@ if __name__ == '__main__':
                 out.write('%f %f\n'%(label,score))
             out.write('# AUC %f\n'%test[-1][0])
 
+     #find average, min, max AUC for last 1000 iterations
+    lastiter_testaucs = []
+    lastiter = 1000
+    if lastiter > args.iterations: lastiter = args.iterations
+    num_testaucs = lastiter/args.test_interval
+    for i in xrange(len(testaucs)):
+        lastiter_testaucs.append(testaucs[i][len(testaucs[i])-num_testaucs:])
+    avgAUC = np.mean(lastiter_testaucs)
+    maxAUC = np.max(lastiter_testaucs)
+    minAUC = np.min(lastiter_testaucs)
+    txt = 'For the last %s iterations:\nmean AUC=%.2f  max AUC=%.2f  min AUC=%.2f'%(lastiter,avgAUC,maxAUC,minAUC)
+    
     #average aucs, train and test
 
     #due to early termination length of results may not be equivalent
@@ -325,7 +337,7 @@ if __name__ == '__main__':
     with open('%s.train' % outprefix,mode) as out:
         for r in trainaucs:
             out.write('%s %s\n' % (np.mean(r),' '.join([str(x) for x in r])))
-            
+    
     #make training plot
     plt.plot(trainaucs.mean(axis=1),label='Train')
     plt.plot(testaucs.mean(axis=1),label='Test')
@@ -348,13 +360,14 @@ if __name__ == '__main__':
         out.write('# AUC %f\n'%auc)
         
     #make plot
-    plt.figure(figsize=(8,8))
-    plt.plot(fpr,tpr,label='CNN (AUC=%.2f)'%auc,linewidth=4)
-    plt.legend(loc='lower right',fontsize=24)
+    fig = plt.figure(figsize=(8,8))
+    plt.plot(fpr,tpr,label='CNN (AUC=%.2f)'%(auc),linewidth=4)
+    plt.legend(loc='lower right',fontsize=20)
     plt.xlabel('False Positive Rate',fontsize=22)
     plt.ylabel('True Positive Rate',fontsize=22)
     plt.axes().set_aspect('equal')
     plt.tick_params(axis='both', which='major', labelsize=16)
+    plt.text(.05, -.25, txt, fontsize=22)
     plt.savefig('%s_roc.pdf'%outprefix,bbox_inches='tight')
             
     
