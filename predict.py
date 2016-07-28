@@ -18,15 +18,16 @@ def predict(args):
     with open(testfile,'w') as f:
         f.write(model)    
     net = caffe.Net(testfile, args.weights, caffe.TEST)
+
     output =[]
     for line in open(args.input):
         predict = net.forward()['output']
         if predict.shape[0] != 1:
             print "Error: require single-sized batches"
             sys.exit(1)
-        
         output.append('%f %s' % (predict[0][1],line))
     if args.max_score: output = maxLigandScore(output)
+
     if not args.keep:
         os.remove(testfile)
     return output
@@ -76,10 +77,12 @@ if __name__ == '__main__':
 			predictions.append(line)
 		if args.max_score: output=maxLigandScore(predictions)
     out.writelines('%s'%line for line in output)
-    
-    
-    
-
-    
-    
-    
+    #add auc to end of file
+    ytrue = []
+    yscore = []
+    for line in output:
+		data=line.split(" ")
+		ytrue.append(float(data[1]))
+        yscore.append(data[0])
+    auc = sklearn.metrics.roc_auc_score(ytrue,yscore)
+    out.write("# AUC %f\n" % auc)

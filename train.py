@@ -136,6 +136,7 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
     for i in xrange(iterations/testiter):
         start = time.time()
         solver.step(testiter)
+
         print "Train time: %f" % (time.time()-start)
 
         start = time.time()
@@ -172,10 +173,14 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
         testauc = sklearn.metrics.roc_auc_score(y_true,y_score)
         testvals.append((testauc,y_true,y_score))
         
+        print "Test eval: %f s" % (time.time()-start)
+        
         if testauc > besttestauc:
             besttestauc = testauc
             if args.keep_best:
                 solver.snapshot() #a bit too much - gigabytes of data
+        
+        start = time.time()
         #evaluate train set
         start = time.time()
         if i == (iterations/testiter)-1 and args.reduced:
@@ -197,6 +202,8 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
         trainauc = sklearn.metrics.roc_auc_score(y_true,y_score)            
         loss = np.mean(losses)
         trainvals.append((trainauc,y_true,y_score,loss))
+        
+        print "Train eval: %f s" % (time.time()-start)
         
         if trainauc > bestauc:
             bestauc = trainauc
@@ -255,6 +262,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight_decay',type=float,help="Weight decay, default 0.001",default=0.001)
     parser.add_argument('--gamma',type=float,help="Gamma, default 0.001",default=0.001)
     parser.add_argument('--power',type=float,help="glob.glob('%strain[0-9]*.types' % args.prefix)Power, default 1",default=1)
+
     args = parser.parse_args()
     
     #identify all train/test pair
