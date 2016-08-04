@@ -55,7 +55,7 @@ def maxLigandScore(output):
 	
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Train neural net on binmap data.')
+    parser = argparse.ArgumentParser(description='Test neural net on gninatypes data.')
     parser.add_argument('-m','--model',type=str,required=True,help="Model template. Must use TESTFILE with unshuffled, unbalanced input. EX: file.model ")
     parser.add_argument('-w','--weights',type=str,required=True,help="Model weights (.caffemodel)")
     parser.add_argument('-i','--input',type=str,required=True,help="Input .types file to predict")
@@ -63,7 +63,7 @@ if __name__ == '__main__':
     parser.add_argument('-o','--output',type=str,help='Output file name',default='-')
     parser.add_argument('-k','--keep',action='store_true',default=False,help="Don't delete prototxt files")
     parser.add_argument('--max_score',action='store_true',default=False,help="take max score per ligand as its score")
-    parser.add_argument('--notcalc_predictions', type=str, default='',help='file of predictions')
+    parser.add_argument('--notcalc_predictions', type=str, default='',help='use file of predictions instead of calculating')
 
     args = parser.parse_args()
     if args.output == '-':
@@ -83,6 +83,6 @@ if __name__ == '__main__':
     for line in output:
 		data=line.split(" ")
 		ytrue.append(float(data[1]))
-        yscore.append(data[0])
+		yscore.append(float(data[0]))
     auc = sklearn.metrics.roc_auc_score(ytrue,yscore)
-    out.write("# AUC %f\n" % auc)
+    out.write("# AUC %.2f\n" % auc)
