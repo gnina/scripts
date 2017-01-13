@@ -5,7 +5,8 @@
 
 ## Training
 
-```usage: train.py [-h] -m MODEL -p PREFIX [-n NUMBER] [-i ITERATIONS] [-s SEED]
+```
+usage: train.py [-h] -m MODEL -p PREFIX [-n NUMBER] [-i ITERATIONS] [-s SEED]
                 [-t TEST_INTERVAL] [-o OUTPREFIX] [-g GPU] [-c CONT] [-k] [-r]
                 [--avg_rotations] [--keep_best] [--dynamic] [--solver SOLVER]
                 [--lr_policy LR_POLICY] [--step_reduce STEP_REDUCE]
