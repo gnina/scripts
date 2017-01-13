@@ -122,7 +122,9 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
         solver.restore(solvername)
         solver.testall() #link testnets to train net
 
-    
+    if args.weights:
+        solver.net.copy_from(args.weights)
+        
     ntests = sum(1 for line in open(reducedtestfile))
     ntrains = sum(1 for line in open(reducedtrainfile))
 
@@ -261,8 +263,8 @@ if __name__ == '__main__':
     parser.add_argument('--momentum',type=float,help="Momentum parameters, default 0.9",default=0.9)
     parser.add_argument('--weight_decay',type=float,help="Weight decay, default 0.001",default=0.001)
     parser.add_argument('--gamma',type=float,help="Gamma, default 0.001",default=0.001)
-    parser.add_argument('--power',type=float,help="glob.glob('%strain[0-9]*.types' % args.prefix)Power, default 1",default=1)
-
+    parser.add_argument('--power',type=float,help="Power, default 1",default=1)
+    parser.add_argument('--weights',type=str,help="Set of weights to initialize the model with")
     args = parser.parse_args()
     
     #identify all train/test pair
