@@ -3,6 +3,7 @@
 import google.protobuf
 import numpy as np
 import matplotlib
+from numpy import dtype
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import glob, re, sklearn, collections, argparse, sys, os
@@ -152,11 +153,17 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
         y_true = []
         y_score = []
         y_scores = [[] for _ in xrange(ntests)]
+        y_affinity = []
+        y_predaff = []
+        y_predaffs = [[] for _ in xrange(ntests)]
         for x in xrange(ntests):
             res = testnet.forward()
             #MUST copy values out of res as it is return by ref
             y_true.append(float(res['labelout']))
             y_scores[x].append(float(res['output'][0][1])) 
+            if 'affout' in res:
+                y_affinity.append(float(res['affout']))
+                y_predaffs[x].append(float(res['predaff']))
         if args.avg_rotations:
             for _ in xrange(rotations-1):
                 print ntests #check if ntests is correct
@@ -166,15 +173,31 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
                     if yt != y_true[x]:
                         print "%dERROR: %f,y_true: %f" %(x,yt, y_true[x]) #sanity check
                     y_scores[x].append(float(res['output'][0][1]))
+                    if y_affinity:
+                        y_predaffs[x].append(float(res['predaff']))
             #average the scores for the 24 rotations
             for x in xrange(ntests):
                 y_score.append(np.mean(y_scores[x]))
+                if y_affinity:
+                    y_predaff.append(np.mean(y_predaffs[x]))
         else:
             y_score = [row[0]for row in y_scores[0:]]
+            y_predaff = [row[0] for row in y_predaffs]
             
         print "Test time: %f" % (time.time()-start)
         testauc = sklearn.metrics.roc_auc_score(y_true,y_score)
-        testvals.append((testauc,y_true,y_score))
+        
+        if y_affinity:
+            y_predaff = np.array(y_predaff)
+            y_affinity = np.array(y_affinity)
+            rmsd = sklearn.metrics.mean_squared_error(y_affinity,y_predaff)
+            yt = np.array(y_true,np.bool)
+            truermsd = sklearn.metrics.mean_squared_error(y_affinity[yt],y_predaff[yt])
+            testvals.append((testauc,y_true,y_score,rmsd,truermsd,y_affinity,y_predaff))
+        else:
+            testvals.append((testauc,y_true,y_score))
+
+
         
         print "Test eval: %f s" % (time.time()-start)
         
@@ -193,6 +216,8 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
             testnet = solver.test_nets[3]
         y_true = []
         y_score = []
+        y_affinity = []
+        y_predaff = []
         losses = []
         for x in xrange(ntrains):
             res = testnet.forward()            
@@ -200,12 +225,25 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
             y_true.append(float(res['labelout']))
             y_score.append(float(res['output'][0][1]))
             losses.append(float(res['loss']))
+            if 'affout' in res:
+                y_affinity.append(float(res['affout']))
+                y_predaff.append(float(res['predaff']))
         
         print "Test train time: %f" % (time.time()-start)
         trainauc = sklearn.metrics.roc_auc_score(y_true,y_score)            
         loss = np.mean(losses)
-        trainvals.append((trainauc,y_true,y_score,loss))
         
+        if y_affinity:
+            y_predaff = np.array(y_predaff)
+            y_affinity = np.array(y_affinity)
+            rmsd = sklearn.metrics.mean_squared_error(y_affinity,y_predaff)
+            yt = np.array(y_true,np.bool)
+            truermsd = sklearn.metrics.mean_squared_error(y_affinity[yt],y_predaff[yt])
+                    
+            trainvals.append((trainauc,y_true,y_score,loss,rmsd,truermsd,y_affinity,y_predaff))
+        else:
+            trainvals.append((trainauc,y_true,y_score,loss))
+
         print "Train eval: %f s" % (time.time()-start)
         
         if trainauc > bestauc:
@@ -295,6 +333,8 @@ if __name__ == '__main__':
     #train each Pair
     testaucs = []
     trainaucs = []
+    testrmsds = []
+    trainrmsds = []
     alltest = []
     for (train,test) in pairs:
         m = re.search('%strain(\d+)'%args.prefix,train)
@@ -311,6 +351,10 @@ if __name__ == '__main__':
         testaucs.append([x[0] for x in test])
         trainaucs.append([x[0] for x in train])
         alltest.append(test)
+        if len(test[-1]) > 4:
+            testrmsds.append([(x[3],x[4]) for x in test])
+            trainrmsds.append([(x[3],x[4]) for x in train])
+            
         with open('%s.%s.finaltest' % (outprefix,m.group(1)), mode) as out:
             for (label,score) in zip(test[-1][1],test[-1][2]):
                 out.write('%f %f\n'%(label,score))
@@ -333,15 +377,17 @@ if __name__ == '__main__':
     #due to early termination length of results may not be equivalent
     testaucs = np.array(zip(*testaucs))
     trainaucs = np.array(zip(*trainaucs))
-    
+    testrmsds = np.array(zip(*testrmsds))
+    trainrmsds = np.array(zip(*trainrmsds))
+
     with open('%s.test' % outprefix,mode) as out:
         for r in testaucs:
             out.write('%s %s\n' % (np.mean(r),' '.join([str(x) for x in r])))
 
     with open('%s.train' % outprefix,mode) as out:
         for r in trainaucs:
-            out.write('%s %s\n' % (np.mean(r),' '.join([str(x) for x in r])))
-    
+            out.write('%s %s\n' % (np.mean(r),' '.join([str(x) for x in r])))    
+                        
     #make training plot
     plt.plot(trainaucs.mean(axis=1),label='Train')
     plt.plot(testaucs.mean(axis=1),label='Test')
@@ -373,7 +419,61 @@ if __name__ == '__main__':
     plt.tick_params(axis='both', which='major', labelsize=16)
     plt.text(.05, -.25, txt, fontsize=22)
     plt.savefig('%s_roc.pdf'%outprefix,bbox_inches='tight')
-            
+    if len(testrmsds) > 0:
+        with open('%s.rmsd.test' % outprefix,mode) as out:
+            for r in testrmsds:
+                out.write('%s %s | %s | %s\n' % (np.mean(r[:,0]),np.mean(r[:,1]),' '.join([str(x) for x in r[:,0]]),' '.join([str(x) for x in r[:,1]])))
     
-    
-    
+        with open('%s.rmsd.train' % outprefix,mode) as out:
+            for r in trainrmsds:
+                out.write('%s %s | %s | %s \n' % (np.mean(r[:,0]),np.mean(r[:,1]),' '.join([str(x) for x in r[:,0]]),' '.join([str(x) for x in r[:,1]])))
+        # training plot
+        plt.plot(trainrmsds[:,0].mean(axis=1),label='Train All')
+        plt.plot(trainrmsds[:,1].mean(axis=1),label='Train Pos')
+        plt.plot(testrmsds[:,0].mean(axis=1),label='Test All')
+        plt.plot(testrmsds[:,1].mean(axis=1),label='Test Pos')
+        plt.legend(loc='best')
+        plt.savefig('%s_rmsd_train.pdf'%outprefix,bbox_inches='tight')
+                        
+        yaffinity = []
+        ypredaff = []      
+        for test in alltest:
+            yaffinity += list(test[-1][5])
+            ypredaff += list(test[-1][6])
+        yaffinity = np.array(yaffinity)
+        ypredaff = np.array(ypredaff)
+        yt = np.array(ytrue,dtype=np.bool)
+        rmsd = sklearn.metrics.mean_squared_error(yaffinity,ypredaff)
+        rmsdt = sklearn.metrics.mean_squared_error(yaffinity[yt],ypredaff[yt])
+        r2 = sklearn.metrics.r2_score(yaffinity,ypredaff)
+        r2t = sklearn.metrics.r2_score(yaffinity[yt],ypredaff[yt])
+        
+        with open('%s.rmsd.finaltest' % outprefix,mode) as out:
+            for (aff,pred) in zip(yaffinity,ypredaff):
+                out.write('%f %f\n'%(aff,pred))
+            out.write('# RMSD,RMSDt,R^2,R^2t %f %f %f %f\n'%(rmsd,rmsdt,r2,r2t))
+        
+        #correlation plot
+        fig = plt.figure(figsize=(8,8))
+        plt.plot(yaffinity,ypredaff,'o',label='RMSD=%.2f, R^2=%.3f (All)'%(rmsd,r2))
+        plt.legend(loc='best',fontsize=20,numpoints=1)
+        lo = np.min([np.min(yaffinity),np.min(ypredaff)])
+        hi = np.max([yaffinity.max(),ypredaff.max()])
+        plt.xlim(lo,hi)
+        plt.ylim(lo,hi)
+        plt.xlabel('Experimental Affinity',fontsize=22)
+        plt.ylabel('Predicted Affinity',fontsize=22)
+        plt.axes().set_aspect('equal')
+        plt.savefig('%s_rmsd.pdf'%outprefix,bbox_inches='tight')
+        
+        fig = plt.figure(figsize=(8,8))
+        plt.plot(yaffinity[yt],ypredaff[yt],'o',label='RMSD=%.2f, R^2=%.3f (Pos)'%(rmsdt,r2t))
+        plt.legend(loc='best',fontsize=20,numpoints=1)
+        lo = np.min([np.min(yaffinity),np.min(ypredaff)])
+        hi = np.max([yaffinity.max(),ypredaff.max()])
+        plt.xlim(lo,hi)
+        plt.ylim(lo,hi)
+        plt.xlabel('Experimental Affinity',fontsize=22)
+        plt.ylabel('Predicted Affinity',fontsize=22)
+        plt.axes().set_aspect('equal')
+        plt.savefig('%s_rmsdt.pdf'%outprefix,bbox_inches='tight')        
