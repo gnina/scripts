@@ -427,6 +427,7 @@ if __name__ == '__main__':
             for r in trainrmsds:
                 out.write('%s %s | %s | %s \n' % (np.mean(r[:,0]),np.mean(r[:,1]),' '.join([str(x) for x in r[:,0]]),' '.join([str(x) for x in r[:,1]])))
         # training plot
+        fig = plt.figure()
         plt.plot(trainrmsds[:,0].mean(axis=1),label='Train All')
         plt.plot(trainrmsds[:,1].mean(axis=1),label='Train Pos')
         plt.plot(testrmsds[:,0].mean(axis=1),label='Test All')
