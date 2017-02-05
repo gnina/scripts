@@ -260,7 +260,7 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
                 break #end early  
             
         out.write('%.4f %.4f %.6f %.6f'%(testauc,trainauc,loss,solver.get_base_lr()))
-        if y_affinity:
+        if len(y_affinity):
             out.write(' %.4f %.4f' % (rmsd,truermsd))
         out.write('\n')
         out.flush()
