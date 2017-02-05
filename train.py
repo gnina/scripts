@@ -260,7 +260,10 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
             if lr < args.step_end:
                 break #end early  
             
-        out.write('%.4f %.4f %.6f %.6f\n'%(testauc,trainauc,loss,solver.get_base_lr()))
+        out.write('%.4f %.4f %.6f %.6f'%(testauc,trainauc,loss,solver.get_base_lr()))
+        if len(y_affinity):
+            out.write(' %.4f %.4f' % (rmsd,truermsd))
+        out.write('\n')
         out.flush()
     
     out.close()
@@ -359,6 +362,13 @@ if __name__ == '__main__':
             for (label,score) in zip(test[-1][1],test[-1][2]):
                 out.write('%f %f\n'%(label,score))
             out.write('# AUC %f\n'%test[-1][0])
+
+        if testrmsds:
+            with open('%s.%s.rmsd.finaltest' % (outprefix,m.group(1)),mode) as out:
+                 for (aff,pred) in zip(test[-1][5],test[-1][6]):
+                    out.write('%f %f\n'%(aff,pred))
+                 out.write('# RMSD,RMSDt %f %f \n'%(test[-1][3],test[-1][4]))
+
 
      #find average, min, max AUC for last 1000 iterations
     lastiter_testaucs = []

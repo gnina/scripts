@@ -76,7 +76,8 @@ every TEST_INTERVAL iterations.
 The train/test files are of the form
     1 set1/159/rec.gninatypes set1/159/docked_0.gninatypes
 where the first value is the label, the second the receptor, and the third
-the ligand.  Additional whitespace delimited fields are ignored.
+the ligand.  Additional whitespace delimited fields are ignored.  gninatypes
+files are created using gninatyper.
 
 
 The prefix of all generated output files will be OUTPREFIX.  If not specified,
@@ -100,4 +101,3 @@ The GPU to use can be specified with -g.
 Previous training runs can be continued with -c.  The same prefix etc. should be used.
 
 A large number of training hyperparameters are available as options.  The defaults should be pretty reasonable.
-
