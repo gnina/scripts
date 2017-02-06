@@ -182,7 +182,7 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
                     y_predaff.append(np.mean(y_predaffs[x]))
         else:
             y_score = [row[0]for row in y_scores[0:]]
-            y_predaff = [row[0] for row in y_predaffs]
+            y_predaff = [row[0] if len(row) > 0 else [] for row in y_predaffs]
             
         print "Test time: %f" % (time.time()-start)
         testauc = sklearn.metrics.roc_auc_score(y_true,y_score)
