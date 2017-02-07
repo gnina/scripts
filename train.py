@@ -136,7 +136,7 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
     bestauci = 0;
     besttestauc = 0
     
-    print "cnts %d,%d" % (ntrains,ntests)
+    #print "cnts %d,%d" % (ntrains,ntests)
     for i in xrange(iterations/testiter):
         start = time.time()
         solver.step(testiter)
@@ -190,10 +190,9 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
         if y_affinity:
             y_predaff = np.array(y_predaff)
             y_affinity = np.array(y_affinity)
-            rmsd = sklearn.metrics.mean_squared_error(y_affinity,y_predaff)
             yt = np.array(y_true,np.bool)
             truermsd = sklearn.metrics.mean_squared_error(y_affinity[yt],y_predaff[yt])
-            testvals.append((testauc,y_true,y_score,rmsd,truermsd,y_affinity,y_predaff))
+            testvals.append((testauc,y_true,y_score,truermsd,y_affinity,y_predaff))
         else:
             testvals.append((testauc,y_true,y_score))
 
@@ -236,11 +235,9 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
         if y_affinity:
             y_predaff = np.array(y_predaff)
             y_affinity = np.array(y_affinity)
-            rmsd = sklearn.metrics.mean_squared_error(y_affinity,y_predaff)
             yt = np.array(y_true,np.bool)
-            truermsd = sklearn.metrics.mean_squared_error(y_affinity[yt],y_predaff[yt])
-                    
-            trainvals.append((trainauc,y_true,y_score,loss,rmsd,truermsd,y_affinity,y_predaff))
+            truermsd = sklearn.metrics.mean_squared_error(y_affinity[yt],y_predaff[yt])                    
+            trainvals.append((trainauc,y_true,y_score,loss,truermsd,y_affinity,y_predaff))
         else:
             trainvals.append((trainauc,y_true,y_score,loss))
 
@@ -262,7 +259,7 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
             
         out.write('%.4f %.4f %.6f %.6f'%(testauc,trainauc,loss,solver.get_base_lr()))
         if len(y_affinity):
-            out.write(' %.4f %.4f' % (rmsd,truermsd))
+            out.write(' %.4f' % (truermsd))
         out.write('\n')
         out.flush()
     
@@ -355,8 +352,8 @@ if __name__ == '__main__':
         trainaucs.append([x[0] for x in train])
         alltest.append(test)
         if len(test[-1]) > 4:
-            testrmsds.append([(x[3],x[4]) for x in test])
-            trainrmsds.append([(x[3],x[4]) for x in train])
+            testrmsds.append([x[3] for x in test])
+            trainrmsds.append([x[3] for x in train])
             
         with open('%s.%s.finaltest' % (outprefix,m.group(1)), mode) as out:
             for (label,score) in zip(test[-1][1],test[-1][2]):
@@ -365,11 +362,14 @@ if __name__ == '__main__':
 
         if testrmsds:
             with open('%s.%s.rmsd.finaltest' % (outprefix,m.group(1)),mode) as out:
-                 for (aff,pred) in zip(test[-1][5],test[-1][6]):
+                 for (aff,pred) in zip(test[-1][4],test[-1][5]):
                     out.write('%f %f\n'%(aff,pred))
-                 out.write('# RMSD,RMSDt %f %f \n'%(test[-1][3],test[-1][4]))
+                 out.write('# RMSD %f \n'%test[-1][3])
 
 
+    if args.number >= 0:
+        sys.exit(0)
+        
      #find average, min, max AUC for last 1000 iterations
     lastiter_testaucs = []
     lastiter = 1000
@@ -432,59 +432,43 @@ if __name__ == '__main__':
     if len(testrmsds) > 0:
         with open('%s.rmsd.test' % outprefix,mode) as out:
             for r in testrmsds:
-                out.write('%s %s | %s | %s\n' % (np.mean(r[:,0]),np.mean(r[:,1]),' '.join([str(x) for x in r[:,0]]),' '.join([str(x) for x in r[:,1]])))
+                out.write('%s %s\n' % (np.mean(r),' '.join([str(x) for x in r])))
     
         with open('%s.rmsd.train' % outprefix,mode) as out:
             for r in trainrmsds:
-                out.write('%s %s | %s | %s \n' % (np.mean(r[:,0]),np.mean(r[:,1]),' '.join([str(x) for x in r[:,0]]),' '.join([str(x) for x in r[:,1]])))
+                out.write('%s %s \n' % (np.mean(r),' '.join([str(x) for x in r])))
         # training plot
         fig = plt.figure()
-        plt.plot(trainrmsds[:,0].mean(axis=1),label='Train All')
-        plt.plot(trainrmsds[:,1].mean(axis=1),label='Train Pos')
-        plt.plot(testrmsds[:,0].mean(axis=1),label='Test All')
-        plt.plot(testrmsds[:,1].mean(axis=1),label='Test Pos')
+        plt.plot(trainrmsds.mean(axis=1),label='Train')
+        plt.plot(testrmsds.mean(axis=1),label='Test')
         plt.legend(loc='best')
         plt.savefig('%s_rmsd_train.pdf'%outprefix,bbox_inches='tight')
                         
         yaffinity = []
         ypredaff = []      
         for test in alltest:
-            yaffinity += list(test[-1][5])
-            ypredaff += list(test[-1][6])
+            yaffinity += list(test[-1][4])
+            ypredaff += list(test[-1][5])
         yaffinity = np.array(yaffinity)
         ypredaff = np.array(ypredaff)
         yt = np.array(ytrue,dtype=np.bool)
-        rmsd = sklearn.metrics.mean_squared_error(yaffinity,ypredaff)
         rmsdt = sklearn.metrics.mean_squared_error(yaffinity[yt],ypredaff[yt])
-        r2 = sklearn.metrics.r2_score(yaffinity,ypredaff)
         r2t = sklearn.metrics.r2_score(yaffinity[yt],ypredaff[yt])
         
         with open('%s.rmsd.finaltest' % outprefix,mode) as out:
             for (aff,pred) in zip(yaffinity,ypredaff):
                 out.write('%f %f\n'%(aff,pred))
-            out.write('# RMSD,RMSDt,R^2,R^2t %f %f %f %f\n'%(rmsd,rmsdt,r2,r2t))
+            out.write('# RMSD,R^2 %f %f \n'%(rmsdt,r2t))
         
-        #correlation plot
-        fig = plt.figure(figsize=(8,8))
-        plt.plot(yaffinity,ypredaff,'o',label='RMSD=%.2f, R^2=%.3f (All)'%(rmsd,r2))
-        plt.legend(loc='best',fontsize=20,numpoints=1)
-        lo = np.min([np.min(yaffinity),np.min(ypredaff)])
-        hi = np.max([yaffinity.max(),ypredaff.max()])
-        plt.xlim(lo,hi)
-        plt.ylim(lo,hi)
-        plt.xlabel('Experimental Affinity',fontsize=22)
-        plt.ylabel('Predicted Affinity',fontsize=22)
-        plt.axes().set_aspect('equal')
-        plt.savefig('%s_rmsd.pdf'%outprefix,bbox_inches='tight')
-        
+        #correlation plot        
         fig = plt.figure(figsize=(8,8))
         plt.plot(yaffinity[yt],ypredaff[yt],'o',label='RMSD=%.2f, R^2=%.3f (Pos)'%(rmsdt,r2t))
         plt.legend(loc='best',fontsize=20,numpoints=1)
-        lo = np.min([np.min(yaffinity),np.min(ypredaff)])
-        hi = np.max([yaffinity.max(),ypredaff.max()])
+        lo = np.min([np.min(yaffinity[yt]),np.min(ypredaff[yt])])
+        hi = np.max([yaffinity[yt].max(),ypredaff[yt].max()])
         plt.xlim(lo,hi)
         plt.ylim(lo,hi)
         plt.xlabel('Experimental Affinity',fontsize=22)
         plt.ylabel('Predicted Affinity',fontsize=22)
         plt.axes().set_aspect('equal')
-        plt.savefig('%s_rmsdt.pdf'%outprefix,bbox_inches='tight')        
+        plt.savefig('%s_rmsd.pdf'%outprefix,bbox_inches='tight')        
