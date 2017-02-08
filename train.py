@@ -191,8 +191,8 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
             y_predaff = np.array(y_predaff)
             y_affinity = np.array(y_affinity)
             yt = np.array(y_true,np.bool)
-            truermsd = sklearn.metrics.mean_squared_error(y_affinity[yt],y_predaff[yt])
-            testvals.append((testauc,y_true,y_score,truermsd,y_affinity,y_predaff))
+            testrmsd = sklearn.metrics.mean_squared_error(y_affinity[yt],y_predaff[yt])
+            testvals.append((testauc,y_true,y_score,testrmsd,y_affinity,y_predaff))
         else:
             testvals.append((testauc,y_true,y_score))
 
@@ -236,8 +236,8 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
             y_predaff = np.array(y_predaff)
             y_affinity = np.array(y_affinity)
             yt = np.array(y_true,np.bool)
-            truermsd = sklearn.metrics.mean_squared_error(y_affinity[yt],y_predaff[yt])                    
-            trainvals.append((trainauc,y_true,y_score,loss,truermsd,y_affinity,y_predaff))
+            trainrmsd = sklearn.metrics.mean_squared_error(y_affinity[yt],y_predaff[yt])                    
+            trainvals.append((trainauc,y_true,y_score,loss,trainrmsd,y_affinity,y_predaff))
         else:
             trainvals.append((trainauc,y_true,y_score,loss))
 
@@ -259,7 +259,7 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
             
         out.write('%.4f %.4f %.6f %.6f'%(testauc,trainauc,loss,solver.get_base_lr()))
         if len(y_affinity):
-            out.write(' %.4f' % (truermsd))
+            out.write(' %.4f %.4f' % (testrmsd,trainrmsd))
         out.write('\n')
         out.flush()
     
