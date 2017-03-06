@@ -135,7 +135,9 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
     bestauc = 0
     bestauci = 0;
     besttestauc = 0
-    
+    testauc = 0
+    trainauc = 0
+    loss = 0
     #print "cnts %d,%d" % (ntrains,ntests)
     for i in xrange(iterations/testiter):
         start = time.time()
@@ -160,7 +162,10 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
             res = testnet.forward()
             #MUST copy values out of res as it is return by ref
             y_true.append(float(res['labelout']))
-            y_scores[x].append(float(res['output'][0][1])) 
+            if 'output' in res:
+                y_scores[x].append(float(res['output'][0][1])) 
+            else:
+                y_scores[x].append(0)
             if 'affout' in res:
                 y_affinity.append(float(res['affout']))
                 y_predaffs[x].append(float(res['predaff']))
@@ -169,34 +174,35 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
                 print ntests #check if ntests is correct
                 for x in xrange(ntests):
                     res = testnet.forward()
-                    yt = float(res['labelout'])
-                    if yt != y_true[x]:
-                        print "%dERROR: %f,y_true: %f" %(x,yt, y_true[x]) #sanity check
-                    y_scores[x].append(float(res['output'][0][1]))
+                    if 'output' in res:
+                        yt = float(res['labelout'])
+                        if yt != y_true[x]:
+                            print "%dERROR: %f,y_true: %f" %(x,yt, y_true[x]) #sanity check
+                        y_scores[x].append(float(res['output'][0][1]))
                     if y_affinity:
                         y_predaffs[x].append(float(res['predaff']))
             #average the scores for the 24 rotations
             for x in xrange(ntests):
-                y_score.append(np.mean(y_scores[x]))
+                if y_scores:
+                    y_score.append(np.mean(y_scores[x]))
                 if y_affinity:
                     y_predaff.append(np.mean(y_predaffs[x]))
         else:
-            y_score = [row[0]for row in y_scores[0:]]
+            y_score = [row[0] if len(row) > 0 else [] for row in y_scores[0:]]
             y_predaff = [row[0] if len(row) > 0 else [] for row in y_predaffs]
             
         print "Test time: %f" % (time.time()-start)
-        testauc = sklearn.metrics.roc_auc_score(y_true,y_score)
+        if len(np.unique(y_true)) > 1:
+            testauc = sklearn.metrics.roc_auc_score(y_true,y_score)
         
         if y_affinity:
             y_predaff = np.array(y_predaff)
-            y_affinity = np.array(y_affinity)
             yt = np.array(y_true,np.bool)
+            y_affinity = np.array(y_affinity)
             testrmsd = sklearn.metrics.mean_squared_error(y_affinity[yt],y_predaff[yt])
-            testvals.append((testauc,y_true,y_score,testrmsd,y_affinity,y_predaff))
+            testvals.append((testauc,y_true,y_score,testrmsd,y_affinity,y_predaff))              
         else:
             testvals.append((testauc,y_true,y_score))
-
-
         
         print "Test eval: %f s" % (time.time()-start)
         
@@ -222,22 +228,32 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
             res = testnet.forward()            
             #MUST copy values out of res as it is return by ref
             y_true.append(float(res['labelout']))
-            y_score.append(float(res['output'][0][1]))
-            losses.append(float(res['loss']))
+            if 'output' in res:
+                y_score.append(float(res['output'][0][1]))
+            else:
+                y_score.append(0)
+            if 'loss' in res:
+                losses.append(float(res['loss']))
+            else:
+                losses.append(0)
             if 'affout' in res:
                 y_affinity.append(float(res['affout']))
                 y_predaff.append(float(res['predaff']))
         
         print "Test train time: %f" % (time.time()-start)
-        trainauc = sklearn.metrics.roc_auc_score(y_true,y_score)            
+        if len(np.unique(y_true)) > 1:
+            trainauc = sklearn.metrics.roc_auc_score(y_true,y_score)            
         loss = np.mean(losses)
         
         if y_affinity:
             y_predaff = np.array(y_predaff)
             y_affinity = np.array(y_affinity)
-            yt = np.array(y_true,np.bool)
             trainrmsd = sklearn.metrics.mean_squared_error(y_affinity[yt],y_predaff[yt])                    
-            trainvals.append((trainauc,y_true,y_score,loss,trainrmsd,y_affinity,y_predaff))
+            if y_score:
+                yt = np.array(y_true,np.bool)
+                trainvals.append((trainauc,y_true,y_score,loss,trainrmsd,y_affinity,y_predaff))
+            else:
+                trainvals.append((0,[],[],0,trainrmsd,y_affinity,y_predaff))
         else:
             trainvals.append((trainauc,y_true,y_score,loss))
 
@@ -355,10 +371,11 @@ if __name__ == '__main__':
             testrmsds.append([x[3] for x in test])
             trainrmsds.append([x[3] for x in train])
             
-        with open('%s.%s.finaltest' % (outprefix,m.group(1)), mode) as out:
-            for (label,score) in zip(test[-1][1],test[-1][2]):
-                out.write('%f %f\n'%(label,score))
-            out.write('# AUC %f\n'%test[-1][0])
+        if np.mean(trainaucs) > 0:
+            with open('%s.%s.finaltest' % (outprefix,m.group(1)), mode) as out:
+                for (label,score) in zip(test[-1][1],test[-1][2]):
+                    out.write('%f %f\n'%(label,score))
+                out.write('# AUC %f\n'%test[-1][0])
 
         if testrmsds:
             with open('%s.%s.rmsd.finaltest' % (outprefix,m.group(1)),mode) as out:
@@ -376,11 +393,15 @@ if __name__ == '__main__':
     if lastiter > args.iterations: lastiter = args.iterations
     num_testaucs = lastiter/args.test_interval
     for i in xrange(len(testaucs)):
-        lastiter_testaucs.append(testaucs[i][len(testaucs[i])-num_testaucs:])
-    avgAUC = np.mean(lastiter_testaucs)
-    maxAUC = np.max(lastiter_testaucs)
-    minAUC = np.min(lastiter_testaucs)
-    txt = 'For the last %s iterations:\nmean AUC=%.2f  max AUC=%.2f  min AUC=%.2f'%(lastiter,avgAUC,maxAUC,minAUC)
+        a = testaucs[i][len(testaucs[i])-num_testaucs:]
+        if a:
+            lastiter_testaucs.append(a)
+        
+    if lastiter_testaucs:
+        avgAUC = np.mean(lastiter_testaucs)
+        maxAUC = np.max(lastiter_testaucs)
+        minAUC = np.min(lastiter_testaucs)
+        txt = 'For the last %s iterations:\nmean AUC=%.2f  max AUC=%.2f  min AUC=%.2f'%(lastiter,avgAUC,maxAUC,minAUC)
     
     #average aucs, train and test
 
@@ -410,25 +431,28 @@ if __name__ == '__main__':
     yscore = []      
     for test in alltest:
         ytrue += test[n][1]
-        yscore += test[n][2]
-    fpr, tpr, _ = sklearn.metrics.roc_curve(ytrue,yscore)
-    auc = sklearn.metrics.roc_auc_score(ytrue,yscore)
+        if test[n][2]:
+            yscore += test[n][2]
     
-    with open('%s.finaltest' % outprefix,mode) as out:
-        for (label,score) in zip(ytrue,yscore):
-            out.write('%f %f\n'%(label,score))
-        out.write('# AUC %f\n'%auc)
+    if len(np.unique(ytrue)) > 1:
+        fpr, tpr, _ = sklearn.metrics.roc_curve(ytrue,yscore)
+        auc = sklearn.metrics.roc_auc_score(ytrue,yscore)
         
-    #make plot
-    fig = plt.figure(figsize=(8,8))
-    plt.plot(fpr,tpr,label='CNN (AUC=%.2f)'%(auc),linewidth=4)
-    plt.legend(loc='lower right',fontsize=20)
-    plt.xlabel('False Positive Rate',fontsize=22)
-    plt.ylabel('True Positive Rate',fontsize=22)
-    plt.axes().set_aspect('equal')
-    plt.tick_params(axis='both', which='major', labelsize=16)
-    plt.text(.05, -.25, txt, fontsize=22)
-    plt.savefig('%s_roc.pdf'%outprefix,bbox_inches='tight')
+        with open('%s.finaltest' % outprefix,mode) as out:
+            for (label,score) in zip(ytrue,yscore):
+                out.write('%f %f\n'%(label,score))
+            out.write('# AUC %f\n'%auc)
+            
+        #make plot
+        fig = plt.figure(figsize=(8,8))
+        plt.plot(fpr,tpr,label='CNN (AUC=%.2f)'%(auc),linewidth=4)
+        plt.legend(loc='lower right',fontsize=20)
+        plt.xlabel('False Positive Rate',fontsize=22)
+        plt.ylabel('True Positive Rate',fontsize=22)
+        plt.axes().set_aspect('equal')
+        plt.tick_params(axis='both', which='major', labelsize=16)
+        plt.text(.05, -.25, txt, fontsize=22)
+        plt.savefig('%s_roc.pdf'%outprefix,bbox_inches='tight')
     if len(testrmsds) > 0:
         with open('%s.rmsd.test' % outprefix,mode) as out:
             for r in testrmsds:
