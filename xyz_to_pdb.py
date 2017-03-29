@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 from __future__ import print_function
 import sys
 import argparse
@@ -16,14 +18,17 @@ def xyz_line_to_atom(xyz_line):
     return elem, x, y, z, dx, dy, dz
 
 
-def atom_to_pdb_line(atom, idx):
+def atom_to_pdb_line(atom, idx, dosum):
     if not isinstance(idx, int) or idx < 0 or idx > 99999:
         raise TypeError('idx must be an integer from 0 to 99999 ({})'.format(idx))
     elem, x, y, z, dx, dy, dz = atom
     if len(elem) not in {1, 2}:
         raise IndexError('atom elem must be a string of length 1 or 2 ({})'.format(elem))
-    d = (dx**2 + dy**2 + dz**2)**0.5
-    return = '{:6}{:5} {:4}{:1}{:3} {:1}{:4}{:1}   {:8.3f}{:8.3f}{:8.3f}{:6.2f}{:6.2f}          {:2}{:2}' \
+    if dosum:
+        d = dx+dy+dz
+    else:
+        d = (dx**2 + dy**2 + dz**2)**0.5
+    return '{:6}{:5} {:4}{:1}{:3} {:1}{:4}{:1}   {:8.3f}{:8.3f}{:8.3f}{:6.2f}{:6f}          {:2}{:2}' \
              .format('ATOM', idx, '', '', '', '', '', '', x, y, z, 1.0, d, elem.rjust(2), '')
 
 
@@ -38,10 +43,10 @@ def read_xyz_file(xyz_file):
     return atoms
 
 
-def write_pdb_file(pdb_file, atoms):
+def write_pdb_file(pdb_file, atoms, dosum):
     lines = []
     for i, atom in enumerate(atoms):
-        line = atom_to_pdb_line(atom, i)
+        line = atom_to_pdb_line(atom, i, dosum)
         lines.append(line)
     if pdb_file:
         with open(pdb_file, 'w') as f:
@@ -54,11 +59,12 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('xyz_file')
     parser.add_argument('-o', '--pdb_file')
+    parser.add_argument('--sum',action='store_true',default=False,help='Sum gradients instead of taking magnitude')
     return parser.parse_args()
 
 
 if __name__ == '__main__':
     args = parse_args()
     atoms = read_xyz_file(args.xyz_file)
-    write_pdb_file(args.pdb_file, atoms)
+    write_pdb_file(args.pdb_file, atoms,args.sum)
 

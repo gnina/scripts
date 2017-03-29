@@ -21,11 +21,14 @@ def predict(args):
 
     output =[]
     for line in open(args.input):
-        predict = net.forward()['output']
-        if predict.shape[0] != 1:
-            print "Error: require single-sized batches"
-            sys.exit(1)
-        output.append('%f %s' % (predict[0][1],line))
+	out = net.forward()
+	if 'output' in out:
+	    predict = out['output'][0][1]
+	elif 'predaff' in out:
+	    predict = out['predaff']
+        elif 'rankoutput' in out:
+            predict = out['rankoutput']
+        output.append('%f %s' % (predict,line))
     if args.max_score: output = maxLigandScore(output)
 
     if not args.keep:
@@ -84,5 +87,6 @@ if __name__ == '__main__':
 		data=line.split(" ")
 		ytrue.append(float(data[1]))
 		yscore.append(float(data[0]))
-    auc = sklearn.metrics.roc_auc_score(ytrue,yscore)
-    out.write("# AUC %.2f\n" % auc)
+    if len(np.unique(ytrue)) > 1:
+	auc = sklearn.metrics.roc_auc_score(ytrue,yscore)
+	out.write("# AUC %.2f\n" % auc)

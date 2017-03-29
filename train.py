@@ -397,6 +397,7 @@ if __name__ == '__main__':
         if a:
             lastiter_testaucs.append(a)
         
+    txt = ''
     if lastiter_testaucs:
         avgAUC = np.mean(lastiter_testaucs)
         maxAUC = np.max(lastiter_testaucs)
