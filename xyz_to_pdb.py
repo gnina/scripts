@@ -23,7 +23,7 @@ def atom_to_pdb_line(atom, idx):
     if len(elem) not in {1, 2}:
         raise IndexError('atom elem must be a string of length 1 or 2 ({})'.format(elem))
     d = (dx**2 + dy**2 + dz**2)**0.5
-    return = '{:6}{:5} {:4}{:1}{:3} {:1}{:4}{:1}   {:8.3f}{:8.3f}{:8.3f}{:6.2f}{:6.2f}          {:2}{:2}' \
+    return '{:6}{:5} {:4}{:1}{:3} {:1}{:4}{:1}   {:8.3f}{:8.3f}{:8.3f}{:6.2f}{:6.2f}          {:2}{:2}' \
              .format('ATOM', idx, '', '', '', '', '', '', x, y, z, 1.0, d, elem.rjust(2), '')
 
 
