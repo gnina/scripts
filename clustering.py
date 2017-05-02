@@ -211,7 +211,7 @@ if __name__ == '__main__':
     parser.add_argument('-o','--output',type=str,default='',help='output name for clustered folds')
     parser.add_argument('-c','--check',type=str,help='input name for folds to check for similarity')
     parser.add_argument('-n', '--number',type=int,default=3,help="number of folds to create/check. default=3")
-    parser.add_argument('-s','--similarity',type=float,default=.8,help='what percentage similarity to cluster by. default= 80% similarity (.8)')
+    parser.add_argument('-s','--similarity',type=float,default=0.8,help='what percentage similarity to cluster by. default=0.8')
     parser.add_argument('-d','--data_root',type=str,default='/home/dkoes/PDBbind/general-set-with-refined/',help="path to target dirs")
     parser.add_argument('--posedir',required=False,default='',help='subdir of target dirs where ligand poses are located')
     parser.add_argument('-v','--verbose',action='store_true',default=False,help='verbose output')
