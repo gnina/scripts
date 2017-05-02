@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 from Bio.PDB.PDBParser import PDBParser
 from Bio.PDB.Polypeptide import three_to_one
 from Bio.PDB.Polypeptide import is_aa
@@ -21,91 +22,100 @@ CYM cystenine C'''
 
 
 def getResidueString(structure):
-    seq=''
+    seq = ''
     for model in structure:
         for residue in model.get_residues():
-            if is_aa(residue.get_resname(), standard=True):
-                seq+=(three_to_one(residue.get_resname()))
+            resname = residue.get_resname()
+            if is_aa(resname, standard=True):
+                seq += three_to_one(resname)
+            elif resname in {'HIE', 'HID'}:
+                seq += 'H'
+            elif resname in {'CYX', 'CYM'}:
+                seq += 'C'
             else:
-                resname = residue.get_resname()
-            if resname == 'HIE' or resname == 'HID': seq+=('H')
-            elif resname == 'CYX' or resname == 'CYM': seq+=('C')
-            else: seq+=('X')
+                seq += 'X'
     return seq
 
-def calcDistanceMatrix(targets, target_names):
+
+def calcDistanceMatrix(targets):
+    '''compute full pairwise target distance matrix in parallel'''
     n = len(targets)
+    pairs = [(r, c) for r in range(n) for c in range(r+1, n)] #upper triangle
     pool = Pool()
-    function = partial(cUTDM2, targets, target_names, n)
-    mapOfTuples = pool.map(function, xrange(n))
-    distanceMatrix = np.zeros((n,n))
-    for tup in mapOfTuples:
-        distanceMatrix[tup[0]][tup[1]] = distanceMatrix[tup[1]][tup[0]] = tup[3]
+    function = partial(cUTDM2, targets)
+    distanceTuples = pool.map(function, pairs)
+    distanceMatrix = np.zeros((n, n))
+    for (a, b, distance) in distanceTuples:
+        distanceMatrix[a][b] = distanceMatrix[b][a] = distance
     return distanceMatrix
 
-def cUTDM2(targets, target_names, n, r):
-    for c in xrange(r+1,n,1):
-        score = pairwise2.align.globalxx(targets[r], targets[c], score_only=True)
-    length= max(len(targets[r]), len(targets[c]))
-    distance = (length-score)/length
-    print target_names[r],target_names[c], distance
-    print r
-    twoProteinsDistance = (r, c, distance)
-    return twoProteinsDistance
 
-def assignGroup(dists, t, group, explore):
-    '''add any targets to group that are less than t away from what is in explore'''
+def cUTDM2(targets, pair):
+    '''compute distance between target pair'''
+    (a, b) = pair
+    score = pairwise2.align.globalxx(targets[a], targets[b], score_only=True)
+    length = max(len(targets[a]), len(targets[b]))
+    distance = (length-score)/length
+    return (a, b, distance)
+
+
+def assignGroup(dists, t, explore):
+    '''group targets that are less than t away from each other and what's in explore'''
+    group = set(explore)
     while explore:
-      frontier = set()
-      for i in explore:
-        for j in xrange(len(dists)):
-          if dists[i][j] < t and j not in group:
-            group.add(j)
-            frontier.add(j)
-      explore.update(frontier)
-      explore.discard(i)
+        frontier = set()
+        for i in explore:
+            for j in range(dists.shape[1]):
+                if dists[i][j] < t and j not in group:
+                    group.add(j)
+                    frontier.add(j)
+        explore = frontier
+    return group
+
 
 def calcClusterGroups(dists, target_names, t):
     '''dists is a distance matrix (full) for target_names'''
     assigned = set()
     groups = []
-    for i in xrange(len(dists)):
+    for i in range(dists.shape[0]):
         if i not in assigned:
-            group = set([i])
-            assignGroup(dists, t, group, set([i]))
+            group = assignGroup(dists, t, set([i]))
             groups.append(group)
             assigned.update(group)
-            print i,len(group)
-    ret = []
-    for g in groups:
-      group = [target_names[i] for i in g]
-      ret.append(group)
-    return ret
+    return [set(target_names[i] for i in g) for g in groups]
 
-    
-def createFolds(cluster_groups,cnum,args):
-    #print cluster_groups
-    sets = [[] for _ in xrange(cnum)]
-    setlength=[0]*cnum
-    target_numposes = [0]*len(cluster_groups)
-    for i in xrange(len(cluster_groups)):
-        for t in cluster_groups[i]:
+
+def createFolds(cluster_groups, numfolds, args):
+    '''split target clusters into numfolds folds with balanced num poses per fold'''
+    folds = [[] for _ in range(numfolds)]
+    fold_numposes = [0]*numfolds
+    group_numposes = [0]*len(cluster_groups)
+    foldmap = {}
+    for i, group in enumerate(cluster_groups):
+        #count num poses per group
+        for target in group:
+            path = os.path.join(args.data_root, target, args.posedir)
             try:
-                posenum = len(fnmatch.filter(os.listdir('%s%s'%(args.path,t)), '*.gninatypes'))
+                numposes = len(fnmatch.filter(os.listdir(path), '*.gninatypes'))
             except OSError: 
-                print '%s gninatype files not found at %s%s'%(t,args.path,t)
+                print('warning: {} gninatype files not found at {}'.format(target, path))
                 continue
-        target_numposes[i] +=posenum
-    for _ in xrange(len(cluster_groups)):
-        maxindex =target_numposes.index( np.max(target_numposes))
-        s =setlength.index(np.min(setlength))
-        setlength[s] += target_numposes[maxindex]
-        target_numposes[maxindex]= -1
-        sets[s].extend(cluster_groups[maxindex])
-    print 'groups created:'
-    print setlength 
-    return sets  
-    
+            group_numposes[i] += numposes
+    for _ in cluster_groups:
+        #iteratively assign group with most poses to fold with fewest poses
+        maxgroup = group_numposes.index(np.max(group_numposes))
+        minfold = fold_numposes.index(np.min(fold_numposes))
+        folds[minfold].extend(cluster_groups[maxgroup])
+        fold_numposes[minfold] += group_numposes[maxgroup]
+        group_numposes[maxgroup] = -1
+        for t in cluster_groups[maxgroup]:
+            foldmap[t] = minfold
+    print('Poses per fold: {}'.format(fold_numposes))
+    for f in folds:
+        f.sort()
+    return folds, foldmap
+
+
 def index(a, x):
     'Locate the leftmost value exactly equal to x'
     i = bisect.bisect_left(a, x)
@@ -113,89 +123,140 @@ def index(a, x):
         return i
     else: return -1
 
-def crossvalidatefiles(sets,outname,cnum,args):
-    print 'Making .types files'
-    #create test/train files
-    trainfiles = [open('%strain%d.types'%(outname,x),'w') for x in xrange(cnum)]
-    testfiles = [open('%stest%d.types'%(outname,x),'w') for x in xrange(cnum)]
-    input_file = open(args.input)
-    for line in input_file:
-        for word in re.findall(r'[\w]+', line):
-            for i in xrange(cnum):
-                if word in sets[i]:
-                   testfiles[i].write(line)
-                   for j in xrange(cnum):
-                       if i != j:
-                          trainfiles[j].write(line)
-                   break
-            else: #didn't find a matching work
-                continue
-            break
 
-    input_file.close()
+def crossvalidatefiles(folds, outname, numfolds, args):
+    #create test/train files
+    trainfiles = [open('{}train{}.types'.format(outname, i), 'w') for i in range(numfolds)]
+    testfiles = [open('{}test{}.types'.format(outname, i), 'w') for i in range(numfolds)]
+    target_set = set(sum(folds, []))
+    with open(args.input, 'r') as file:
+        lines = file.readlines()
+    for line in lines:
+        for word in re.findall(r'[\w]+', line):
+            if word in target_set:
+                target = word
+                break
+        for i in range(numfolds):
+            if target in folds[i]:
+                fold = i
+                break
+        for i in range(numfolds):
+            if i == fold:
+                testfiles[i].write(line)
+            else:
+                trainfiles[i].write(line)
+
+
+def loadFolds(inname, target_names, numfolds):
+    #load test/train files
+    trainfiles = [open('{}train{}.types'.format(inname,x),'r') for x in range(numfolds)]
+    testfiles = [open('{}test{}.types'.format(inname,x),'r') for x in range(numfolds)]
+    folds = [set() for _ in range(numfolds)]
+    foldmap = {}
+    target_set = set(target_names)
+    for i in range(numfolds):
+        for line in testfiles[i].readlines():
+            for word in re.findall(r'[\w]+', line):
+                if word in target_set:
+                    target = word
+                    break
+            for j in range(numfolds):
+                if j == i:
+                    folds[i].add(target)
+                else:
+                    assert target not in folds[j]
+            foldmap[target] = i
+        for line in trainfiles[i].readlines():
+            for word in re.findall(r'[\w]+', line):
+                if word in target_set:
+                    target = word
+                    break
+            assert target not in folds[i]
+    return folds, foldmap
+
+
+def checkFolds(dists, target_names, threshold, foldmap):
+    '''check that targets in different folds pass dissimilarity threshold'''
+    ok = True
+    n_targets = dists.shape[0]
+    min_dist = np.inf
+    closest = None
+    for t in foldmap:
+        if t not in set(target_names):
+            print('warning: {} not found in distance matrix'.format(t))
+    for a in range(n_targets):
+        for b in range(a+1, n_targets):
+            a_name = target_names[a]
+            b_name = target_names[b]
+            if a_name in foldmap and b_name in foldmap:
+                if foldmap[a_name] != foldmap[b_name]:
+                    if dists[a][b] < min_dist:
+                        min_dist = dists[a][b]
+                        closest = (a_name, b_name)
+                    if dists[a][b] < threshold:
+                        print('warning: {} and {} are similar ({:.5f}) but in different folds' \
+                              .format(a_name, b_name, dists[a][b]))
+                        ok = False
+    if closest:
+        print('{} and {} are the most similar targets in different folds ({:.5f})' \
+              .format(closest[0], closest[1], min_dist))
+    return ok
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='create train/test sets for cross-validation separating by sequence similarity of protein targets')
-    parser.add_argument('-p','--pbdfiles',type=str,required=False,help="file with targetnames and paths to pbdfiles of targets and number of poses per target in input(separated by space)")
-    parser.add_argument('-i','--input',type=str,required=False,help="Input .types file to create sets from")
-    parser.add_argument('-o','--output',type=str,default='',help='Output file name,default=[test|train][input]')
-    parser.add_argument('-n', '--number',type=int,default=3,help="number of folds to create. default=3")
-    parser.add_argument('--threshold', type=float,default=.2,help='what percentage dissimilariy to cluster by. default: 80% similarity(.2 dissimilarity)')
-    parser.add_argument('--path',type=str,default='/home/dkoes/PDBbind/general-set-with-refined/',help="path to gninatypes files")
-    parser.add_argument('--cpickle',type=str,default='',help="cpickle file")
+    parser.add_argument('--pdbfiles',type=str,help="file with target names and paths to pbdfiles of targets (separated by space)")
+    parser.add_argument('--cpickle',type=str,help="cpickle file for precomputed distance matrix")
+    parser.add_argument('-i','--input',type=str,help="input .types file to create folds from")
+    parser.add_argument('-o','--output',type=str,help='output name for clustered folds, default=[test|train][input]')
+    parser.add_argument('-c','--check',type=str,help='input name for folds to check against dissimilarity threshold')
+    parser.add_argument('-n', '--number',type=int,default=3,help="number of folds to create/check. default=3")
+    parser.add_argument('-t','--threshold',type=float,default=.2,help='what percentage dissimilarity to cluster by. default: 80% similarity(.2 dissimilarity)')
+    parser.add_argument('-d','--data_root',type=str,default='/home/dkoes/PDBbind/general-set-with-refined/',help="path to target dirs")
+    parser.add_argument('--posedir',required=False,default='',help='subdir of target dirs where ligand poses are located')
     parser.add_argument('-v','--verbose',action='store_true',default=False,help='verbose output')
     args = parser.parse_args()
-    cnum = args.number
 
-    outname = args.output
-    #if outname =='' : outname = args.input.rsplit(".",1)[0]
-    
-    p= PDBParser(PERMISSIVE=1,QUIET=1)
-    targets=[]
-    target_names=[]
+    targets = []
+    target_names = []
 
     if args.cpickle:
-        (distanceMatrix, D, linkageMatrix, target_names) = cPickle.load(open(args.cpickle))
-    else:
-        file = open(args.pbdfiles)
-        for line in file.readlines():
-            data= line.split(" ")
+        with open(args.cpickle, 'r') as file:
+            (distanceMatrix, D, linkageMatrix, target_names) = cPickle.load(file)
+    elif args.pdbfiles:
+        p = PDBParser(PERMISSIVE=1, QUIET=1)
+        with open(args.pdbfiles, 'r') as file:
+            pdblines = file.readlines()
+        for line in pdblines:
+            data = line.split(" ")
             name = data[0]
-            handle= data[1].strip()
+            handle = data[1].strip()
             target_names.append(name)
-            structure=p.get_structure(name,handle)
-            seq=getResidueString(structure)
+            structure = p.get_structure(name, handle)
+            seq = getResidueString(structure)
             targets.append(seq)
-            file.close()
-    print 'Number of targets: %d'%len(targets)
-
-    if args.cpickle:
-        cluster_groups = calcClusterGroups(distanceMatrix,target_names,args.threshold)
-        if args.verbose:
-            j=0
-            for i in cluster_groups:
-                j = j+1
-                print j,':'
-                for h in i:
-                   print h
-        folds = createFolds(cluster_groups,cnum, args)
+        #distances are sequence dis-similarity so that a smaller distance corresponds to more similar sequence
+        distanceMatrix = calcDistanceMatrix(targets)
     else:
-        distanceMatrix = calcDistanceMatrix(targets, target_names)#distances are sequence dis-similarity so that a smaller distance corresponds to more similar sequence
-        cluster_groups = calcClusterGroups(distanceMatrix,target_names,args.threshold)
-        print '%d clusters created'%len(cluster_groups)
+        exit('error: need --cpickle or --pdbfiles to compute target distance matrix')
+    print('Number of targets: {}'.format(len(target_names)))
+
+    if args.check:
+        folds, foldmap = loadFolds(args.check, target_names, args.number)
+        print('Checking {} for {} dissimilarity constraint'.format(args.check, args.threshold))
+        checkFolds(distanceMatrix, target_names, args.threshold, foldmap)
+
+    elif args.input and args.output:
+        cluster_groups = calcClusterGroups(distanceMatrix, target_names, args.threshold)
+        print('{} clusters created'.format(len(cluster_groups)))
         if args.verbose:
-            j=0
-            for i in cluster_groups:
-                j = j+1
-                print j,':'
-                for h in i:
-                   print h
-        folds = createFolds(cluster_groups,cnum, args)
-    
-    for f in xrange(len(folds)):
-        print '\n%d targets in set %d'%(len(folds[f]), f)
-        folds[f].sort()#output writing assumes folds are sorted
-    
-    crossvalidatefiles(folds,outname,cnum,args)
-      
-    
+            for i, g in enumerate(cluster_groups):
+                print('Cluster {}: {}'.format(i, ' '.join(str(t) for t in g)))
+
+        folds, foldmap = createFolds(cluster_groups, args.number, args)
+        for i, fold in enumerate(folds):
+            print('{} targets in fold {}'.format(len(fold), i))
+
+        print('Making .types files')
+        crossvalidatefiles(folds, args.output, args.number, args)
+
