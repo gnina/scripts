@@ -194,12 +194,12 @@ def checkFolds(dists, target_names, threshold, foldmap):
                         min_dist = dists[a][b]
                         closest = (a_name, b_name)
                     if dists[a][b] < threshold:
-                        print('warning: {} and {} are similar ({:.5f}) but in different folds' \
-                              .format(a_name, b_name, dists[a][b]))
+                        print('warning: {} and {} are {:.3f}% similar but in different folds' \
+                              .format(a_name, b_name, 100*(1-dists[a][b])))
                         ok = False
     if closest:
-        print('{} and {} are the most similar targets in different folds ({:.5f})' \
-              .format(closest[0], closest[1], min_dist))
+        print('{} and {} are the most similar targets in different folds ({:.3f}%)' \
+              .format(closest[0], closest[1], 100*(1-min_dist)))
     return ok
 
 
@@ -208,14 +208,16 @@ if __name__ == '__main__':
     parser.add_argument('--pdbfiles',type=str,help="file with target names and paths to pbdfiles of targets (separated by space)")
     parser.add_argument('--cpickle',type=str,help="cpickle file for precomputed distance matrix")
     parser.add_argument('-i','--input',type=str,help="input .types file to create folds from")
-    parser.add_argument('-o','--output',type=str,help='output name for clustered folds, default=[test|train][input]')
-    parser.add_argument('-c','--check',type=str,help='input name for folds to check against dissimilarity threshold')
+    parser.add_argument('-o','--output',type=str,default='',help='output name for clustered folds')
+    parser.add_argument('-c','--check',type=str,help='input name for folds to check for similarity')
     parser.add_argument('-n', '--number',type=int,default=3,help="number of folds to create/check. default=3")
-    parser.add_argument('-t','--threshold',type=float,default=.2,help='what percentage dissimilarity to cluster by. default: 80% similarity(.2 dissimilarity)')
+    parser.add_argument('-s','--similarity',type=float,default=.8,help='what percentage similarity to cluster by. default= 80% similarity (.8)')
     parser.add_argument('-d','--data_root',type=str,default='/home/dkoes/PDBbind/general-set-with-refined/',help="path to target dirs")
     parser.add_argument('--posedir',required=False,default='',help='subdir of target dirs where ligand poses are located')
     parser.add_argument('-v','--verbose',action='store_true',default=False,help='verbose output')
     args = parser.parse_args()
+
+    threshold = 1 - args.similarity #similarity and distance are complementary
 
     targets = []
     target_names = []
@@ -241,13 +243,8 @@ if __name__ == '__main__':
         exit('error: need --cpickle or --pdbfiles to compute target distance matrix')
     print('Number of targets: {}'.format(len(target_names)))
 
-    if args.check:
-        folds, foldmap = loadFolds(args.check, target_names, args.number)
-        print('Checking {} for {} dissimilarity constraint'.format(args.check, args.threshold))
-        checkFolds(distanceMatrix, target_names, args.threshold, foldmap)
-
-    elif args.input and args.output:
-        cluster_groups = calcClusterGroups(distanceMatrix, target_names, args.threshold)
+    if args.input:
+        cluster_groups = calcClusterGroups(distanceMatrix, target_names, threshold)
         print('{} clusters created'.format(len(cluster_groups)))
         if args.verbose:
             for i, g in enumerate(cluster_groups):
@@ -259,4 +256,9 @@ if __name__ == '__main__':
 
         print('Making .types files')
         crossvalidatefiles(folds, args.output, args.number, args)
+
+    if args.check:
+        folds, foldmap = loadFolds(args.check, target_names, args.number)
+        print('Checking {} train/test folds for {:.3f}% similarity'.format(args.check, 100*args.similarity))
+        checkFolds(distanceMatrix, target_names, threshold, foldmap)
 
