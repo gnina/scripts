@@ -203,6 +203,35 @@ def checkFolds(dists, target_names, threshold, foldmap):
     return ok
 
 
+def readPDBfiles(pdbfiles):
+    pdb_parser = PDBParser(PERMISSIVE=1, QUIET=1)
+    with open(args.pdbfiles, 'r') as file:
+        pdblines = file.readlines()
+    pool = Pool()
+    function = partial(loadTarget, pdb_parser)
+    target_tups = pool.map(function, pdblines)
+    target_names, targets = [], []
+    for tup in sorted(target_tups):
+        if not tup:
+            continue
+        else:
+            target_names.append(tup[0])
+            targets.append(tup[1])
+    return target_names, targets
+
+
+def loadTarget(pdb_parser, line):
+    data = line.split(" ")
+    target_name = data[0]
+    target_pdb = data[1].strip()
+    try:
+        structure = pdb_parser.get_structure(target_name, target_pdb)
+        seq = getResidueString(structure)
+        return (target_name, seq)
+    except IOError:
+        print('warning: {} does not exist'.format(target_pdb))
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='create train/test sets for cross-validation separating by sequence similarity of protein targets')
     parser.add_argument('--pdbfiles',type=str,help="file with target names and paths to pbdfiles of targets (separated by space)")
@@ -219,25 +248,11 @@ if __name__ == '__main__':
 
     threshold = 1 - args.similarity #similarity and distance are complementary
 
-    targets = []
-    target_names = []
-
     if args.cpickle:
         with open(args.cpickle, 'r') as file:
             (distanceMatrix, D, linkageMatrix, target_names) = cPickle.load(file)
     elif args.pdbfiles:
-        p = PDBParser(PERMISSIVE=1, QUIET=1)
-        with open(args.pdbfiles, 'r') as file:
-            pdblines = file.readlines()
-        for line in pdblines:
-            data = line.split(" ")
-            name = data[0]
-            handle = data[1].strip()
-            target_names.append(name)
-            structure = p.get_structure(name, handle)
-            seq = getResidueString(structure)
-            targets.append(seq)
-        #distances are sequence dis-similarity so that a smaller distance corresponds to more similar sequence
+        target_names, targets = readPDBfiles(args.pdbfiles)
         distanceMatrix = calcDistanceMatrix(targets)
     else:
         exit('error: need --cpickle or --pdbfiles to compute target distance matrix')
