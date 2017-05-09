@@ -292,11 +292,16 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
     return testvals,trainvals
 
 
-if __name__ == '__main__':
+def comma_separated_ints(ints):
+     return [int(i) for i in ints.split(',') if i and i != 'None']
+
+
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(description='Train neural net on .types data.')
     parser.add_argument('-m','--model',type=str,required=True,help="Model template. Must use TRAINFILE and TESTFILE")
     parser.add_argument('-p','--prefix',type=str,required=True,help="Prefix for training/test files: <prefix>[train|test][num].types")
-    parser.add_argument('-n','--number',type=int,required=False,help="Fold number to run, default is all",default=-1)
+    parser.add_argument('-n','--foldnums',type=comma_separated_ints,required=False,help="Fold numbers to run, default is '0,1,2'",default='0,1,2')
+    parser.add_argument('-a','--allfolds',action='store_true',required=False,help="Train and test file with all data folds, <prefix>.types",default=False)
     parser.add_argument('-i','--iterations',type=int,required=False,help="Number of iterations to run,default 10,000",default=10000)
     parser.add_argument('-s','--seed',type=int,help="Random seed, default 42",default=42)
     parser.add_argument('-t','--test_interval',type=int,help="How frequently to test (iterations), default 40",default=40)
@@ -320,50 +325,78 @@ if __name__ == '__main__':
     parser.add_argument('--gamma',type=float,help="Gamma, default 0.001",default=0.001)
     parser.add_argument('--power',type=float,help="Power, default 1",default=1)
     parser.add_argument('--weights',type=str,help="Set of weights to initialize the model with")
-    args = parser.parse_args()
-    
-    #identify all train/test pair
-    if args.number >= 0:
-        pairs = [('%strain%d.types'%(args.prefix,args.number),'%stest%d.types'%(args.prefix,args.number))]
-    else:
-        pairs = []
-        for train in glob.glob('%strain[0-9]*.types' % args.prefix):
-            test = train.replace('%strain' % args.prefix,'%stest' % args.prefix)
-            if not os.path.isfile(test):
-                print test,' test file does not exist'
-                sys.exit(1)
-            pairs.append((train,test))
+    return parser.parse_args(argv)
 
+
+if __name__ == '__main__':
+    args = parse_args()
+    
+    #identify all train/test pairs
+    pairs = []
+    for i in args.foldnums:
+        train = '%strain%d.types' % (args.prefix, i)
+        test = '%stest%d.types' % (args.prefix, i)
+        if not os.path.isfile(train):
+            print 'error: %s does not exist' % train
+            sys.exit(1)
+        if not os.path.isfile(test):
+            print 'error: %s does not exist' % test
+            sys.exit(1)
+        pairs.append((train, test))
+    if args.allfolds:
+        train = test = '%s.types' % args.prefix
+        if not os.path.isfile(train):
+            print 'error: %s does not exist' % train
+            sys.exit(1)
+        pairs.append((train, test))
+    
     if len(pairs) == 0:
-        print "Missing train/test files"
+        print "error: missing train/test files"
         sys.exit(1)
-                
+    
+    for (train, test) in pairs:
+        print train, test
+    
     outprefix = args.outprefix
     if outprefix == '':
         outprefix = '%s.%d' % (os.path.splitext(os.path.basename(args.model))[0],os.getpid())
-        
+    
     mode = 'w'
     if args.cont:
         mode = 'a'
-        
-    #train each Pair
+    
+    #train each pair
     testaucs = []
     trainaucs = []
     testrmsds = []
     trainrmsds = []
     alltest = []
     for (train,test) in pairs:
-        m = re.search('%strain(\d+)'%args.prefix,train)
-        outname = '%s.%s' % (outprefix,m.group(1))
+    
+        if args.allfolds and train == test:
+            crossval = False
+            outname = '%s.all' % outprefix
+            reducedtrainfile = reducedtestfile = train.replace('.types', '_reduced.types')
+        else:
+            crossval = True
+            m = re.search('%strain(\d+)'%args.prefix,train)
+            outname = '%s.%s' % (outprefix,m.group(1))
+            reducedtrainfile = train.replace('%strain' % args.prefix,'%s_reducedtrain' % args.prefix)
+            reducedtestfile = train.replace('%strain' % args.prefix,'%s_reducedtest' % args.prefix)
 
-        reducedtrainfile = train.replace('%strain' % args.prefix,'%s_reducedtrain' % args.prefix)
-        reducedtestfile = train.replace('%strain' % args.prefix,'%s_reducedtest' % args.prefix)
-        if not os.path.isfile(reducedtestfile):       
-            reducedtestfile = '' 
         if not os.path.isfile(reducedtrainfile):       
             reducedtrainfile = ''
+            print 'error: %s does not exist' % reducedtrainfile
+            sys.exit(1)
+        if not os.path.isfile(reducedtestfile):       
+            reducedtestfile = '' 
+            print 'error: %s does not exist' % reducedtestfile
+            sys.exit(1)
 
         test,train = eval_model(args, train, test, reducedtrainfile, reducedtestfile, outname)
+        if not crossval:
+            continue
+
         testaucs.append([x[0] for x in test])
         trainaucs.append([x[0] for x in train])
         alltest.append(test)
@@ -383,11 +416,10 @@ if __name__ == '__main__':
                     out.write('%f %f\n'%(aff,pred))
                  out.write('# RMSD %f \n'%test[-1][3])
 
-
-    if args.number >= 0:
+    if len(args.foldnums) <= 1:
         sys.exit(0)
         
-     #find average, min, max AUC for last 1000 iterations
+    #find average, min, max AUC for last 1000 iterations
     lastiter_testaucs = []
     lastiter = 1000
     if lastiter > args.iterations: lastiter = args.iterations
