@@ -4,16 +4,15 @@
  * predict.py - Takes a model, learned weights, and an input file and outputs probabilities of binding
 
 ## Training
-
 ```
-usage: train.py [-h] -m MODEL -p PREFIX [-n NUMBER] [-i ITERATIONS] [-s SEED]
-                [-t TEST_INTERVAL] [-o OUTPREFIX] [-g GPU] [-c CONT] [-k] [-r]
-                [--avg_rotations] [--keep_best] [--dynamic] [--solver SOLVER]
-                [--lr_policy LR_POLICY] [--step_reduce STEP_REDUCE]
-                [--step_end STEP_END] [--step_when STEP_WHEN]
-                [--base_lr BASE_LR] [--momentum MOMENTUM]
-                [--weight_decay WEIGHT_DECAY] [--gamma GAMMA] [--power POWER]
-                [--weights WEIGHTS]
+usage: train.py [-h] -m MODEL -p PREFIX [-d DATA_ROOT] [-n FOLDNUMS] [-a]
+                [-i ITERATIONS] [-s SEED] [-t TEST_INTERVAL] [-o OUTPREFIX]
+                [-g GPU] [-c CONT] [-k] [-r] [--avg_rotations] [--keep_best]
+                [--dynamic] [--solver SOLVER] [--lr_policy LR_POLICY]
+                [--step_reduce STEP_REDUCE] [--step_end STEP_END]
+                [--step_when STEP_WHEN] [--base_lr BASE_LR]
+                [--momentum MOMENTUM] [--weight_decay WEIGHT_DECAY]
+                [--gamma GAMMA] [--power POWER] [--weights WEIGHTS]
 
 Train neural net on .types data.
 
@@ -24,8 +23,12 @@ optional arguments:
   -p PREFIX, --prefix PREFIX
                         Prefix for training/test files:
                         <prefix>[train|test][num].types
-  -n NUMBER, --number NUMBER
-                        Fold number to run, default is all
+  -d DATA_ROOT, --data_root DATA_ROOT
+                        Root folder for relative paths in train/test files
+  -n FOLDNUMS, --foldnums FOLDNUMS
+                        Fold numbers to run, default is '0,1,2'
+  -a, --allfolds        Train and test file with all data folds,
+                        <prefix>.types
   -i ITERATIONS, --iterations ITERATIONS
                         Number of iterations to run,default 10,000
   -s SEED, --seed SEED  Random seed, default 42
