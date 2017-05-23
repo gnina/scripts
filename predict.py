@@ -8,18 +8,18 @@ import glob, re, sklearn, collections, argparse, sys, os
 import sklearn.metrics
 import caffe
 
+
 def predict(args):
     if args.gpu >= 0:
         caffe.set_device(args.gpu)
     caffe.set_mode_gpu()
-    model = open(args.model).read().replace('TESTFILE',args.input)
+    model = open(args.model).read().replace('TESTFILE', args.input).replace('DATA_ROOT', args.data_root)
     #very obnoxiously, python interface requires network definition to be in a file
     testfile = 'predict.%d.prototxt' % os.getpid()
-    with open(testfile,'w') as f:
-        f.write(model)    
+    with open(testfile, 'w') as f:
+        f.write(model)
     net = caffe.Net(testfile, args.weights, caffe.TEST)
-
-    output =[]
+    output = []
     for line in open(args.input):
 	out = net.forward()
 	if 'output' in out:
@@ -28,65 +28,80 @@ def predict(args):
 	    predict = out['predaff']
         elif 'rankoutput' in out:
             predict = out['rankoutput']
-        output.append('%f %s' % (predict,line))
-    if args.max_score: output = maxLigandScore(output)
-
+        output.append('%f %s' % (predict, line))
+    if args.max_score:
+        output = maxLigandScore(output)
     if not args.keep:
         os.remove(testfile)
     return output
 
-def maxLigandScore(output):
-	#output format: score label paths 
-	ligands ={}
-	for line in output:
-		data = line.split(" ",2)
-		score = data[0]
-		true_class = data[1]
-		path = data [2] # assumes that it contains [folder]/[ligname]_[#].gninatypes
-		targetname= path.split("/",1)[0]
-		ligname = path.rsplit("/",1)[-1]
-		ligname = ligname.split(".gninatypes")[0]
-		ligname = ligname.split("_")[0]
-		key = targetname+ligname
-		if key in ligands:
-			if ligands[key][0] < score: ligands[key]=(score, '%s %s'%(true_class,path))
-		else: ligands[key]=(score, '%s %s'%(true_class,path))
-	new_output =ligands.values()
-	for i in xrange(len(new_output)):
-		new_output[i]= '%s %s'%(new_output[i][0],new_output[i][1])
-	return new_output
-	
 
-if __name__ == '__main__':
+def get_ligand_key(rec_path, pose_path):
+    # no good naming convention, so just use the receptor name
+    # and each numeric part of the ligand/pose name except for
+    # the last, which is the pose number of the ligand
+    rec_dir = os.path.dirname(rec_path)
+    rec_name = rec_dir.rsplit('/', 1)[-1]
+    pose_name = os.path.splitext(os.path.basename(pose_path))[0]
+    pose_name_nums = []
+    for i, part in enumerate(pose_name.split('_')):
+        try:
+            pose_name_nums.append(int(part))
+        except ValueError:
+            continue
+    return tuple([rec_name] + pose_name_nums[:-1])
+
+
+def maxLigandScore(lines):
+    #output format: score label paths 
+    ligands = {}
+    for line in lines:
+        data = line.split(' ')
+        score = float(data[0])
+        rec_path = data[2].strip()
+        pose_path = data[3].strip()
+        key = get_ligand_key(rec_path, pose_path)
+        if key not in ligands or score > ligands[key][0]:
+            ligands[key] = (score, line)
+    return [ligands[key][1] for key in ligands]
+
+
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(description='Test neural net on gninatypes data.')
     parser.add_argument('-m','--model',type=str,required=True,help="Model template. Must use TESTFILE with unshuffled, unbalanced input. EX: file.model ")
     parser.add_argument('-w','--weights',type=str,required=True,help="Model weights (.caffemodel)")
+    parser.add_argument('-d','--data_root',type=str,required=False,help="Root folder for paths in .types files",default='')
     parser.add_argument('-i','--input',type=str,required=True,help="Input .types file to predict")
     parser.add_argument('-g','--gpu',type=int,help='Specify GPU to run on',default=-1)
-    parser.add_argument('-o','--output',type=str,help='Output file name',default='-')
+    parser.add_argument('-o','--output',type=str,help='Output file name',default=None)
     parser.add_argument('-k','--keep',action='store_true',default=False,help="Don't delete prototxt files")
     parser.add_argument('--max_score',action='store_true',default=False,help="take max score per ligand as its score")
     parser.add_argument('--notcalc_predictions', type=str, default='',help='use file of predictions instead of calculating')
+    return parser.parse_args(argv)
 
-    args = parser.parse_args()
-    if args.output == '-':
+
+if __name__ == '__main__':
+    args = parse_args()
+    if not args.output:
         out = sys.stdout
     else:
-        out = open(args.output,'w')
-    if args.notcalc_predictions == '': output = predict(args)
+        out = open(args.output, 'w')
+    if not args.notcalc_predictions:
+        predictions = predict(args)
     else:
-		predictions=[]
-		for line in open(args.notcalc_predictions).readlines():
-			predictions.append(line)
-		if args.max_score: output=maxLigandScore(predictions)
-    out.writelines('%s'%line for line in output)
+        with open(args.notcalc_predictions, 'r') as f:
+            predictions = f.readlines()
+        if args.max_score:
+            predictions = maxLigandScore(predictions)
+    out.writelines(predictions)
     #add auc to end of file
     ytrue = []
     yscore = []
     for line in output:
-		data=line.split(" ")
-		ytrue.append(float(data[1]))
-		yscore.append(float(data[0]))
+        data = line.split(' ')
+        ytrue.append(float(data[1]))
+        yscore.append(float(data[0]))
     if len(np.unique(ytrue)) > 1:
-	auc = sklearn.metrics.roc_auc_score(ytrue,yscore)
+	auc = sklearn.metrics.roc_auc_score(ytrue, yscore)
 	out.write("# AUC %.2f\n" % auc)
+
