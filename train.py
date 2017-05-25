@@ -27,7 +27,7 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
     
     if testiter > iterations: #need to test once
         testiter = iterations
-    model = open(template).read().replace('TRAINFILE',trainfile)
+    model = open(template).read().replace('TRAINFILE', trainfile).replace('DATA_ROOT', args.data_root)
     testmodel = model.replace('TESTFILE',testfile)
     trainmodel = model.replace('TESTFILE',trainfile) #for test on train
     if reducedtrainfile != '':        
@@ -300,6 +300,7 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description='Train neural net on .types data.')
     parser.add_argument('-m','--model',type=str,required=True,help="Model template. Must use TRAINFILE and TESTFILE")
     parser.add_argument('-p','--prefix',type=str,required=True,help="Prefix for training/test files: <prefix>[train|test][num].types")
+    parser.add_argument('-d','--data_root',type=str,required=False,help="Root folder for relative paths in train/test files",default='')
     parser.add_argument('-n','--foldnums',type=comma_separated_ints,required=False,help="Fold numbers to run, default is '0,1,2'",default='0,1,2')
     parser.add_argument('-a','--allfolds',action='store_true',required=False,help="Train and test file with all data folds, <prefix>.types",default=False)
     parser.add_argument('-i','--iterations',type=int,required=False,help="Number of iterations to run,default 10,000",default=10000)
@@ -385,11 +386,9 @@ if __name__ == '__main__':
             reducedtestfile = train.replace('%strain' % args.prefix,'%s_reducedtest' % args.prefix)
 
         if not os.path.isfile(reducedtrainfile):       
-            reducedtrainfile = ''
             print 'error: %s does not exist' % reducedtrainfile
             sys.exit(1)
         if not os.path.isfile(reducedtestfile):       
-            reducedtestfile = '' 
             print 'error: %s does not exist' % reducedtestfile
             sys.exit(1)
 
