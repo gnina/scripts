@@ -248,9 +248,9 @@ def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, out
         if y_affinity:
             y_predaff = np.array(y_predaff)
             y_affinity = np.array(y_affinity)
+            yt = np.array(y_true,np.bool)
             trainrmsd = sklearn.metrics.mean_squared_error(y_affinity[yt],y_predaff[yt])                    
             if y_score:
-                yt = np.array(y_true,np.bool)
                 trainvals.append((trainauc,y_true,y_score,loss,trainrmsd,y_affinity,y_predaff))
             else:
                 trainvals.append((0,[],[],0,trainrmsd,y_affinity,y_predaff))
