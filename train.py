@@ -385,12 +385,16 @@ if __name__ == '__main__':
             reducedtrainfile = train.replace('%strain' % args.prefix,'%s_reducedtrain' % args.prefix)
             reducedtestfile = train.replace('%strain' % args.prefix,'%s_reducedtest' % args.prefix)
 
-        if not os.path.isfile(reducedtrainfile):       
+        if not os.path.isfile(reducedtrainfile) and args.reduced:       
             print 'error: %s does not exist' % reducedtrainfile
             sys.exit(1)
-        if not os.path.isfile(reducedtestfile):       
+        else:
+            reducedtrainfile = ''
+        if not os.path.isfile(reducedtestfile) and args.reduced:       
             print 'error: %s does not exist' % reducedtestfile
             sys.exit(1)
+        else:
+            reducedtestfile = ''
 
         test,train = eval_model(args, train, test, reducedtrainfile, reducedtestfile, outname)
         if not crossval:
