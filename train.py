@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-import google.protobuf
 import numpy as np
 import matplotlib
 from numpy import dtype
@@ -9,7 +8,113 @@ import matplotlib.pyplot as plt
 import glob, re, sklearn, collections, argparse, sys, os
 import sklearn.metrics
 import caffe
+from caffe.proto.caffe_pb2 import NetParameter, SolverParameter
+import google.protobuf.text_format as prototxt
 import time
+
+
+def write_model_file(model_file, template_file, train_file, test_file, root_folder, avg_rotations):
+    param = NetParameter()
+    with open(template_file, 'r') as f:
+        prototxt.Merge(f.read(), param)
+    for layer in param.layer:
+        if layer.molgrid_data_param.source == 'TRAINFILE':
+            layer.molgrid_data_param.source = train_file
+        if layer.molgrid_data_param.source == 'TESTFILE':
+            layer.molgrid_data_param.source = test_file
+        if layer.molgrid_data_param.root_folder == 'DATA_ROOT':
+            layer.molgrid_data_param.root_folder = root_folder
+        if avg_rotations and 'TEST' in str(layer):
+            layer.molgrid_data_param.rotate = 24 #TODO axial rotations aren't working
+            #layer.molgrid_data_param.random_rotation = True
+    with open(model_file, 'w') as f:
+        f.write(str(param))
+
+
+def write_solver_file(solver_file, train_model, test_models, type, base_lr, momentum, weight_decay,
+                      lr_policy, gamma, power, random_seed, max_iter, snapshot_prefix):
+    param = SolverParameter()
+    param.train_net = train_model
+    for test_model in test_models:
+        param.test_net.append(test_model)
+        param.test_iter.append(0) #don't test automatically
+    param.test_interval = max_iter
+    param.type = type
+    param.base_lr = base_lr
+    param.momentum = momentum
+    param.weight_decay = weight_decay
+    param.lr_policy = lr_policy
+    param.gamma = gamma
+    param.power = power
+    param.display = 0 #don't print solver iterations
+    param.random_seed = random_seed
+    param.max_iter = max_iter
+    param.snapshot_prefix = snapshot_prefix
+    with open(solver_file,'w') as f:
+        f.write(str(param))
+
+
+def evaluate_test_net(test_net, n_tests, rotations):
+    '''Evaluate a test network and return the results.
+    The number of examples in the file the test_net reads from
+    must equal n_tests, otherwise output will be misaligned.
+    Can optionally take the average of multiple rotations of
+    each example. Batch size should be 1 and other parameters
+    should be set so that data access is sequential.'''
+
+    #evaluate each example with each rotation
+    y_true = []
+    y_scores = [[] for _ in xrange(n_tests)]
+    y_affinity = []
+    y_predaffs = [[] for _ in xrange(n_tests)]
+    losses = []
+    for r in xrange(rotations):
+        for x in xrange(n_tests): #TODO handle different batch sizes
+            res = test_net.forward()
+            if r == 0:
+                y_true.append(float(res['labelout']))
+            else:
+                assert res['labelout'] == y_true[x] #sanity check
+            y_scores[x].append(float(res['output'][0][1])) 
+            if 'affout' in res:
+                if r == 0:
+                    y_affinity.append(float(res['affout']))
+                else:
+                    assert res['affout'] == y_affinity[x] #sanity check
+                y_predaffs[x].append(float(res['predaff']))
+            if 'loss' in res:
+                losses.append(float(res['loss']))
+
+    #average the scores from each rotation
+    y_score = []
+    y_predaff = []
+    for x in xrange(n_tests):
+        y_score.append(np.mean(y_scores[x]))
+    if y_affinity:
+        for x in range(n_tests):
+            y_predaff.append(np.mean(y_predaffs[x]))
+
+    #compute auc
+    assert len(np.unique(y_true)) > 1
+    auc = sklearn.metrics.roc_auc_score(y_true, y_score)
+
+    #compute mean squared error (rmsd) of affinity (for actives only)
+    if y_affinity:
+        y_predaff = np.array(y_predaff)
+        y_affinity = np.array(y_affinity)
+        yt = np.array(y_true, np.bool)
+        rmsd = sklearn.metrics.mean_squared_error(y_affinity[yt], y_predaff[yt])
+    else:
+        rmsd = None
+
+    #compute mean loss
+    if losses:
+        loss = np.mean(losses)
+    else:
+        loss = None
+
+    return (auc, y_true, y_score, loss, rmsd, y_affinity, y_predaff)
+
 
 '''Script for training a neural net model from gnina grid data.
 A model template is provided along with training and test sets of the form
@@ -17,279 +122,163 @@ A model template is provided along with training and test sets of the form
 Test area, as measured by AUC, is periodically assessed.   At the end graphs are made.
 Default is to do dynamic stepping of learning rate, but can explore other methods.
 '''
-def eval_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, outname):
+def train_and_test_model(args, train_file, test_file, reduced_train_file, reduced_test_file, outname):
     '''run solver for iterations steps, on the given training file,
-    every testiter evaluate the roc of bothe the trainfile and the testfile
+    every test_interval evaluate the roc of bothe the trainfile and the testfile
     return the full predictions for every tested iteration'''
     template = args.model
-    testiter = args.test_interval
+    test_interval = args.test_interval
     iterations = args.iterations
     
-    if testiter > iterations: #need to test once
-        testiter = iterations
-    model = open(template).read().replace('TRAINFILE', trainfile).replace('DATA_ROOT', args.data_root)
-    testmodel = model.replace('TESTFILE',testfile)
-    trainmodel = model.replace('TESTFILE',trainfile) #for test on train
-    if reducedtrainfile != '':        
-        reducedtrainmodel = model.replace('TESTFILE', reducedtrainfile)
-    else:
-        reducedtrainmodel = trainmodel
-        reducedtrainfile = trainfile
-    if reducedtestfile != '':        
-        reducedtestmodel = model.replace('TESTFILE', reducedtestfile)
-    else:
-        reducedtestmodel = testmodel
-        reducedtestfile = testfile
-        
-    if args.avg_rotations:
-        rotations = 24 
-        index=testmodel.find(testfile) #add 'rotate = 24' to testmodels if not already there
-        endindex=testmodel.find('layer', index)
-        rot = testmodel.find("rotate:", index, endindex)
-        if rot == -1:
-            index = testmodel.find('balanced:', index, endindex)
-            index = testmodel.find('\n', index, endindex)
-            testmodel = testmodel[:index+1] + '    rotate: %d'% rotations + testmodel[index:]
-        
-        index=reducedtestmodel.find(reducedtestfile)
-        endindex=reducedtestmodel.find('layer', index)
-        rot = reducedtestmodel.find("rotate:", index, endindex)
-        if rot == -1:
-            index = reducedtestmodel.find('balanced:', index, endindex)
-            index = reducedtestmodel.find('\n', index, endindex)
-            reducedtestmodel = reducedtestmodel[:index+1] + '    rotate: %d' %rotations + reducedtestmodel[index:]
-		    
+    if test_interval > iterations: #need to test once
+        test_interval = iterations
 
-    mode = 'w'
-    if args.cont:
-        mode = 'a'    
-        modelname = '%s_iter_%d.caffemodel' % (outname,args.cont)
-        solvername = '%s_iter_%d.solverstate' % (outname,args.cont)
-        
-    out = open('%s.out' % outname,mode,0)
+    if args.avg_rotations:
+        rotations = 24
+    else:
+        rotations = 1
 
     pid = os.getpid()
-    #very obnoxiously, python interface requires network definition to be in a file
-    testproto = 'traintest.%d.prototxt' % pid
-    trainproto = 'traintrain.%d.prototxt' % pid
-    reducedtestproto = 'trainreducedtest.%d.prototxt' % pid
-    reducedtrainproto = 'trainreducedtrain.%d.prototxt' % pid
-    with open(testproto,'w') as f:
-        f.write(testmodel)    
-    with open(trainproto,'w') as f:
-        f.write(trainmodel)
-    with open(reducedtestproto, 'w') as f:
-        f.write(reducedtestmodel) 
-    with open(reducedtrainproto, 'w') as f:
-        f.write(reducedtrainmodel) 
-    solverf = 'solver.%d.prototxt'%pid
-    solver_text = '''
-    # The train/test net protocol buffer definition
-    train_net: "traintest.%d.prototxt"
-    test_net: "traintest.%d.prototxt"
-    test_net: "traintrain.%d.prototxt"
-    test_net: "trainreducedtest.%d.prototxt"
-    test_net: "trainreducedtrain.%d.prototxt"
-    # The base learning rate, momentum and the weight decay of the network.
-    type: "%s"
-    base_lr: %f
-    momentum: %f
-    test_iter: 1
-    test_iter: 1
-    test_iter: 1
-    test_iter: 1
-    test_interval: 100000 #we will test manually, these are just here to make caffe happy
-    weight_decay: %f
-    # The learning rate policy
-    lr_policy: "%s"
-    gamma: %f
-    power: %f
-    display: 0
-    # reproducible results
-    random_seed: %d
-    # The maximum number of iterations
-    max_iter: %d
-    snapshot_prefix: "%s"
-    ''' % (pid,pid,pid,pid,pid, args.solver,args.base_lr, args.momentum, args.weight_decay, args.lr_policy, args.gamma, args.power, args.seed, iterations+args.cont,outname)
-    with open(solverf,'w') as f:
-        f.write(solver_text)
+
+    test_model = 'traintest.%d.prototxt' % pid
+    train_model = 'traintrain.%d.prototxt' % pid
+    reduced_test_model = 'trainreducedtest.%d.prototxt' % pid
+    reduced_train_model = 'trainreducedtrain.%d.prototxt' % pid
+    write_model_file(test_model, template, train_file, test_file, args.data_root, args.avg_rotations)
+    write_model_file(train_model, template, train_file, train_file, args.data_root, args.avg_rotations)
+    test_models = [test_model, train_model]
+    if args.reduced:
+        write_model_file(reduced_test_model, template, train_file, reduced_test_file, args.avg_rotations)
+        write_model_file(reduced_train_model, template, train_file, reduced_train_file, args.avg_rotations)
+        test_models.extend([reduced_test_model, reduced_train_model])
+
+    solverf = 'solver.%d.prototxt' % pid
+    write_solver_file(solverf, test_model, test_models, args.solver, args.base_lr, args.momentum, args.weight_decay,
+                      args.lr_policy, args.gamma, args.power, args.seed, iterations+args.cont, outname)
         
     if args.gpu >= 0:
         caffe.set_device(args.gpu)
     caffe.set_mode_gpu()
     
     solver = caffe.get_solver(solverf)
-        
     if args.cont:
         solver.restore(solvername)
         solver.testall() #link testnets to train net
 
     if args.weights:
         solver.net.copy_from(args.weights)
-        
-    ntests = sum(1 for line in open(reducedtestfile))
-    ntrains = sum(1 for line in open(reducedtrainfile))
 
-    testvals = []
-    trainvals = []
-    bestauc = 0
-    bestauci = 0;
-    besttestauc = 0
-    testauc = 0
-    trainauc = 0
-    loss = 0
-    #print "cnts %d,%d" % (ntrains,ntests)
-    for i in xrange(iterations/testiter):
+    test_nets = {}
+    test_nets['test'] = solver.test_nets[0]
+    test_nets['train'] = solver.test_nets[1]
+    if args.reduced:
+        test_nets['reduced_test'] = solver.test_nets[2]
+        test_nets['reduced_train'] = solver.test_nets[3]
+
+    n_test_lines = sum(1 for line in open(test_file))
+    n_train_lines = sum(1 for line in open(train_file))
+    if args.reduced:
+        n_reduced_test_lines = sum(1 for line in open(reduced_test_file))
+        n_reduced_train_lines = sum(1 for line in open(redcued_train_file))
+
+    if args.cont:
+        mode = 'a'    
+        modelname = '%s_iter_%d.caffemodel' % (outname, args.cont)
+        solvername = '%s_iter_%d.solverstate' % (outname, args.cont)
+    else:
+        mode = 'w'
+    outfile = '%s.out' % outname
+    out = open(outfile, mode, 0) #unbuffered
+
+    #return all evaluation results from each test interval
+    #(auc, y_true, y_pred, loss, rmsd, y_affinity, y_predaff)
+    test_vals = []
+    train_vals = []
+
+    #also keep track of best test and train aucs
+    best_test_auc = 0
+    best_train_auc = 0
+    best_train_interval = 0
+
+    for i in xrange(iterations/test_interval):
+        last_test = i == iterations/test_interval-1
+        n_iter = args.cont + i*test_interval
+
+        #train
         start = time.time()
-        solver.step(testiter)
-
+        solver.step(test_interval)
+        print "Iteration %d" % (args.cont + (i+1)*test_interval)
         print "Train time: %f" % (time.time()-start)
 
-        start = time.time()
         #evaluate test set
-        if i == (iterations/testiter)-1 and args.reduced:
-            testnet = solver.test_nets[0]
-            ntests = sum(1 for line in open(testfile))
+        start = time.time()
+        if args.reduced and not last_test:
+            test_net = test_nets['reduced_test']
+            n_tests = n_reduced_test_lines
         else:
-            testnet = solver.test_nets[2]
-        y_true = []
-        y_score = []
-        y_scores = [[] for _ in xrange(ntests)]
-        y_affinity = []
-        y_predaff = []
-        y_predaffs = [[] for _ in xrange(ntests)]
-        for x in xrange(ntests):
-            res = testnet.forward()
-            #MUST copy values out of res as it is return by ref
-            y_true.append(float(res['labelout']))
-            if 'output' in res:
-                y_scores[x].append(float(res['output'][0][1])) 
-            else:
-                y_scores[x].append(0)
-            if 'affout' in res:
-                y_affinity.append(float(res['affout']))
-                y_predaffs[x].append(float(res['predaff']))
-        if args.avg_rotations:
-            for _ in xrange(rotations-1):
-                print ntests #check if ntests is correct
-                for x in xrange(ntests):
-                    res = testnet.forward()
-                    if 'output' in res:
-                        yt = float(res['labelout'])
-                        if yt != y_true[x]:
-                            print "%dERROR: %f,y_true: %f" %(x,yt, y_true[x]) #sanity check
-                        y_scores[x].append(float(res['output'][0][1]))
-                    if y_affinity:
-                        y_predaffs[x].append(float(res['predaff']))
-            #average the scores for the 24 rotations
-            for x in xrange(ntests):
-                if y_scores:
-                    y_score.append(np.mean(y_scores[x]))
-                if y_affinity:
-                    y_predaff.append(np.mean(y_predaffs[x]))
-        else:
-            y_score = [row[0] if len(row) > 0 else [] for row in y_scores[0:]]
-            y_predaff = [row[0] if len(row) > 0 else [] for row in y_predaffs]
-            
-        print "Test time: %f" % (time.time()-start)
-        if len(np.unique(y_true)) > 1:
-            testauc = sklearn.metrics.roc_auc_score(y_true,y_score)
-        
-        if y_affinity:
-            y_predaff = np.array(y_predaff)
-            yt = np.array(y_true,np.bool)
-            y_affinity = np.array(y_affinity)
-            testrmsd = sklearn.metrics.mean_squared_error(y_affinity[yt],y_predaff[yt])
-            testvals.append((testauc,y_true,y_score,testrmsd,y_affinity,y_predaff))              
-        else:
-            testvals.append((testauc,y_true,y_score))
-        
-        print "Test eval: %f s" % (time.time()-start)
-        
-        if testauc > besttestauc:
-            besttestauc = testauc
+            test_net = test_nets['test']
+            n_tests = n_test_lines
+        test_vals.append(evaluate_test_net(test_net, n_tests, rotations))
+        print "Eval test time: %f" % (time.time()-start)
+
+        test_auc = test_vals[-1][0]
+        test_rmsd = test_vals[-1][4]
+        print "Test AUC: %f\nTest RMSD: %f" % (test_auc, test_rmsd)
+        if test_auc > best_test_auc:
+            best_test_auc = test_auc
             if args.keep_best:
                 solver.snapshot() #a bit too much - gigabytes of data
-        
-        start = time.time()
+
         #evaluate train set
         start = time.time()
-        if i == (iterations/testiter)-1 and args.reduced:
-            testnet = solver.test_nets[1]
-            ntrains= sum(1 for line in open(trainfile))
+        if args.reduced and not last_test:
+            test_net = test_nets['reduced_train']
+            n_tests = n_reduced_train_lines
         else:
-            testnet = solver.test_nets[3]
-        y_true = []
-        y_score = []
-        y_affinity = []
-        y_predaff = []
-        losses = []
-        for x in xrange(ntrains):
-            res = testnet.forward()            
-            #MUST copy values out of res as it is return by ref
-            y_true.append(float(res['labelout']))
-            if 'output' in res:
-                y_score.append(float(res['output'][0][1]))
-            else:
-                y_score.append(0)
-            if 'loss' in res:
-                losses.append(float(res['loss']))
-            else:
-                losses.append(0)
-            if 'affout' in res:
-                y_affinity.append(float(res['affout']))
-                y_predaff.append(float(res['predaff']))
-        
-        print "Test train time: %f" % (time.time()-start)
-        if len(np.unique(y_true)) > 1:
-            trainauc = sklearn.metrics.roc_auc_score(y_true,y_score)            
-        loss = np.mean(losses)
-        
-        if y_affinity:
-            y_predaff = np.array(y_predaff)
-            y_affinity = np.array(y_affinity)
-            yt = np.array(y_true,np.bool)
-            trainrmsd = sklearn.metrics.mean_squared_error(y_affinity[yt],y_predaff[yt])                    
-            if y_score:
-                trainvals.append((trainauc,y_true,y_score,loss,trainrmsd,y_affinity,y_predaff))
-            else:
-                trainvals.append((0,[],[],0,trainrmsd,y_affinity,y_predaff))
-        else:
-            trainvals.append((trainauc,y_true,y_score,loss))
+            test_net = test_nets['train']
+            n_tests = n_train_lines
+        train_vals.append(evaluate_test_net(test_net, n_tests, rotations))
+        print "Eval train time: %f" % (time.time()-start)
 
-        print "Train eval: %f s" % (time.time()-start)
-        
-        if trainauc > bestauc:
-            bestauc = trainauc
-            bestauci = i
-            
-        if args.dynamic: #check for improvement
+        train_auc = train_vals[-1][0]
+        train_loss = train_vals[-1][3]
+        train_rmsd = train_vals[-1][4]
+        print "Train AUC: %f\nTrain loss: %f\nTrain RMSD: %f" % (train_auc, train_loss, train_rmsd)
+        if train_auc > best_train_auc:
+            best_train_auc = train_auc
+            best_train_interval = i
+
+        #check for improvement
+        if args.dynamic:
             lr = solver.get_base_lr()
-            if (i-bestauci) > args.step_when: #reduce learning rate
+            if (i-best_train_interval) > args.step_when: #reduce learning rate
                 lr *= args.step_reduce
                 solver.set_base_lr(lr)
-                bestauci = i #reset 
-                bestauc = trainauc #the value too, so we can consider the recovery
+                best_train_interval = i #reset 
+                best_train_auc = train_auc #the value too, so we can consider the recovery
             if lr < args.step_end:
                 break #end early  
-            
-        out.write('%.4f %.4f %.6f %.6f'%(testauc,trainauc,loss,solver.get_base_lr()))
-        if len(y_affinity):
-            out.write(' %.4f %.4f' % (testrmsd,trainrmsd))
+
+        #write out evaluation results
+        out.write('%.4f %.4f %.6f %.6f' % (test_auc, train_auc, train_loss, solver.get_base_lr()))
+        if None not in (test_rmsd, train_rmsd):
+            out.write(' %.4f %.4f' % (test_rmsd, train_rmsd))
         out.write('\n')
         out.flush()
-    
+
     out.close()
     solver.snapshot()
     del solver #free mem
     
     if not args.keep:
         os.remove(solverf)
-        os.remove(testproto)
-        os.remove(trainproto)
-        os.remove(reducedtestproto)
-        os.remove(reducedtrainproto)
-    return testvals,trainvals
+        os.remove(test_model)
+        os.remove(train_model)
+        if args.reduced:
+            os.remove(reduced_test_model)
+            os.remove(reduced_train_model)
+
+    return test_vals, train_vals
 
 
 def comma_separated_ints(ints):
@@ -392,7 +381,7 @@ if __name__ == '__main__':
             print 'error: %s does not exist' % reducedtestfile
             sys.exit(1)
 
-        test,train = eval_model(args, train, test, reducedtrainfile, reducedtestfile, outname)
+        test,train = train_and_test_model(args, train, test, reducedtrainfile, reducedtestfile, outname)
         if not crossval:
             continue
 
