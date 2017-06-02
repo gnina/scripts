@@ -113,7 +113,7 @@ def evaluate_test_net(test_net, n_tests, rotations):
     else:
         loss = None
 
-    return (auc, y_true, y_score, loss, rmsd, y_affinity, y_predaff)
+    return [auc, y_true, y_score, loss, rmsd, y_affinity, y_predaff]
 
 
 '''Script for training a neural net model from gnina grid data.
@@ -148,8 +148,8 @@ def train_and_test_model(args, train_file, test_file, reduced_train_file, reduce
     write_model_file(train_model, template, train_file, train_file, args.data_root, args.avg_rotations)
     test_models = [test_model, train_model]
     if args.reduced:
-        write_model_file(reduced_test_model, template, train_file, reduced_test_file, args.avg_rotations)
-        write_model_file(reduced_train_model, template, train_file, reduced_train_file, args.avg_rotations)
+        write_model_file(reduced_test_model, template, train_file, reduced_test_file, args.data_root, args.avg_rotations)
+        write_model_file(reduced_train_model, template, train_file, reduced_train_file, args.data_root, args.avg_rotations)
         test_models.extend([reduced_test_model, reduced_train_model])
 
     solverf = 'solver.%d.prototxt' % pid
@@ -179,7 +179,7 @@ def train_and_test_model(args, train_file, test_file, reduced_train_file, reduce
     n_train_lines = sum(1 for line in open(train_file))
     if args.reduced:
         n_reduced_test_lines = sum(1 for line in open(reduced_test_file))
-        n_reduced_train_lines = sum(1 for line in open(redcued_train_file))
+        n_reduced_train_lines = sum(1 for line in open(reduced_train_file))
 
     if args.cont:
         mode = 'a'    
@@ -218,12 +218,22 @@ def train_and_test_model(args, train_file, test_file, reduced_train_file, reduce
         else:
             test_net = test_nets['test']
             n_tests = n_test_lines
+        #(auc, y_true, y_score, loss, rmsd, y_affinity, y_predaff)
         test_vals.append(evaluate_test_net(test_net, n_tests, rotations))
         print "Eval test time: %f" % (time.time()-start)
 
+        if i > 0:
+            if not (args.reduced and last_test): #check alignment
+                assert np.all(test_vals[-1][1] == test_vals[-2][1])
+                assert np.all(test_vals[-1][5] == test_vals[-2][5])
+            test_vals[-2][1] = None #free memory
+            test_vals[-2][5] = None
+
         test_auc = test_vals[-1][0]
         test_rmsd = test_vals[-1][4]
-        print "Test AUC: %f\nTest RMSD: %f" % (test_auc, test_rmsd)
+        print "Test AUC: %f" % test_auc
+        if test_rmsd:
+            print "Test RMSD: %f" % test_rmsd
         if test_auc > best_test_auc:
             best_test_auc = test_auc
             if args.keep_best:
@@ -237,13 +247,23 @@ def train_and_test_model(args, train_file, test_file, reduced_train_file, reduce
         else:
             test_net = test_nets['train']
             n_tests = n_train_lines
+        #(auc, y_true, y_score, loss, rmsd, y_affinity, y_predaff)
         train_vals.append(evaluate_test_net(test_net, n_tests, rotations))
         print "Eval train time: %f" % (time.time()-start)
+
+        if i > 0:
+            if not (args.reduced and last_test): #check alignment
+                assert np.all(train_vals[-1][1] == train_vals[-2][1])
+                assert np.all(train_vals[-1][5] == train_vals[-2][5])
+            train_vals[-2][1] = None #free memory
+            train_vals[-2][5] = None
 
         train_auc = train_vals[-1][0]
         train_loss = train_vals[-1][3]
         train_rmsd = train_vals[-1][4]
-        print "Train AUC: %f\nTrain loss: %f\nTrain RMSD: %f" % (train_auc, train_loss, train_rmsd)
+        print "Train AUC: %f\nTrain loss: %f" % (train_auc, train_loss)
+        if train_rmsd:
+            print "Train RMSD: %f" % train_rmsd
         if train_auc > best_train_auc:
             best_train_auc = train_auc
             best_train_interval = i
