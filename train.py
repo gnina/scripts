@@ -13,7 +13,8 @@ import google.protobuf.text_format as prototxt
 import time
 
 
-def write_model_file(model_file, template_file, train_file, test_file, root_folder, avg_rotations):
+def write_model_file(model_file, template_file, train_file, test_file, root_folder, avg_rotations=False,
+                     train_file2=None, ratio=None, root_folder2=None, test_root2=False):
     param = NetParameter()
     with open(template_file, 'r') as f:
         prototxt.Merge(f.read(), param)
@@ -23,7 +24,15 @@ def write_model_file(model_file, template_file, train_file, test_file, root_fold
         if layer.molgrid_data_param.source == 'TESTFILE':
             layer.molgrid_data_param.source = test_file
         if layer.molgrid_data_param.root_folder == 'DATA_ROOT':
-            layer.molgrid_data_param.root_folder = root_folder
+            if 'TEST' in str(layer) and test_root2:
+                layer.molgrid_data_param.root_folder = root_folder2
+            else:
+                layer.molgrid_data_param.root_folder = root_folder
+        if train_file2 and layer.molgrid_data_param.source2 == 'TRAINFILE2':
+            layer.molgrid_data_param.source2 = train_file2
+            layer.molgrid_data_param.source_ratio = ratio
+        if root_folder2 and layer.molgrid_data_param.root_folder2 == 'DATA_ROOT2':
+            layer.molgrid_data_param.root_folder2 = root_folder2
         if avg_rotations and 'TEST' in str(layer):
             layer.molgrid_data_param.rotate = 24 #TODO axial rotations aren't working
             #layer.molgrid_data_param.random_rotation = True
@@ -126,14 +135,14 @@ A model template is provided along with training and test sets of the form
 Test area, as measured by AUC, is periodically assessed.   At the end graphs are made.
 Default is to do dynamic stepping of learning rate, but can explore other methods.
 '''
-def train_and_test_model(args, train_file, test_file, reduced_train_file, reduced_test_file, outname):
+def train_and_test_model(args, files, outname):
     '''run solver for iterations steps, on the given training file,
     every test_interval evaluate the roc of bothe the trainfile and the testfile
     return the full predictions for every tested iteration'''
     template = args.model
     test_interval = args.test_interval
     iterations = args.iterations
-    
+
     if test_interval > iterations: #need to test once
         test_interval = iterations
 
@@ -144,40 +153,59 @@ def train_and_test_model(args, train_file, test_file, reduced_train_file, reduce
 
     pid = os.getpid()
 
+    #write model prototxts (for each file to test)
     test_model = 'traintest.%d.prototxt' % pid
     train_model = 'traintrain.%d.prototxt' % pid
-    reduced_test_model = 'trainreducedtest.%d.prototxt' % pid
-    reduced_train_model = 'trainreducedtrain.%d.prototxt' % pid
-    write_model_file(test_model, template, train_file, test_file, args.data_root, args.avg_rotations)
-    write_model_file(train_model, template, train_file, train_file, args.data_root, args.avg_rotations)
     test_models = [test_model, train_model]
+    test_files = [files['test'], files['train']]
+    test_roots = [False, False] #which data_root to use
     if args.reduced:
-        write_model_file(reduced_test_model, template, train_file, reduced_test_file, args.data_root, args.avg_rotations)
-        write_model_file(reduced_train_model, template, train_file, reduced_train_file, args.data_root, args.avg_rotations)
-        test_models.extend([reduced_test_model, reduced_train_model])
+        reduced_test_model = 'trainreducedtest.%d.prototxt' % pid
+        reduced_train_model = 'trainreducedtrain.%d.prototxt' % pid
+        test_models += [reduced_test_model, reduced_train_model]
+        test_files += [files['reduced_test'], files['reduced_train']]
+        test_roots += [False, False]
+    if args.prefix2:
+        test2_model = 'traintest2.%d.prototxt' % pid
+        train2_model = 'traintrain2.%d.prototxt' % pid
+        test_models += [test2_model, train2_model]
+        test_files += [files['test2'], files['train2']]
+        test_roots += [True, True]
+        if args.reduced:
+            reduced_test2_model = 'trainreducedtest2.%d.prototxt' % pid
+            reduced_train2_model = 'trainreducedtrain2.%d.prototxt' % pid
+            test_models += [reduced_test2_model, reduced_train2_model]
+            test_files += [files['reduced_test2'], files['reduced_train2']]
+            test_roots += [True, True]
 
+    for test_model, test_file, test_root2 in zip(test_models, test_files, test_roots):
+        if args.prefix2:
+            write_model_file(test_model, template, files['train'], test_file, args.data_root, args.avg_rotations,
+                             files['train2'], args.data_ratio, args.data_root2, test_root2)
+        else:
+            write_model_file(test_model, template, files['train'], test_file, args.data_root, args.avg_rotations)
+
+    #write solver prototxt
     solverf = 'solver.%d.prototxt' % pid
-    write_solver_file(solverf, test_model, test_models, args.solver, args.base_lr, args.momentum, args.weight_decay,
+    write_solver_file(solverf, test_models[0], test_models, args.solver, args.base_lr, args.momentum, args.weight_decay,
                       args.lr_policy, args.gamma, args.power, args.seed, iterations+args.cont, outname)
         
+    #set up solver in caffe
     if args.gpu >= 0:
         caffe.set_device(args.gpu)
     caffe.set_mode_gpu()
-    
     solver = caffe.get_solver(solverf)
     if args.cont:
         solver.restore(solvername)
         solver.testall() #link testnets to train net
-
     if args.weights:
         solver.net.copy_from(args.weights)
 
     test_nets = {}
-    test_nets['test'] = solver.test_nets[0], count_lines(test_file)
-    test_nets['train'] = solver.test_nets[1], count_lines(train_file)
-    if args.reduced:
-        test_nets['reduced_test'] = solver.test_nets[2], count_lines(reduced_test_file)
-        test_nets['reduced_train'] = solver.test_nets[3], count_lines(reduced_train_file)
+    for key, test_file in files.items():
+        idx = test_files.index(test_file)
+        if idx > -1:
+            test_nets[key] = solver.test_nets[idx], count_lines(test_file)
 
     if args.cont:
         mode = 'a'    
@@ -194,6 +222,9 @@ def train_and_test_model(args, train_file, test_file, reduced_train_file, reduce
     res = {}
     test_vals = {'auc':[], 'y_true':[], 'y_score':[], 'loss':[], 'rmsd':[], 'y_aff':[], 'y_predaff':[]}
     train_vals = {'auc':[], 'y_true':[], 'y_score':[], 'loss':[], 'rmsd':[], 'y_aff':[], 'y_predaff':[]}
+    if args.prefix2:
+        test2_vals = {'auc':[], 'y_true':[], 'y_score':[], 'loss':[], 'rmsd':[], 'y_aff':[], 'y_predaff':[]}
+        train2_vals = {'auc':[], 'y_true':[], 'y_score':[], 'loss':[], 'rmsd':[], 'y_aff':[], 'y_predaff':[]}
 
     #also keep track of best test and train aucs
     best_test_auc = 0
@@ -202,7 +233,6 @@ def train_and_test_model(args, train_file, test_file, reduced_train_file, reduce
 
     for i in xrange(iterations/test_interval):
         last_test = i == iterations/test_interval-1
-        n_iter = args.cont + (i+1)*test_interval
 
         #train
         start = time.time()
@@ -237,6 +267,30 @@ def train_and_test_model(args, train_file, test_file, reduced_train_file, reduce
             best_test_auc = test_auc
             if args.keep_best:
                 solver.snapshot() #a bit too much - gigabytes of data
+
+        if args.prefix2:
+            #evaluate test set 2
+            start = time.time()
+            if args.reduced and not last_test:
+                test_net, n_tests = test_nets['reduced_test2']
+            else:
+                test_net, n_tests = test_nets['test2']
+            test2_auc, y_true, y_score, _, test2_rmsd, y_aff, y_predaff = evaluate_test_net(test_net, n_tests, rotations)
+            print "Eval test2 time: %f" % (time.time()-start)
+
+            if i > 0 and not (args.reduced and last_test): #check alignment
+                assert np.all(y_true == test2_vals['y_true'])
+                assert np.all(y_aff == test2_vals['y_aff'])
+
+            test2_vals['y_true'] = y_true
+            test2_vals['y_aff'] = y_aff
+            test2_vals['y_score'] = y_score
+            test2_vals['y_predaff'] = y_predaff
+            print "Test2 AUC: %f" % test2_auc
+            test2_vals['auc'].append(test2_auc)
+            if test2_rmsd:
+                print "Test2 RMSD: %f" % test2_rmsd
+                test2_vals['rmsd'].append(test2_rmsd)
 
         #evaluate train set
         start = time.time()
@@ -278,10 +332,40 @@ def train_and_test_model(args, train_file, test_file, reduced_train_file, reduce
             if lr < args.step_end:
                 break #end early  
 
+        if args.prefix2:
+            #evaluate train set
+            start = time.time()
+            if args.reduced and not last_test:
+                test_net, n_tests = test_nets['reduced_train2']
+            else:
+                test_net, n_tests = test_nets['train2']
+            train2_auc, y_true, y_score, train2_loss, train2_rmsd, y_aff, y_predaff = evaluate_test_net(test_net, n_tests, rotations)
+            print "Eval train2 time: %f" % (time.time()-start)
+
+            if i > 0 and not (args.reduced and last_test): #check alignment
+                assert np.all(y_true == train2_vals['y_true'])
+                assert np.all(y_aff == train2_vals['y_aff'])
+
+            train2_vals['y_true'] = y_true
+            train2_vals['y_aff'] = y_aff
+            train2_vals['y_score'] = y_score
+            train2_vals['y_predaff'] = y_predaff
+            print "Train2 AUC: %f" % train2_auc
+            train2_vals['auc'].append(train2_auc)
+            print "Train2 loss: %f" % train2_loss
+            train2_vals['loss'].append(train2_loss)
+            if train2_rmsd:
+                print "Train2 RMSD: %f" % train2_rmsd
+                train2_vals['rmsd'].append(train2_rmsd)
+
         #write out evaluation results
         out.write('%.4f %.4f %.6f %.6f' % (test_auc, train_auc, train_loss, solver.get_base_lr()))
         if None not in (test_rmsd, train_rmsd):
             out.write(' %.4f %.4f' % (test_rmsd, train_rmsd))
+        if args.prefix2:
+            out.write(' %.4f %.4f %.6f' % (test2_auc, train2_auc, train2_loss))
+            if None not in (test2_rmsd, train2_rmsd):
+                out.write(' %.4f %.4f' % (test2_rmsd, train2_rmsd))
         out.write('\n')
         out.flush()
 
@@ -291,13 +375,13 @@ def train_and_test_model(args, train_file, test_file, reduced_train_file, reduce
     
     if not args.keep:
         os.remove(solverf)
-        os.remove(test_model)
-        os.remove(train_model)
-        if args.reduced:
-            os.remove(reduced_test_model)
-            os.remove(reduced_train_model)
+        for test_model in test_models:
+            os.remove(test_model)
 
-    return test_vals, train_vals
+    if args.prefix2:
+        return test_vals, train_vals, test2_vals, train2_vals
+    else:
+        return test_vals, train_vals
 
 
 def write_finaltest_file(finaltest_file, y_true, y_score, footer, mode):
@@ -393,44 +477,69 @@ def parse_args(argv=None):
     parser.add_argument('--gamma',type=float,help="Gamma, default 0.001",default=0.001)
     parser.add_argument('--power',type=float,help="Power, default 1",default=1)
     parser.add_argument('--weights',type=str,help="Set of weights to initialize the model with")
-    parser.add_argument('-p2','--prefix2',type=str,required=True,help="Prefix for training/test files: <prefix>[train|test][num].types")
+    parser.add_argument('-p2','--prefix2',type=str,required=False,help="Prefix for training/test files: <prefix>[train|test][num].types")
     parser.add_argument('-d2','--data_root2',type=str,required=False,help="Root folder for relative paths in train/test files",default='')
+    parser.add_argument('--data_ratio',type=float,required=False,help="Ratio to combine training data",default=None)
     return parser.parse_args(argv)
+
+
+def check_file_exists(file):
+    if not os.path.isfile(file):
+        raise OSError('%s does not exist' % file)
+
+
+def get_train_test_files(prefix, foldnums, allfolds, reduced, prefix2):
+    files = {}
+    for i in foldnums:
+        files[i] = {}
+        files[i]['train'] = '%strain%d.types' % (prefix, i)
+        files[i]['test'] = '%stest%d.types' % (prefix, i)
+        if reduced:
+            files[i]['reduced_train'] = '%s_reducedtrain%d.types' % (prefix, i)
+            files[i]['reduced_test'] = '%s_reducedtest%d.types' % (prefix, i)
+        if prefix2:
+            files[i]['train2'] = '%strain%d.types' % (prefix2, i)
+            files[i]['test2'] = '%stest%d.types' % (prefix2, i)
+            if reduced:
+                files[i]['reduced_train2'] = '%s_reducedtrain%d.types' % (prefix2, i)
+                files[i]['reduced_test2'] = '%s_reducedtest%d.types' % (prefix2, i)
+    if allfolds:
+        i = 'all'
+        files[i] = {}
+        files[i]['train'] = files[i]['test'] = '%s.types' % prefix
+        if reduced:
+            files[i]['reduced_train'] = files[i]['reduced_test'] = '%s_reduced.types' % prefix
+        if prefix2:
+            files[i]['train2'] = files[i]['test2'] = '%s.types' % prefix2
+            if reduced:
+                files[i]['reduced_train2'] = files[i]['reduced_test2'] = '%s_reduced.types' % prefix2
+    for i in files:
+        for file in files[i].values():
+            check_file_exists(file)
+    return files
 
 
 if __name__ == '__main__':
     args = parse_args()
-    
+
     #identify all train/test pairs
-    pairs = []
-    for i in args.foldnums:
-        train = '%strain%d.types' % (args.prefix, i)
-        test = '%stest%d.types' % (args.prefix, i)
-        if not os.path.isfile(train):
-            print 'error: %s does not exist' % train
-            sys.exit(1)
-        if not os.path.isfile(test):
-            print 'error: %s does not exist' % test
-            sys.exit(1)
-        pairs.append((i, train, test))
-    if args.allfolds:
-        train = test = '%s.types' % args.prefix
-        if not os.path.isfile(train):
-            print 'error: %s does not exist' % train
-            sys.exit(1)
-        pairs.append(('all', train, test))
-    
-    if len(pairs) == 0:
+    try:
+        train_test_files = get_train_test_files(args.prefix, args.foldnums, args.allfolds, args.reduced, args.prefix2)
+    except OSError as e:
+        print "error: %s" % e
+        sys.exit(1)
+
+    if len(train_test_files) == 0:
         print "error: missing train/test files"
         sys.exit(1)
-    
-    for (i, train, test) in pairs:
-        print train, test
-    
+
+    for i in train_test_files:
+        print train_test_files[i]
+
     outprefix = args.outprefix
     if outprefix == '':
         outprefix = '%s.%d' % (os.path.splitext(os.path.basename(args.model))[0],os.getpid())
-    
+
     mode = 'w'
     if args.cont:
         mode = 'a'
@@ -445,27 +554,19 @@ if __name__ == '__main__':
     all_y_predaff = []
 
     #train each pair
-    for (i, trainfile, testfile) in pairs:
-    
+    for i in train_test_files:
+
         outname = '%s.%s' % (outprefix, i)
-        if args.allfolds and trainfile == testfile:
-            crossval = False
-            reducedtrainfile = reducedtestfile = trainfile.replace('.types', '_reduced.types')
-        else:
-            crossval = True
-            reducedtrainfile = trainfile.replace('%strain' % args.prefix,'%s_reducedtrain' % args.prefix)
-            reducedtestfile = trainfile.replace('%strain' % args.prefix,'%s_reducedtest' % args.prefix)
 
-        if not os.path.isfile(reducedtrainfile):
-            print 'error: %s does not exist' % reducedtrainfile
-            sys.exit(1)
-        if not os.path.isfile(reducedtestfile):
-            print 'error: %s does not exist' % reducedtestfile
-            sys.exit(1)
+        results = train_and_test_model(args, train_test_files[i], outname)
 
-        test_vals, train_vals = train_and_test_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, outname)
-        if not crossval:
+        if i == 'all': #only want crossval results
             continue
+
+        if args.prefix2:
+            test_vals, train_vals, test2_vals, train2_vals = result
+        else:
+            test_vals, train_vals = result
 
         all_y_true.extend(test_vals['y_true'])
         all_y_score.extend(test_vals['y_score'])
@@ -480,11 +581,20 @@ if __name__ == '__main__':
 
         if np.mean(train_aucs) > 0:
             y_true, y_score, auc = test_vals['y_true'], test_vals['y_score'], test_vals['auc'][-1]
-            write_finaltest_file('%s.finaltest' % outname, y_true, y_score, '# AUC %f\n' % auc, mode)
+            write_finaltest_file('%s.auc.finaltest' % outname, y_true, y_score, '# AUC %f\n' % auc, mode)
 
         if test_rmsds:
             y_aff, y_predaff, rmsd = test_vals['y_aff'], test_vals['y_predaff'], test_vals['rmsd'][-1]
             write_finaltest_file('%s.rmsd.finaltest' % outname, y_aff, y_predaff, '# RMSD %f\n' % rmsd, mode)
+
+        if args.prefix2:
+            y_true, y_score, auc = test2_vals['y_true'], test2_vals['y_score'], test2_vals['auc'][-1]
+            write_finaltest_file('%s.auc2.finaltest' % outname, y_true, y_score, '# AUC %f\n' % auc, mode)
+
+            if test_rmsds:
+                y_aff, y_predaff, rmsd = test2_vals['y_aff'], test2_vals['y_predaff'], test2_vals['rmsd'][-1]
+                write_finaltest_file('%s.rmsd2.finaltest' % outname, y_aff, y_predaff, '# RMSD %f\n' % rmsd, mode)
+            
 
     #skip post processing if it's not a full crossvalidation
     if len(args.foldnums) <= 1:
