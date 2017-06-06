@@ -113,7 +113,11 @@ def evaluate_test_net(test_net, n_tests, rotations):
     else:
         loss = None
 
-    return [auc, y_true, y_score, loss, rmsd, y_affinity, y_predaff]
+    return auc, y_true, y_score, loss, rmsd, y_affinity, y_predaff
+
+
+def count_lines(file):
+    return sum(1 for line in open(file, 'r'))
 
 
 '''Script for training a neural net model from gnina grid data.
@@ -169,17 +173,11 @@ def train_and_test_model(args, train_file, test_file, reduced_train_file, reduce
         solver.net.copy_from(args.weights)
 
     test_nets = {}
-    test_nets['test'] = solver.test_nets[0]
-    test_nets['train'] = solver.test_nets[1]
+    test_nets['test'] = solver.test_nets[0], count_lines(test_file)
+    test_nets['train'] = solver.test_nets[1], count_lines(train_file)
     if args.reduced:
-        test_nets['reduced_test'] = solver.test_nets[2]
-        test_nets['reduced_train'] = solver.test_nets[3]
-
-    n_test_lines = sum(1 for line in open(test_file))
-    n_train_lines = sum(1 for line in open(train_file))
-    if args.reduced:
-        n_reduced_test_lines = sum(1 for line in open(reduced_test_file))
-        n_reduced_train_lines = sum(1 for line in open(reduced_train_file))
+        test_nets['reduced_test'] = solver.test_nets[2], count_lines(reduced_test_file)
+        test_nets['reduced_train'] = solver.test_nets[3], count_lines(reduced_train_file)
 
     if args.cont:
         mode = 'a'    
@@ -190,10 +188,12 @@ def train_and_test_model(args, train_file, test_file, reduced_train_file, reduce
     outfile = '%s.out' % outname
     out = open(outfile, mode, 0) #unbuffered
 
-    #return all evaluation results from each test interval
-    #(auc, y_true, y_pred, loss, rmsd, y_affinity, y_predaff)
-    test_vals = []
-    train_vals = []
+    #return evaluation results:
+    #  auc, loss, and rmsd from each test
+    #  y_true, y_score, y_aff, y_predaff from last test
+    res = {}
+    test_vals = {'auc':[], 'y_true':[], 'y_score':[], 'loss':[], 'rmsd':[], 'y_aff':[], 'y_predaff':[]}
+    train_vals = {'auc':[], 'y_true':[], 'y_score':[], 'loss':[], 'rmsd':[], 'y_aff':[], 'y_predaff':[]}
 
     #also keep track of best test and train aucs
     best_test_auc = 0
@@ -202,7 +202,7 @@ def train_and_test_model(args, train_file, test_file, reduced_train_file, reduce
 
     for i in xrange(iterations/test_interval):
         last_test = i == iterations/test_interval-1
-        n_iter = args.cont + i*test_interval
+        n_iter = args.cont + (i+1)*test_interval
 
         #train
         start = time.time()
@@ -213,27 +213,26 @@ def train_and_test_model(args, train_file, test_file, reduced_train_file, reduce
         #evaluate test set
         start = time.time()
         if args.reduced and not last_test:
-            test_net = test_nets['reduced_test']
-            n_tests = n_reduced_test_lines
+            test_net, n_tests = test_nets['reduced_test']
         else:
-            test_net = test_nets['test']
-            n_tests = n_test_lines
-        #(auc, y_true, y_score, loss, rmsd, y_affinity, y_predaff)
-        test_vals.append(evaluate_test_net(test_net, n_tests, rotations))
+            test_net, n_tests = test_nets['test']
+        test_auc, y_true, y_score, _, test_rmsd, y_aff, y_predaff = evaluate_test_net(test_net, n_tests, rotations)
         print "Eval test time: %f" % (time.time()-start)
 
-        if i > 0:
-            if not (args.reduced and last_test): #check alignment
-                assert np.all(test_vals[-1][1] == test_vals[-2][1])
-                assert np.all(test_vals[-1][5] == test_vals[-2][5])
-            test_vals[-2][1] = None #free memory
-            test_vals[-2][5] = None
+        if i > 0 and not (args.reduced and last_test): #check alignment
+            assert np.all(y_true == test_vals['y_true'])
+            assert np.all(y_aff == test_vals['y_aff'])
 
-        test_auc = test_vals[-1][0]
-        test_rmsd = test_vals[-1][4]
+        test_vals['y_true'] = y_true
+        test_vals['y_aff'] = y_aff
+        test_vals['y_score'] = y_score
+        test_vals['y_predaff'] = y_predaff
         print "Test AUC: %f" % test_auc
+        test_vals['auc'].append(test_auc)
         if test_rmsd:
             print "Test RMSD: %f" % test_rmsd
+            test_vals['rmsd'].append(test_rmsd)
+
         if test_auc > best_test_auc:
             best_test_auc = test_auc
             if args.keep_best:
@@ -242,28 +241,28 @@ def train_and_test_model(args, train_file, test_file, reduced_train_file, reduce
         #evaluate train set
         start = time.time()
         if args.reduced and not last_test:
-            test_net = test_nets['reduced_train']
-            n_tests = n_reduced_train_lines
+            test_net, n_tests = test_nets['reduced_train']
         else:
-            test_net = test_nets['train']
-            n_tests = n_train_lines
-        #(auc, y_true, y_score, loss, rmsd, y_affinity, y_predaff)
-        train_vals.append(evaluate_test_net(test_net, n_tests, rotations))
+            test_net, n_tests = test_nets['train']
+        train_auc, y_true, y_score, train_loss, train_rmsd, y_aff, y_predaff = evaluate_test_net(test_net, n_tests, rotations)
         print "Eval train time: %f" % (time.time()-start)
 
-        if i > 0:
-            if not (args.reduced and last_test): #check alignment
-                assert np.all(train_vals[-1][1] == train_vals[-2][1])
-                assert np.all(train_vals[-1][5] == train_vals[-2][5])
-            train_vals[-2][1] = None #free memory
-            train_vals[-2][5] = None
+        if i > 0 and not (args.reduced and last_test): #check alignment
+            assert np.all(y_true == train_vals['y_true'])
+            assert np.all(y_aff == train_vals['y_aff'])
 
-        train_auc = train_vals[-1][0]
-        train_loss = train_vals[-1][3]
-        train_rmsd = train_vals[-1][4]
-        print "Train AUC: %f\nTrain loss: %f" % (train_auc, train_loss)
+        train_vals['y_true'] = y_true
+        train_vals['y_aff'] = y_aff
+        train_vals['y_score'] = y_score
+        train_vals['y_predaff'] = y_predaff
+        print "Train AUC: %f" % train_auc
+        train_vals['auc'].append(train_auc)
+        print "Train loss: %f" % train_loss
+        train_vals['loss'].append(train_loss)
         if train_rmsd:
             print "Train RMSD: %f" % train_rmsd
+            train_vals['rmsd'].append(train_rmsd)
+
         if train_auc > best_train_auc:
             best_train_auc = train_auc
             best_train_interval = i
@@ -301,6 +300,65 @@ def train_and_test_model(args, train_file, test_file, reduced_train_file, reduce
     return test_vals, train_vals
 
 
+def write_finaltest_file(finaltest_file, y_true, y_score, footer, mode):
+
+    with open(finaltest_file, mode) as out:
+        for (label, score) in zip(y_true, y_score):
+            out.write('%f %f\n' % (label, score))
+        out.write(footer)
+
+
+def last_iters_statistics(test_aucs, iterations, test_interval, last_iters):
+
+    last_iters_test_aucs = []
+    last_iters = 1000
+    if last_iters > iterations:
+        last_iters = iterations
+    num_test_aucs = last_iters/test_interval
+    for fold_test_aucs in test_aucs:
+        a = fold_test_aucs[-num_test_aucs:]
+        if a:
+            last_iters_test_aucs.append(a)
+    return np.mean(last_iters_test_aucs), np.max(last_iters_test_aucs), np.min(last_iters_test_aucs)
+
+
+def training_plot(plot_file, train_series, test_series):
+
+    fig = plt.figure()
+    plt.plot(train_series, label='Train')
+    plt.plot(test_series, label='Test')
+    plt.legend(loc='best')
+    plt.savefig(plot_file, bbox_inches='tight')
+
+
+def plot_roc_curve(plot_file, fpr, tpr, auc):
+
+    fig = plt.figure(figsize=(8,8))
+    plt.plot(fpr, tpr, label='CNN (AUC=%.2f)' % auc, linewidth=4)
+    plt.legend(loc='lower right',fontsize=20)
+    plt.xlabel('False Positive Rate',fontsize=22)
+    plt.ylabel('True Positive Rate',fontsize=22)
+    plt.axes().set_aspect('equal')
+    plt.tick_params(axis='both', which='major', labelsize=16)
+    plt.text(.05, -.25, txt, fontsize=22)
+    plt.savefig(plot_file, bbox_inches='tight')
+
+
+def plot_correlation(plot_file, y_aff, y_predaff, rmsd, r2):
+
+    fig = plt.figure(figsize=(8,8))
+    plt.plot(y_aff, y_predaff, 'o', label='RMSD=%.2f, R^2=%.3f (Pos)' % (rmsd, r2))
+    plt.legend(loc='best', fontsize=20, numpoints=1)
+    lo = np.min([np.min(y_aff), np.min(y_predaff)])
+    hi = np.max([np.max(y_aff), np.max(y_predaff)])
+    plt.xlim(lo, hi)
+    plt.ylim(lo, hi)
+    plt.xlabel('Experimental Affinity', fontsize=22)
+    plt.ylabel('Predicted Affinity', fontsize=22)
+    plt.axes().set_aspect('equal')
+    plt.savefig(plot_file, bbox_inches='tight')        
+
+
 def comma_separated_ints(ints):
      return [int(i) for i in ints.split(',') if i and i != 'None']
 
@@ -335,6 +393,8 @@ def parse_args(argv=None):
     parser.add_argument('--gamma',type=float,help="Gamma, default 0.001",default=0.001)
     parser.add_argument('--power',type=float,help="Power, default 1",default=1)
     parser.add_argument('--weights',type=str,help="Set of weights to initialize the model with")
+    parser.add_argument('-p2','--prefix2',type=str,required=True,help="Prefix for training/test files: <prefix>[train|test][num].types")
+    parser.add_argument('-d2','--data_root2',type=str,required=False,help="Root folder for relative paths in train/test files",default='')
     return parser.parse_args(argv)
 
 
@@ -352,19 +412,19 @@ if __name__ == '__main__':
         if not os.path.isfile(test):
             print 'error: %s does not exist' % test
             sys.exit(1)
-        pairs.append((train, test))
+        pairs.append((i, train, test))
     if args.allfolds:
         train = test = '%s.types' % args.prefix
         if not os.path.isfile(train):
             print 'error: %s does not exist' % train
             sys.exit(1)
-        pairs.append((train, test))
+        pairs.append(('all', train, test))
     
     if len(pairs) == 0:
         print "error: missing train/test files"
         sys.exit(1)
     
-    for (train, test) in pairs:
+    for (i, train, test) in pairs:
         print train, test
     
     outprefix = args.outprefix
@@ -375,165 +435,120 @@ if __name__ == '__main__':
     if args.cont:
         mode = 'a'
     
+    test_aucs = []
+    train_aucs = []
+    test_rmsds = []
+    train_rmsds = []
+    all_y_true = []
+    all_y_score = []
+    all_y_aff = []
+    all_y_predaff = []
+
     #train each pair
-    testaucs = []
-    trainaucs = []
-    testrmsds = []
-    trainrmsds = []
-    alltest = []
-    for (train,test) in pairs:
+    for (i, trainfile, testfile) in pairs:
     
-        if args.allfolds and train == test:
+        outname = '%s.%s' % (outprefix, i)
+        if args.allfolds and trainfile == testfile:
             crossval = False
-            outname = '%s.all' % outprefix
-            reducedtrainfile = reducedtestfile = train.replace('.types', '_reduced.types')
+            reducedtrainfile = reducedtestfile = trainfile.replace('.types', '_reduced.types')
         else:
             crossval = True
-            m = re.search('%strain(\d+)'%args.prefix,train)
-            outname = '%s.%s' % (outprefix,m.group(1))
-            reducedtrainfile = train.replace('%strain' % args.prefix,'%s_reducedtrain' % args.prefix)
-            reducedtestfile = train.replace('%strain' % args.prefix,'%s_reducedtest' % args.prefix)
+            reducedtrainfile = trainfile.replace('%strain' % args.prefix,'%s_reducedtrain' % args.prefix)
+            reducedtestfile = trainfile.replace('%strain' % args.prefix,'%s_reducedtest' % args.prefix)
 
-        if not os.path.isfile(reducedtrainfile):       
+        if not os.path.isfile(reducedtrainfile):
             print 'error: %s does not exist' % reducedtrainfile
             sys.exit(1)
-        if not os.path.isfile(reducedtestfile):       
+        if not os.path.isfile(reducedtestfile):
             print 'error: %s does not exist' % reducedtestfile
             sys.exit(1)
 
-        test,train = train_and_test_model(args, train, test, reducedtrainfile, reducedtestfile, outname)
+        test_vals, train_vals = train_and_test_model(args, trainfile, testfile, reducedtrainfile, reducedtestfile, outname)
         if not crossval:
             continue
 
-        testaucs.append([x[0] for x in test])
-        trainaucs.append([x[0] for x in train])
-        alltest.append(test)
-        if len(test[-1]) > 4:
-            testrmsds.append([x[3] for x in test])
-            trainrmsds.append([x[3] for x in train])
-            
-        if np.mean(trainaucs) > 0:
-            with open('%s.%s.finaltest' % (outprefix,m.group(1)), mode) as out:
-                for (label,score) in zip(test[-1][1],test[-1][2]):
-                    out.write('%f %f\n'%(label,score))
-                out.write('# AUC %f\n'%test[-1][0])
+        all_y_true.extend(test_vals['y_true'])
+        all_y_score.extend(test_vals['y_score'])
+        all_y_aff.extend(test_vals['y_aff'])
+        all_y_predaff.extend(test_vals['y_predaff'])
 
-        if testrmsds:
-            with open('%s.%s.rmsd.finaltest' % (outprefix,m.group(1)),mode) as out:
-                 for (aff,pred) in zip(test[-1][4],test[-1][5]):
-                    out.write('%f %f\n'%(aff,pred))
-                 out.write('# RMSD %f \n'%test[-1][3])
+        test_aucs.append(test_vals['auc'])
+        train_aucs.append(train_vals['auc'])
+        if test_vals['rmsd'] and train_vals['rmsd']:
+            test_rmsds.append(test_vals['rmsd'])
+            train_rmsds.append(train_vals['rmsd'])
 
+        if np.mean(train_aucs) > 0:
+            y_true, y_score, auc = test_vals['y_true'], test_vals['y_score'], test_vals['auc'][-1]
+            write_finaltest_file('%s.finaltest' % outname, y_true, y_score, '# AUC %f\n' % auc, mode)
+
+        if test_rmsds:
+            y_aff, y_predaff, rmsd = test_vals['y_aff'], test_vals['y_predaff'], test_vals['rmsd'][-1]
+            write_finaltest_file('%s.rmsd.finaltest' % outname, y_aff, y_predaff, '# RMSD %f\n' % rmsd, mode)
+
+    #skip post processing if it's not a full crossvalidation
     if len(args.foldnums) <= 1:
         sys.exit(0)
-        
-    #find average, min, max AUC for last 1000 iterations
-    lastiter_testaucs = []
-    lastiter = 1000
-    if lastiter > args.iterations: lastiter = args.iterations
-    num_testaucs = lastiter/args.test_interval
-    for i in xrange(len(testaucs)):
-        a = testaucs[i][len(testaucs[i])-num_testaucs:]
-        if a:
-            lastiter_testaucs.append(a)
-        
-    txt = ''
-    if lastiter_testaucs:
-        avgAUC = np.mean(lastiter_testaucs)
-        maxAUC = np.max(lastiter_testaucs)
-        minAUC = np.min(lastiter_testaucs)
-        txt = 'For the last %s iterations:\nmean AUC=%.2f  max AUC=%.2f  min AUC=%.2f'%(lastiter,avgAUC,maxAUC,minAUC)
-    
-    #average aucs, train and test
+
+    #average, min, max test AUC for last 1000 iterations
+    last_iters = 1000
+    avg_auc, max_auc, min_auc = last_iters_statistics(test_aucs, args.iterations, args.test_interval, last_iters)
+    txt = 'For the last %s iterations:\nmean AUC=%.2f  max AUC=%.2f  min AUC=%.2f' % (last_iters, avg_auc, max_auc, min_auc)
 
     #due to early termination length of results may not be equivalent
-    testaucs = np.array(zip(*testaucs))
-    trainaucs = np.array(zip(*trainaucs))
-    testrmsds = np.array(zip(*testrmsds))
-    trainrmsds = np.array(zip(*trainrmsds))
+    test_aucs = np.array(zip(*test_aucs))
+    train_aucs = np.array(zip(*train_aucs))
 
-    with open('%s.test' % outprefix,mode) as out:
-        for r in testaucs:
-            out.write('%s %s\n' % (np.mean(r),' '.join([str(x) for x in r])))
+    #average aucs across folds
+    mean_test_aucs = test_aucs.mean(axis=1)
+    mean_train_aucs = train_aucs.mean(axis=1)
 
-    with open('%s.train' % outprefix,mode) as out:
-        for r in trainaucs:
-            out.write('%s %s\n' % (np.mean(r),' '.join([str(x) for x in r])))    
-                        
-    #make training plot
-    plt.plot(trainaucs.mean(axis=1),label='Train')
-    plt.plot(testaucs.mean(axis=1),label='Test')
-    plt.legend(loc='best')
-    plt.savefig('%s_train.pdf'%outprefix,bbox_inches='tight')
-                        
+    #write test and train aucs (mean and for each fold)
+    with open('%s.test' % outprefix, mode) as out:
+        for m, r in zip(mean_test_aucs, test_aucs):
+            out.write('%s %s\n' % (m, ' '.join([str(x) for x in r])))
+
+    with open('%s.train' % outprefix, mode) as out:
+        for m, r in zip(mean_train_aucs, train_aucs):
+            out.write('%s %s\n' % (m, ' '.join([str(x) for x in r])))    
+
+    #training plot of mean auc across folds
+    training_plot('%s_train.pdf' % outprefix, mean_train_aucs, mean_test_aucs)
+
     #roc curve for the last iteration - combine all tests
-    n = len(testaucs)-1
-    ytrue = []
-    yscore = []      
-    for test in alltest:
-        ytrue += test[n][1]
-        if test[n][2]:
-            yscore += test[n][2]
-    
-    if len(np.unique(ytrue)) > 1:
-        fpr, tpr, _ = sklearn.metrics.roc_curve(ytrue,yscore)
-        auc = sklearn.metrics.roc_auc_score(ytrue,yscore)
-        
-        with open('%s.finaltest' % outprefix,mode) as out:
-            for (label,score) in zip(ytrue,yscore):
-                out.write('%f %f\n'%(label,score))
-            out.write('# AUC %f\n'%auc)
-            
-        #make plot
-        fig = plt.figure(figsize=(8,8))
-        plt.plot(fpr,tpr,label='CNN (AUC=%.2f)'%(auc),linewidth=4)
-        plt.legend(loc='lower right',fontsize=20)
-        plt.xlabel('False Positive Rate',fontsize=22)
-        plt.ylabel('True Positive Rate',fontsize=22)
-        plt.axes().set_aspect('equal')
-        plt.tick_params(axis='both', which='major', labelsize=16)
-        plt.text(.05, -.25, txt, fontsize=22)
-        plt.savefig('%s_roc.pdf'%outprefix,bbox_inches='tight')
-    if len(testrmsds) > 0:
-        with open('%s.rmsd.test' % outprefix,mode) as out:
-            for r in testrmsds:
-                out.write('%s %s\n' % (np.mean(r),' '.join([str(x) for x in r])))
-    
+    if len(np.unique(all_y_true)) > 1:
+        fpr, tpr, _ = sklearn.metrics.roc_curve(all_y_true, all_y_score)
+        auc = sklearn.metrics.roc_auc_score(all_y_true, all_y_score)
+        write_finaltest_file('%s.finaltest' % outprefix, all_y_true, all_y_score, '# AUC %f\n' % auc, mode)
+        plot_roc_curve('%s_roc.pdf' % outprefix, fpr, tpr, auc)
+
+    if test_rmsds:
+
+        test_rmsds = np.array(zip(*test_rmsds))
+        train_rmsds = np.array(zip(*train_rmsds))
+
+        #average rmsds across folds
+        mean_test_rmsds = test_rmsds.mean(axis=1)
+        mean_train_rmsds = train_rmsds.mean(axis=1)
+
+        #write test and train rmsds (mean and for each fold)
+        with open('%s.rmsd.test' % outprefix, mode) as out:
+            for m, r in zip(mean_test_rmsds, test_rmsds):
+                out.write('%s %s\n' % (m, ' '.join([str(x) for x in r])))
+
         with open('%s.rmsd.train' % outprefix,mode) as out:
-            for r in trainrmsds:
-                out.write('%s %s \n' % (np.mean(r),' '.join([str(x) for x in r])))
-        # training plot
-        fig = plt.figure()
-        plt.plot(trainrmsds.mean(axis=1),label='Train')
-        plt.plot(testrmsds.mean(axis=1),label='Test')
-        plt.legend(loc='best')
-        plt.savefig('%s_rmsd_train.pdf'%outprefix,bbox_inches='tight')
-                        
-        yaffinity = []
-        ypredaff = []      
-        for test in alltest:
-            yaffinity += list(test[-1][4])
-            ypredaff += list(test[-1][5])
-        yaffinity = np.array(yaffinity)
-        ypredaff = np.array(ypredaff)
-        yt = np.array(ytrue,dtype=np.bool)
-        rmsdt = sklearn.metrics.mean_squared_error(yaffinity[yt],ypredaff[yt])
-        r2t = sklearn.metrics.r2_score(yaffinity[yt],ypredaff[yt])
-        
-        with open('%s.rmsd.finaltest' % outprefix,mode) as out:
-            for (aff,pred) in zip(yaffinity,ypredaff):
-                out.write('%f %f\n'%(aff,pred))
-            out.write('# RMSD,R^2 %f %f \n'%(rmsdt,r2t))
-        
-        #correlation plot        
-        fig = plt.figure(figsize=(8,8))
-        plt.plot(yaffinity[yt],ypredaff[yt],'o',label='RMSD=%.2f, R^2=%.3f (Pos)'%(rmsdt,r2t))
-        plt.legend(loc='best',fontsize=20,numpoints=1)
-        lo = np.min([np.min(yaffinity[yt]),np.min(ypredaff[yt])])
-        hi = np.max([yaffinity[yt].max(),ypredaff[yt].max()])
-        plt.xlim(lo,hi)
-        plt.ylim(lo,hi)
-        plt.xlabel('Experimental Affinity',fontsize=22)
-        plt.ylabel('Predicted Affinity',fontsize=22)
-        plt.axes().set_aspect('equal')
-        plt.savefig('%s_rmsd.pdf'%outprefix,bbox_inches='tight')        
+            for m, r in zip(mean_train_rmsds, train_rmsds):
+                out.write('%s %s \n' % (m, ' '.join([str(x) for x in r])))
+
+        #training plot of mean rmsd across folds
+        training_plot('%s_rmsd_train.pdf' % outprefix, mean_train_rmsds, mean_test_rmsds)
+
+        all_y_aff = np.array(all_y_aff)
+        all_y_predaff = np.array(all_y_predaff)
+        yt = np.array(all_y_true, dtype=np.bool)
+        rmsdt = sklearn.metrics.mean_squared_error(all_y_aff[yt], all_y_predaff[yt])
+        r2t = sklearn.metrics.r2_score(all_y_aff[yt], all_y_predaff[yt])
+        write_finaltest_file('%s.rmsd.finaltest' % outprefix, all_y_aff, all_y_predaff, '# RMSD,R^2 %f %f\n' % (rmsdt, r2t), mode)
+
+        plot_correlation('%s_rmsd.pdf' % outprefix, all_y_aff[yt], all_y_predaff[yt], rmsdt, r2t)
+
