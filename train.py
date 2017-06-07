@@ -12,9 +12,27 @@ from caffe.proto.caffe_pb2 import NetParameter, SolverParameter
 import google.protobuf.text_format as prototxt
 import time
 
+'''Script for training a neural net model from gnina grid data.
+A model template is provided along with training and test sets of the form
+<prefix>[train|test][num].types
+Test accuracy, as measured by AUC, is periodically assessed.
+At the end graphs are made.'''
+
 
 def write_model_file(model_file, template_file, train_file, test_file, root_folder, avg_rotations=False,
-                     train_file2=None, ratio=None, root_folder2=None, test_root2=False):
+                     train_file2=None, ratio=None, root_folder2=None, test_root_folder=None):
+    '''Writes a model prototxt file based on a provided template file
+    with certain placeholders replaced in each MolGridDataLayer.
+    For the source parameter, "TRAINFILE" is replaced with train_file
+    and "TESTFILE" is replaced with test_file.
+    For the root_folder parameter, "DATA_ROOT" is replaced with root_folder,
+    unless the layer is TEST phase and test_root_folder is provided,
+    then it is replaced with test_root_folder.
+    For the source2 parameter, "TRAINFILE2" is replaced with train_file2,
+    and in the same layer the source_ratio parameter is set to ratio.
+    For the root_folder2 parameter, "DATA_ROOT2" is replaced with root_folder2.
+    If the avg_rotations argument is set and the layer is TEST phase,
+    the rotate parameter is set to 24.'''
     param = NetParameter()
     with open(template_file, 'r') as f:
         prototxt.Merge(f.read(), param)
@@ -24,8 +42,8 @@ def write_model_file(model_file, template_file, train_file, test_file, root_fold
         if layer.molgrid_data_param.source == 'TESTFILE':
             layer.molgrid_data_param.source = test_file
         if layer.molgrid_data_param.root_folder == 'DATA_ROOT':
-            if 'TEST' in str(layer) and test_root2:
-                layer.molgrid_data_param.root_folder = root_folder2
+            if test_root_folder and 'TEST' in str(layer):
+                layer.molgrid_data_param.root_folder = test_root_folder
             else:
                 layer.molgrid_data_param.root_folder = root_folder
         if train_file2 and layer.molgrid_data_param.source2 == 'TRAINFILE2':
@@ -42,6 +60,10 @@ def write_model_file(model_file, template_file, train_file, test_file, root_fold
 
 def write_solver_file(solver_file, train_model, test_models, type, base_lr, momentum, weight_decay,
                       lr_policy, gamma, power, random_seed, max_iter, snapshot_prefix):
+    '''Writes a solver prototxt file with parameters set to the
+    corresponding argument values. In particular, the train_net
+    parameter is set to train_model, and a test_net parameter is
+    added for each of test_models, which should be a list.'''
     param = SolverParameter()
     param.train_net = train_model
     for test_model in test_models:
@@ -64,12 +86,11 @@ def write_solver_file(solver_file, train_model, test_models, type, base_lr, mome
 
 
 def evaluate_test_net(test_net, n_tests, rotations):
-    '''Evaluate a test network and return the results.
-    The number of examples in the file the test_net reads from
-    must equal n_tests, otherwise output will be misaligned.
-    Can optionally take the average of multiple rotations of
-    each example. Batch size should be 1 and other parameters
-    should be set so that data access is sequential.'''
+    '''Evaluate a test network and return the results. The number of
+    examples in the file the test_net reads from must equal n_tests,
+    otherwise output will be misaligned. Can optionally take the average
+    of multiple rotations of each example. Batch size should be 1 and
+    other parameters should be set so that data access is sequential.'''
 
     #evaluate each example with each rotation
     y_true = []
@@ -129,16 +150,12 @@ def count_lines(file):
     return sum(1 for line in open(file, 'r'))
 
 
-'''Script for training a neural net model from gnina grid data.
-A model template is provided along with training and test sets of the form
-<prefix>[train|test][num].types
-Test area, as measured by AUC, is periodically assessed.   At the end graphs are made.
-Default is to do dynamic stepping of learning rate, but can explore other methods.
-'''
 def train_and_test_model(args, files, outname):
-    '''run solver for iterations steps, on the given training file,
-    every test_interval evaluate the roc of bothe the trainfile and the testfile
-    return the full predictions for every tested iteration'''
+    '''Train caffe model for iterations steps using provided model template
+    and training file(s), and every test_interval iterations evaluate each
+    of the train and test files. Return AUC (and RMSD, if affinity model)
+    for every test iteration, and also the labels and predictions for the
+    final test iteration.'''
     template = args.model
     test_interval = args.test_interval
     iterations = args.iterations
@@ -158,30 +175,30 @@ def train_and_test_model(args, files, outname):
     train_model = 'traintrain.%d.prototxt' % pid
     test_models = [test_model, train_model]
     test_files = [files['test'], files['train']]
-    test_roots = [False, False] #which data_root to use
+    test_roots = [args.data_root, args.data_root] #which data_root to use
     if args.reduced:
         reduced_test_model = 'trainreducedtest.%d.prototxt' % pid
         reduced_train_model = 'trainreducedtrain.%d.prototxt' % pid
         test_models += [reduced_test_model, reduced_train_model]
         test_files += [files['reduced_test'], files['reduced_train']]
-        test_roots += [False, False]
+        test_roots += [args.data_root, args.data_root]
     if args.prefix2:
         test2_model = 'traintest2.%d.prototxt' % pid
         train2_model = 'traintrain2.%d.prototxt' % pid
         test_models += [test2_model, train2_model]
         test_files += [files['test2'], files['train2']]
-        test_roots += [True, True]
+        test_roots += [args.data_root2, args.data_root2]
         if args.reduced:
             reduced_test2_model = 'trainreducedtest2.%d.prototxt' % pid
             reduced_train2_model = 'trainreducedtrain2.%d.prototxt' % pid
             test_models += [reduced_test2_model, reduced_train2_model]
             test_files += [files['reduced_test2'], files['reduced_train2']]
-            test_roots += [True, True]
+            test_roots += [args.data_root2, args.data_root2]
 
-    for test_model, test_file, test_root2 in zip(test_models, test_files, test_roots):
+    for test_model, test_file, test_root in zip(test_models, test_files, test_roots):
         if args.prefix2:
             write_model_file(test_model, template, files['train'], test_file, args.data_root, args.avg_rotations,
-                             files['train2'], args.data_ratio, args.data_root2, test_root2)
+                             files['train2'], args.data_ratio, args.data_root2, test_root)
         else:
             write_model_file(test_model, template, files['train'], test_file, args.data_root, args.avg_rotations)
 
@@ -204,8 +221,7 @@ def train_and_test_model(args, files, outname):
     test_nets = {}
     for key, test_file in files.items():
         idx = test_files.index(test_file)
-        if idx > -1:
-            test_nets[key] = solver.test_nets[idx], count_lines(test_file)
+        test_nets[key] = solver.test_nets[idx], count_lines(test_file)
 
     if args.cont:
         mode = 'a'    
@@ -231,11 +247,13 @@ def train_and_test_model(args, files, outname):
     best_train_auc = 0
     best_train_interval = 0
 
+    i_time_avg = 0
+
     for i in xrange(iterations/test_interval):
         last_test = i == iterations/test_interval-1
 
         #train
-        start = time.time()
+        i_start = start = time.time()
         solver.step(test_interval)
         print "Iteration %d" % (args.cont + (i+1)*test_interval)
         print "Train time: %f" % (time.time()-start)
@@ -369,6 +387,13 @@ def train_and_test_model(args, files, outname):
         out.write('\n')
         out.flush()
 
+        #track avg time per loop
+        i_time = time.time()-i_start
+        i_time_avg = (i*i_time_avg + i_time)/(i+1)
+        i_left = iterations/test_interval - (i+1)
+        time_left = i_time_avg * i_left
+        print "Loop time: %f (%.2fh left)" % (i_time, time_left/3600.)
+
     out.close()
     solver.snapshot()
     del solver #free mem
@@ -415,7 +440,7 @@ def training_plot(plot_file, train_series, test_series):
     plt.savefig(plot_file, bbox_inches='tight')
 
 
-def plot_roc_curve(plot_file, fpr, tpr, auc):
+def plot_roc_curve(plot_file, fpr, tpr, auc, txt):
 
     fig = plt.figure(figsize=(8,8))
     plt.plot(fpr, tpr, label='CNN (AUC=%.2f)' % auc, linewidth=4)
@@ -477,9 +502,9 @@ def parse_args(argv=None):
     parser.add_argument('--gamma',type=float,help="Gamma, default 0.001",default=0.001)
     parser.add_argument('--power',type=float,help="Power, default 1",default=1)
     parser.add_argument('--weights',type=str,help="Set of weights to initialize the model with")
-    parser.add_argument('-p2','--prefix2',type=str,required=False,help="Prefix for training/test files: <prefix>[train|test][num].types")
-    parser.add_argument('-d2','--data_root2',type=str,required=False,help="Root folder for relative paths in train/test files",default='')
-    parser.add_argument('--data_ratio',type=float,required=False,help="Ratio to combine training data",default=None)
+    parser.add_argument('-p2','--prefix2',type=str,required=False,help="Second prefix for training/test files for combined training: <prefix>[train|test][num].types")
+    parser.add_argument('-d2','--data_root2',type=str,required=False,help="Root folder for relative paths in second train/test files for combined training",default='')
+    parser.add_argument('--data_ratio',type=float,required=False,help="Ratio to combine training data from 2 sources",default=None)
     return parser.parse_args(argv)
 
 
@@ -564,9 +589,9 @@ if __name__ == '__main__':
             continue
 
         if args.prefix2:
-            test_vals, train_vals, test2_vals, train2_vals = result
+            test_vals, train_vals, test2_vals, train2_vals = results
         else:
-            test_vals, train_vals = result
+            test_vals, train_vals = results
 
         all_y_true.extend(test_vals['y_true'])
         all_y_score.extend(test_vals['y_score'])
@@ -594,7 +619,6 @@ if __name__ == '__main__':
             if test_rmsds:
                 y_aff, y_predaff, rmsd = test2_vals['y_aff'], test2_vals['y_predaff'], test2_vals['rmsd'][-1]
                 write_finaltest_file('%s.rmsd2.finaltest' % outname, y_aff, y_predaff, '# RMSD %f\n' % rmsd, mode)
-            
 
     #skip post processing if it's not a full crossvalidation
     if len(args.foldnums) <= 1:
@@ -630,7 +654,7 @@ if __name__ == '__main__':
         fpr, tpr, _ = sklearn.metrics.roc_curve(all_y_true, all_y_score)
         auc = sklearn.metrics.roc_auc_score(all_y_true, all_y_score)
         write_finaltest_file('%s.finaltest' % outprefix, all_y_true, all_y_score, '# AUC %f\n' % auc, mode)
-        plot_roc_curve('%s_roc.pdf' % outprefix, fpr, tpr, auc)
+        plot_roc_curve('%s_roc.pdf' % outprefix, fpr, tpr, auc, txt)
 
     if test_rmsds:
 
