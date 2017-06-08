@@ -11,6 +11,7 @@ import caffe
 from caffe.proto.caffe_pb2 import NetParameter, SolverParameter
 import google.protobuf.text_format as prototxt
 import time
+from combine_fold_results import write_results_file, combine_fold_results
 
 '''Script for training a neural net model from gnina grid data.
 A model template is provided along with training and test sets of the form
@@ -409,65 +410,6 @@ def train_and_test_model(args, files, outname):
         return test_vals, train_vals
 
 
-def write_finaltest_file(finaltest_file, y_true, y_score, footer, mode):
-
-    with open(finaltest_file, mode) as out:
-        for (label, score) in zip(y_true, y_score):
-            out.write('%f %f\n' % (label, score))
-        out.write(footer)
-
-
-def last_iters_statistics(test_aucs, iterations, test_interval, last_iters):
-
-    last_iters_test_aucs = []
-    last_iters = 1000
-    if last_iters > iterations:
-        last_iters = iterations
-    num_test_aucs = last_iters/test_interval
-    for fold_test_aucs in test_aucs:
-        a = fold_test_aucs[-num_test_aucs:]
-        if a:
-            last_iters_test_aucs.append(a)
-    return np.mean(last_iters_test_aucs), np.max(last_iters_test_aucs), np.min(last_iters_test_aucs)
-
-
-def training_plot(plot_file, train_series, test_series):
-
-    fig = plt.figure()
-    plt.plot(train_series, label='Train')
-    plt.plot(test_series, label='Test')
-    plt.legend(loc='best')
-    plt.savefig(plot_file, bbox_inches='tight')
-
-
-def plot_roc_curve(plot_file, fpr, tpr, auc, txt):
-
-    fig = plt.figure(figsize=(8,8))
-    plt.plot(fpr, tpr, label='CNN (AUC=%.2f)' % auc, linewidth=4)
-    plt.legend(loc='lower right',fontsize=20)
-    plt.xlabel('False Positive Rate',fontsize=22)
-    plt.ylabel('True Positive Rate',fontsize=22)
-    plt.axes().set_aspect('equal')
-    plt.tick_params(axis='both', which='major', labelsize=16)
-    plt.text(.05, -.25, txt, fontsize=22)
-    plt.savefig(plot_file, bbox_inches='tight')
-
-
-def plot_correlation(plot_file, y_aff, y_predaff, rmsd, r2):
-
-    fig = plt.figure(figsize=(8,8))
-    plt.plot(y_aff, y_predaff, 'o', label='RMSD=%.2f, R^2=%.3f (Pos)' % (rmsd, r2))
-    plt.legend(loc='best', fontsize=20, numpoints=1)
-    lo = np.min([np.min(y_aff), np.min(y_predaff)])
-    hi = np.max([np.max(y_aff), np.max(y_predaff)])
-    plt.xlim(lo, hi)
-    plt.ylim(lo, hi)
-    plt.xlabel('Experimental Affinity', fontsize=22)
-    plt.ylabel('Predicted Affinity', fontsize=22)
-    plt.axes().set_aspect('equal')
-    plt.savefig(plot_file, bbox_inches='tight')        
-
-
 def comma_separated_ints(ints):
      return [int(i) for i in ints.split(',') if i and i != 'None']
 
@@ -606,83 +548,24 @@ if __name__ == '__main__':
 
         if np.mean(train_aucs) > 0:
             y_true, y_score, auc = test_vals['y_true'], test_vals['y_score'], test_vals['auc'][-1]
-            write_finaltest_file('%s.auc.finaltest' % outname, y_true, y_score, '# AUC %f\n' % auc, mode)
+            write_results_file('%s.auc.finaltest' % outname, y_true, y_score, footer='AUC %f\n' % auc, mode=mode)
 
         if test_rmsds:
             y_aff, y_predaff, rmsd = test_vals['y_aff'], test_vals['y_predaff'], test_vals['rmsd'][-1]
-            write_finaltest_file('%s.rmsd.finaltest' % outname, y_aff, y_predaff, '# RMSD %f\n' % rmsd, mode)
+            write_results_file('%s.rmsd.finaltest' % outname, y_aff, y_predaff, footer='RMSD %f\n' % rmsd, mode=mode)
 
         if args.prefix2:
             y_true, y_score, auc = test2_vals['y_true'], test2_vals['y_score'], test2_vals['auc'][-1]
-            write_finaltest_file('%s.auc2.finaltest' % outname, y_true, y_score, '# AUC %f\n' % auc, mode)
+            write_results_file('%s.auc2.finaltest' % outname, y_true, y_score, footer='AUC %f\n' % auc, mode=mode)
 
             if test_rmsds:
                 y_aff, y_predaff, rmsd = test2_vals['y_aff'], test2_vals['y_predaff'], test2_vals['rmsd'][-1]
-                write_finaltest_file('%s.rmsd2.finaltest' % outname, y_aff, y_predaff, '# RMSD %f\n' % rmsd, mode)
+                write_results_file('%s.rmsd2.finaltest' % outname, y_aff, y_predaff, footer='RMSD %f\n' % rmsd, mode=mode)
 
     #skip post processing if it's not a full crossvalidation
     if len(args.foldnums) <= 1:
         sys.exit(0)
 
-    #average, min, max test AUC for last 1000 iterations
-    last_iters = 1000
-    avg_auc, max_auc, min_auc = last_iters_statistics(test_aucs, args.iterations, args.test_interval, last_iters)
-    txt = 'For the last %s iterations:\nmean AUC=%.2f  max AUC=%.2f  min AUC=%.2f' % (last_iters, avg_auc, max_auc, min_auc)
-
-    #due to early termination length of results may not be equivalent
-    test_aucs = np.array(zip(*test_aucs))
-    train_aucs = np.array(zip(*train_aucs))
-
-    #average aucs across folds
-    mean_test_aucs = test_aucs.mean(axis=1)
-    mean_train_aucs = train_aucs.mean(axis=1)
-
-    #write test and train aucs (mean and for each fold)
-    with open('%s.test' % outprefix, mode) as out:
-        for m, r in zip(mean_test_aucs, test_aucs):
-            out.write('%s %s\n' % (m, ' '.join([str(x) for x in r])))
-
-    with open('%s.train' % outprefix, mode) as out:
-        for m, r in zip(mean_train_aucs, train_aucs):
-            out.write('%s %s\n' % (m, ' '.join([str(x) for x in r])))    
-
-    #training plot of mean auc across folds
-    training_plot('%s_train.pdf' % outprefix, mean_train_aucs, mean_test_aucs)
-
-    #roc curve for the last iteration - combine all tests
-    if len(np.unique(all_y_true)) > 1:
-        fpr, tpr, _ = sklearn.metrics.roc_curve(all_y_true, all_y_score)
-        auc = sklearn.metrics.roc_auc_score(all_y_true, all_y_score)
-        write_finaltest_file('%s.finaltest' % outprefix, all_y_true, all_y_score, '# AUC %f\n' % auc, mode)
-        plot_roc_curve('%s_roc.pdf' % outprefix, fpr, tpr, auc, txt)
-
-    if test_rmsds:
-
-        test_rmsds = np.array(zip(*test_rmsds))
-        train_rmsds = np.array(zip(*train_rmsds))
-
-        #average rmsds across folds
-        mean_test_rmsds = test_rmsds.mean(axis=1)
-        mean_train_rmsds = train_rmsds.mean(axis=1)
-
-        #write test and train rmsds (mean and for each fold)
-        with open('%s.rmsd.test' % outprefix, mode) as out:
-            for m, r in zip(mean_test_rmsds, test_rmsds):
-                out.write('%s %s\n' % (m, ' '.join([str(x) for x in r])))
-
-        with open('%s.rmsd.train' % outprefix,mode) as out:
-            for m, r in zip(mean_train_rmsds, train_rmsds):
-                out.write('%s %s \n' % (m, ' '.join([str(x) for x in r])))
-
-        #training plot of mean rmsd across folds
-        training_plot('%s_rmsd_train.pdf' % outprefix, mean_train_rmsds, mean_test_rmsds)
-
-        all_y_aff = np.array(all_y_aff)
-        all_y_predaff = np.array(all_y_predaff)
-        yt = np.array(all_y_true, dtype=np.bool)
-        rmsdt = sklearn.metrics.mean_squared_error(all_y_aff[yt], all_y_predaff[yt])
-        r2t = sklearn.metrics.r2_score(all_y_aff[yt], all_y_predaff[yt])
-        write_finaltest_file('%s.rmsd.finaltest' % outprefix, all_y_aff, all_y_predaff, '# RMSD,R^2 %f %f\n' % (rmsdt, r2t), mode)
-
-        plot_correlation('%s_rmsd.pdf' % outprefix, all_y_aff[yt], all_y_predaff[yt], rmsdt, r2t)
+    combine_fold_results(outprefix, args.test_interval, test_aucs, train_aucs, all_y_true, all_y_score,
+                         test_rmsds, train_rmsds, all_y_aff, all_y_predaff)
 
