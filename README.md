@@ -13,6 +13,7 @@ usage: train.py [-h] -m MODEL -p PREFIX [-d DATA_ROOT] [-n FOLDNUMS] [-a]
                 [--step_when STEP_WHEN] [--base_lr BASE_LR]
                 [--momentum MOMENTUM] [--weight_decay WEIGHT_DECAY]
                 [--gamma GAMMA] [--power POWER] [--weights WEIGHTS]
+                [-p2 PREFIX2] [-d2 DATA_ROOT2] [--data_ratio DATA_RATIO]
 
 Train neural net on .types data.
 
@@ -66,21 +67,42 @@ optional arguments:
   --gamma GAMMA         Gamma, default 0.001
   --power POWER         Power, default 1
   --weights WEIGHTS     Set of weights to initialize the model with
+  -p2 PREFIX2, --prefix2 PREFIX2
+                        Second prefix for training/test files for combined
+                        training: <prefix>[train|test][num].types
+  -d2 DATA_ROOT2, --data_root2 DATA_ROOT2
+                        Root folder for relative paths in second train/test
+                        files for combined training
+  --data_ratio DATA_RATIO
+                        Ratio to combine training data from 2 sources
 ```
 
-MODEL is a caffe model file and is required.
+MODEL is a caffe model file and is required. It should have a MolGridDataLayer
+for each phase, TRAIN and TEST. The source parameter of these layers should
+be placeholder values "TRAINFILE" and "TESTFILE" respectively.
 
 PREFIX is the prefix of pre-specified training and test files.  For example, 
 if the prefix is "all" then there should be files "alltrainX.types" and
-"alltestX.types" for X from 0 to N, where N is the number of folds.
-The model trained on "alltrain0.types" will be tested on "alltest0.types"
-every TEST_INTERVAL iterations.
+"alltestX.types" for each X in FOLDNUMS.
+FOLDNUMS is a comma-separated list of ints, for example 0,1,2.
+With the --allfolds flag set, a model is also trained and tested on a single file
+that hasn't been split into train/test folds, for example "all.types" in the
+previous example.
+
+The model trained on "alltrain0.types" will be tested on "alltest0.types".
+Each model is trained for up to ITERATIONS iterations and tested each TEST_INTERVAL
+iterations.
 
 The train/test files are of the form
     1 set1/159/rec.gninatypes set1/159/docked_0.gninatypes
 where the first value is the label, the second the receptor, and the third
 the ligand.  Additional whitespace delimited fields are ignored.  gninatypes
 files are created using gninatyper.
+The receptor and label paths in these files can be absolute, or they can be
+relative to a path provided as the DATA_ROOT argument. To use this option,
+ the root_folder parameter in each MolGridDataLayer of the model file should be
+the placeholder value "DATA_ROOT". This can also be hard-coded into the model.
+
 
 
 The prefix of all generated output files will be OUTPREFIX.  If not specified,
