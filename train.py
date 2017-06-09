@@ -517,14 +517,10 @@ if __name__ == '__main__':
     if outprefix == '':
         outprefix = '%s.%d' % (os.path.splitext(os.path.basename(args.model))[0],os.getpid())
 
-    test_aucs = []
-    train_aucs = []
-    test_rmsds = []
-    train_rmsds = []
-    all_y_true = []
-    all_y_score = []
-    all_y_aff = []
-    all_y_predaff = []
+    test_aucs, train_aucs, test_rmsds, train_rmsds = [], [], [], []
+    all_y_true, all_y_score, all_y_aff, all_y_predaff = [], [], [], []
+    test2_aucs, train2_aucs, test2_rmsds, train2_rmsds = [], [], [], []
+    all_y_true2, all_y_score2, all_y_aff2, all_y_predaff2 = [], [], [], []
 
     #train each pair
     for i in train_test_files:
@@ -541,18 +537,15 @@ if __name__ == '__main__':
         #write out the final test results
         y_true, y_score, auc = test_vals['y_true'], test_vals['y_score'], test_vals['auc'][-1]
         write_results_file('%s.auc.finaltest' % outname, y_true, y_score, footer='AUC %f\n' % auc)
-
         if test_vals['rmsd']:
             y_aff, y_predaff, rmsd = test_vals['y_aff'], test_vals['y_predaff'], test_vals['rmsd'][-1]
             write_results_file('%s.rmsd.finaltest' % outname, y_aff, y_predaff, footer='RMSD %f\n' % rmsd)
-
         if args.prefix2:
-            y_true, y_score, auc = test2_vals['y_true'], test2_vals['y_score'], test2_vals['auc'][-1]
-            write_results_file('%s.auc2.finaltest' % outname, y_true, y_score, footer='AUC %f\n' % auc)
-
-            if test_vals['rmsd']:
-                y_aff, y_predaff, rmsd = test2_vals['y_aff'], test2_vals['y_predaff'], test2_vals['rmsd'][-1]
-                write_results_file('%s.rmsd2.finaltest' % outname, y_aff, y_predaff, footer='RMSD %f\n' % rmsd)
+            y_true2, y_score2, auc2 = test2_vals['y_true'], test2_vals['y_score'], test2_vals['auc'][-1]
+            write_results_file('%s.auc.finaltest2' % outname, y_true2, y_score2, footer='AUC %f\n' % auc2)
+            if test2_vals['rmsd']:
+                y_aff2, y_predaff2, rmsd2 = test2_vals['y_aff'], test2_vals['y_predaff'], test2_vals['rmsd'][-1]
+                write_results_file('%s.rmsd.finaltest2' % outname, y_aff2, y_predaff2, footer='RMSD %f\n' % rmsd2)
 
         if i == 'all': #only aggregate crossval results (from different folds)
             continue
@@ -561,15 +554,29 @@ if __name__ == '__main__':
         all_y_score.extend(test_vals['y_score'])
         all_y_aff.extend(test_vals['y_aff'])
         all_y_predaff.extend(test_vals['y_predaff'])
+        if args.prefix2:
+            all_y_true2.extend(test2_vals['y_true'])
+            all_y_score2.extend(test2_vals['y_score'])
+            all_y_aff2.extend(test2_vals['y_aff'])
+            all_y_predaff2.extend(test2_vals['y_predaff'])
 
         test_aucs.append(test_vals['auc'])
         train_aucs.append(train_vals['auc'])
         if test_vals['rmsd'] and train_vals['rmsd']:
             test_rmsds.append(test_vals['rmsd'])
             train_rmsds.append(train_vals['rmsd'])
+        if args.prefix2:
+            test2_aucs.append(test2_vals['auc'])
+            train2_aucs.append(train2_vals['auc'])
+            if test2_vals['rmsd'] and train2_vals['rmsd']:
+                test2_rmsds.append(test2_vals['rmsd'])
+                train2_rmsds.append(train2_vals['rmsd'])
 
     #only combine fold results if we have multiple folds
     if len(test_aucs) > 1:
         combine_fold_results(outprefix, args.test_interval, test_aucs, train_aucs, all_y_true, all_y_score,
                              test_rmsds, train_rmsds, all_y_aff, all_y_predaff)
+        if args.prefix2:
+            combine_fold_results(outprefix, args.test_interval, test2_aucs, train2_aucs, all_y_true2, all_y_score2,
+                                 test2_rmsds, train2_rmsds, all_y_aff2, all_y_predaff2, True)
 

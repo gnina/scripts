@@ -76,7 +76,7 @@ def check_file_exists(file):
         raise OSError('%s does not exist' % file)
 
 
-def get_results_files(prefix, numfolds, affinity):
+def get_results_files(prefix, numfolds, affinity, two_data_sources):
     files = {}
     for i in range(numfolds):
         files[i] = {}
@@ -84,6 +84,10 @@ def get_results_files(prefix, numfolds, affinity):
         files[i]['auc_finaltest'] = '%s.%d.auc.finaltest' % (prefix, i)
         if affinity:
             files[i]['rmsd_finaltest'] = '%s.%d.rmsd.finaltest' % (prefix, i)
+        if two_data_sources:
+            files[i]['auc_finaltest2'] = '%s.%d.auc.finaltest2' % (prefix, i)
+            if affinity:
+                files[i]['rmsd_finaltest2'] = '%s.%d.rmsd.finaltest2' % (prefix, i)
     for i in files:
         for file in files[i].values():
             check_file_exists(file)
@@ -91,7 +95,8 @@ def get_results_files(prefix, numfolds, affinity):
 
 
 def combine_fold_results(outprefix, test_interval, test_aucs, train_aucs, all_y_true, all_y_score,
-                         test_rmsds, train_rmsds, all_y_aff, all_y_predaff):
+                         test_rmsds, train_rmsds, all_y_aff, all_y_predaff, is_data2=False):
+    two = '2' if is_data2 else ''
 
     #average, min, max test AUC for last 1000 iterations
     last_iters = 1000
@@ -103,18 +108,18 @@ def combine_fold_results(outprefix, test_interval, test_aucs, train_aucs, all_y_
     mean_train_aucs = np.mean(train_aucs, axis=0)
 
     #write test and train aucs (mean and for each fold)
-    write_results_file('%s.auc.test' % outprefix, mean_test_aucs, *test_aucs)
-    write_results_file('%s.auc.train' % outprefix, mean_train_aucs, *train_aucs)
+    write_results_file('%s.auc.test%s' % (outprefix, two), mean_test_aucs, *test_aucs)
+    write_results_file('%s.auc.train%s' % (outprefix, two), mean_train_aucs, *train_aucs)
 
     #training plot of mean auc across folds
-    training_plot('%s_auc_train.pdf' % outprefix, mean_train_aucs, mean_test_aucs)
+    training_plot('%s_auc_train%s.pdf' % (outprefix, two), mean_train_aucs, mean_test_aucs)
 
     #roc curve for the last iteration - combine all tests
     if len(np.unique(all_y_true)) > 1:
         fpr, tpr, _ = sklearn.metrics.roc_curve(all_y_true, all_y_score)
         auc = sklearn.metrics.roc_auc_score(all_y_true, all_y_score)
-        write_results_file('%s.auc.finaltest' % outprefix, all_y_true, all_y_score, footer='AUC %f\n' % auc)
-        plot_roc_curve('%s_roc.pdf' % outprefix, fpr, tpr, auc, txt)
+        write_results_file('%s.auc.finaltest%s' % (outprefix, two), all_y_true, all_y_score, footer='AUC %f\n' % auc)
+        plot_roc_curve('%s_roc%s.pdf' % (outprefix, two), fpr, tpr, auc, txt)
 
     if test_rmsds:
 
@@ -123,20 +128,20 @@ def combine_fold_results(outprefix, test_interval, test_aucs, train_aucs, all_y_
         mean_train_rmsds = np.mean(train_rmsds, axis=0)
 
         #write test and train rmsds (mean and for each fold)
-        write_results_file('%s.rmsd.test' % outprefix, mean_test_rmsds, *test_rmsds)
-        write_results_file('%s.rmsd.train' % outprefix, mean_train_rmsds, *train_rmsds)
+        write_results_file('%s.rmsd.test%s' % (outprefix, two), mean_test_rmsds, *test_rmsds)
+        write_results_file('%s.rmsd.train%s' % (outprefix, two), mean_train_rmsds, *train_rmsds)
 
         #training plot of mean rmsd across folds
-        training_plot('%s_rmsd_train.pdf' % outprefix, mean_train_rmsds, mean_test_rmsds)
+        training_plot('%s_rmsd_train%s.pdf' % (outprefix, two), mean_train_rmsds, mean_test_rmsds)
 
         all_y_aff = np.array(all_y_aff)
         all_y_predaff = np.array(all_y_predaff)
         yt = np.array(all_y_true, dtype=np.bool)
         rmsdt = sklearn.metrics.mean_squared_error(all_y_aff[yt], all_y_predaff[yt])
         r2t = sklearn.metrics.r2_score(all_y_aff[yt], all_y_predaff[yt])
-        write_results_file('%s.rmsd.finaltest' % outprefix, all_y_aff, all_y_predaff, footer='RMSD,R^2 %f %f\n' % (rmsdt, r2t))
+        write_results_file('%s.rmsd.finaltest%s' % (outprefix, two), all_y_aff, all_y_predaff, footer='RMSD,R^2 %f %f\n' % (rmsdt, r2t))
 
-        plot_correlation('%s_rmsd.pdf' % outprefix, all_y_aff[yt], all_y_predaff[yt], rmsdt, r2t)
+        plot_correlation('%s_rmsd%s.pdf' % (outprefix, two), all_y_aff[yt], all_y_predaff[yt], rmsdt, r2t)
 
 
 def parse_args(argv=None):
@@ -144,6 +149,7 @@ def parse_args(argv=None):
     parser.add_argument('-o','--outprefix',type=str,required=True,help="Prefix for input and output files (--outprefix from train.py)")
     parser.add_argument('-n','--numfolds',type=int,required=False,help="Number of folds to combine, default is 3",default='3')
     parser.add_argument('-a','--affinity',default=False,action='store_true',required=False,help="Whether to look for affinity results files")
+    parser.add_argument('-2','--two_data_sources',default=False,action='store_true',required=False,help="Whether to look for 2nd data source results files")
     parser.add_argument('-t','--test_interval',type=int,default=40,required=False,help="Number of iterations between tests")
     return parser.parse_args(argv)
 
@@ -152,19 +158,15 @@ if __name__ == '__main__':
     args = parse_args()
 
     try:
-        results_files = get_results_files(args.outprefix, args.numfolds, args.affinity)
+        results_files = get_results_files(args.outprefix, args.numfolds, args.affinity, args.two_data_sources)
     except OSError as e:
         print "error: %s" % e
         sys.exit(1)
 
-    test_aucs = []
-    train_aucs = []
-    test_rmsds = []
-    train_rmsds = []
-    all_y_true = []
-    all_y_score = []
-    all_y_aff = []
-    all_y_predaff = []
+    test_aucs, train_aucs, test_rmsds, train_rmsds = [], [], [], []
+    all_y_true, all_y_score, all_y_aff, all_y_predaff = [], [], [], []
+    test2_aucs, train2_aucs, test2_rmsds, train2_rmsds = [], [], [], []
+    all_y_true2, all_y_score2, all_y_aff2, all_y_predaff2 = [], [], [], []
 
     #read results files
     for i in results_files:
@@ -178,10 +180,20 @@ if __name__ == '__main__':
             all_y_aff.extend(y_aff)
             all_y_predaff.extend(y_predaff)
 
-        #test_auc train_auc train_loss lr test_rmsd train_rmsd ...
+        if args.two_data_sources:
+            y_true2, y_score2 = read_results_file(results_files[i]['auc_finaltest2'])
+            all_y_true2.extend(y_true2)
+            all_y_score2.extend(y_score2)
+
+            if args.affinity:
+                y_aff2, y_predaff2 = read_results_file(results_files[i]['rmsd_finaltest2'])
+                all_y_aff2.extend(y_aff2)
+                all_y_predaff2.extend(y_predaff2)
+
+        #test_auc train_auc train_loss lr [test_rmsd train_rmsd] [test2_auc train2_auc [test2_rmsd train2_rmsd]]
         out_columns = read_results_file(results_files[i]['out'])
 
-        test_auc, train_auc = out_columns[:2]
+        test_auc, train_auc = out_columns[0:2]
         test_aucs.append(test_auc)
         train_aucs.append(train_auc)
 
@@ -190,6 +202,21 @@ if __name__ == '__main__':
             test_rmsds.append(test_rmsd)
             train_rmsds.append(train_rmsd)
 
+            if args.two_data_sources:
+                test2_auc, train2_auc, test2_rmsd, train2_rmsd = out_columns[6:10]
+                test2_aucs.append(test2_auc)
+                train2_aucs.append(train2_auc)
+                test2_rmsds.append(test2_rmsd)
+                train2_rmsds.append(train2_rmsd)
+
+        elif args.two_data_sources:
+            test2_auc, train2_auc = out_columns[4:6]
+            test2_aucs.append(test2_auc)
+            train2_aucs.append(train2_auc)
+
     combine_fold_results(args.outprefix, args.test_interval, test_aucs, train_aucs, all_y_true, all_y_score,
                          test_rmsds, train_rmsds, all_y_aff, all_y_predaff)
+    if args.two_data_sources:
+        combine_fold_results(args.outprefix, args.test_interval, test2_aucs, train2_aucs, all_y_true2, all_y_score2,
+                             test2_rmsds, train2_rmsds, all_y_aff2, all_y_predaff2, True)
 
