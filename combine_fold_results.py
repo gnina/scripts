@@ -190,7 +190,7 @@ if __name__ == '__main__':
                 all_y_aff2.extend(y_aff2)
                 all_y_predaff2.extend(y_predaff2)
 
-        #test_auc train_auc train_loss lr [test_rmsd train_rmsd] [test2_auc train2_auc [test2_rmsd train2_rmsd]]
+        #test_auc train_auc train_loss lr [test_rmsd train_rmsd] [test2_auc train2_auc train2_loss [test2_rmsd train2_rmsd]]
         out_columns = read_results_file(results_files[i]['out'])
 
         test_auc, train_auc = out_columns[0:2]
@@ -203,7 +203,8 @@ if __name__ == '__main__':
             train_rmsds.append(train_rmsd)
 
             if args.two_data_sources:
-                test2_auc, train2_auc, test2_rmsd, train2_rmsd = out_columns[6:10]
+                test2_auc, train2_auc = out_columns[6:8]
+                test2_rmsd, train2_rmsd = out_columns[9:11]
                 test2_aucs.append(test2_auc)
                 train2_aucs.append(train2_auc)
                 test2_rmsds.append(test2_rmsd)
