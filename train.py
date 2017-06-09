@@ -160,8 +160,11 @@ def train_and_test_model(args, files, outname):
     template = args.model
     test_interval = args.test_interval
     iterations = args.iterations
+    training = not args.test_only
 
-    if test_interval > iterations: #need to test once
+    if args.test_only:
+        test_interval = iterations = 1
+    elif test_interval > iterations: #need to test once
         test_interval = iterations
 
     if args.avg_rotations:
@@ -214,24 +217,27 @@ def train_and_test_model(args, files, outname):
     caffe.set_mode_gpu()
     solver = caffe.get_solver(solverf)
     if args.cont:
+        modelname = '%s_iter_%d.caffemodel' % (outname, args.cont)
+        solvername = '%s_iter_%d.solverstate' % (outname, args.cont)
+        check_file_exists(solvername)
         solver.restore(solvername)
         solver.testall() #link testnets to train net
     if args.weights:
-        solver.net.copy_from(args.weights)
+        check_file_exists(args.weights)
+        solver.net.copy_from(args.weights) #TODO this doesn't actually set the necessary weights...
 
     test_nets = {}
     for key, test_file in files.items():
         idx = test_files.index(test_file)
         test_nets[key] = solver.test_nets[idx], count_lines(test_file)
 
-    if args.cont:
-        mode = 'a'    
-        modelname = '%s_iter_%d.caffemodel' % (outname, args.cont)
-        solvername = '%s_iter_%d.solverstate' % (outname, args.cont)
-    else:
-        mode = 'w'
-    outfile = '%s.out' % outname
-    out = open(outfile, mode, 0) #unbuffered
+    if training: #outfile is training progress, don't write if we're not training
+        if args.cont: #TODO changes in test_interval not reflected in outfile
+            mode = 'a'
+        else:
+            mode = 'w'
+        outfile = '%s.out' % outname
+        out = open(outfile, mode, 0) #unbuffered
 
     #return evaluation results:
     #  auc, loss, and rmsd from each test
@@ -255,9 +261,10 @@ def train_and_test_model(args, files, outname):
 
         #train
         i_start = start = time.time()
-        solver.step(test_interval)
-        print "Iteration %d" % (args.cont + (i+1)*test_interval)
-        print "Train time: %f" % (time.time()-start)
+        if training:
+            solver.step(test_interval)
+            print "Iteration %d" % (args.cont + (i+1)*test_interval)
+            print "Train time: %f" % (time.time()-start)
 
         #evaluate test set
         start = time.time()
@@ -282,7 +289,7 @@ def train_and_test_model(args, files, outname):
             print "Test RMSD: %f" % test_rmsd
             test_vals['rmsd'].append(test_rmsd)
 
-        if test_auc > best_test_auc:
+        if training and test_auc > best_test_auc:
             best_test_auc = test_auc
             if args.keep_best:
                 solver.snapshot() #a bit too much - gigabytes of data
@@ -341,7 +348,7 @@ def train_and_test_model(args, files, outname):
             best_train_interval = i
 
         #check for improvement
-        if args.dynamic:
+        if training and args.dynamic:
             lr = solver.get_base_lr()
             if (i-best_train_interval) > args.step_when: #reduce learning rate
                 lr *= args.step_reduce
@@ -377,16 +384,17 @@ def train_and_test_model(args, files, outname):
                 print "Train2 RMSD: %f" % train2_rmsd
                 train2_vals['rmsd'].append(train2_rmsd)
 
-        #write out evaluation results
-        out.write('%.4f %.4f %.6f %.6f' % (test_auc, train_auc, train_loss, solver.get_base_lr()))
-        if None not in (test_rmsd, train_rmsd):
-            out.write(' %.4f %.4f' % (test_rmsd, train_rmsd))
-        if args.prefix2:
-            out.write(' %.4f %.4f %.6f' % (test2_auc, train2_auc, train2_loss))
-            if None not in (test2_rmsd, train2_rmsd):
-                out.write(' %.4f %.4f' % (test2_rmsd, train2_rmsd))
-        out.write('\n')
-        out.flush()
+        if training:
+            #write out evaluation results
+            out.write('%.4f %.4f %.6f %.6f' % (test_auc, train_auc, train_loss, solver.get_base_lr()))
+            if None not in (test_rmsd, train_rmsd):
+                out.write(' %.4f %.4f' % (test_rmsd, train_rmsd))
+            if args.prefix2:
+                out.write(' %.4f %.4f %.6f' % (test2_auc, train2_auc, train2_loss))
+                if None not in (test2_rmsd, train2_rmsd):
+                    out.write(' %.4f %.4f' % (test2_rmsd, train2_rmsd))
+            out.write('\n')
+            out.flush()
 
         #track avg time per loop
         i_time = time.time()-i_start
@@ -395,8 +403,9 @@ def train_and_test_model(args, files, outname):
         time_left = i_time_avg * i_left
         print "Loop time: %f (%.2fh left)" % (i_time, time_left/3600.)
 
-    out.close()
-    solver.snapshot()
+    if training:
+        out.close()
+        solver.snapshot()
     del solver #free mem
     
     if not args.keep:
@@ -447,6 +456,7 @@ def parse_args(argv=None):
     parser.add_argument('-p2','--prefix2',type=str,required=False,help="Second prefix for training/test files for combined training: <prefix>[train|test][num].types")
     parser.add_argument('-d2','--data_root2',type=str,required=False,help="Root folder for relative paths in second train/test files for combined training",default='')
     parser.add_argument('--data_ratio',type=float,required=False,help="Ratio to combine training data from 2 sources",default=None)
+    parser.add_argument('--test_only',action='store_true',default=False,help="Don't train, just evaluate test nets once")
     return parser.parse_args(argv)
 
 
@@ -507,10 +517,6 @@ if __name__ == '__main__':
     if outprefix == '':
         outprefix = '%s.%d' % (os.path.splitext(os.path.basename(args.model))[0],os.getpid())
 
-    mode = 'w'
-    if args.cont:
-        mode = 'a'
-    
     test_aucs = []
     train_aucs = []
     test_rmsds = []
@@ -527,13 +533,29 @@ if __name__ == '__main__':
 
         results = train_and_test_model(args, train_test_files[i], outname)
 
-        if i == 'all': #only want crossval results
-            continue
-
         if args.prefix2:
             test_vals, train_vals, test2_vals, train2_vals = results
         else:
             test_vals, train_vals = results
+
+        #write out the final test results
+        y_true, y_score, auc = test_vals['y_true'], test_vals['y_score'], test_vals['auc'][-1]
+        write_results_file('%s.auc.finaltest' % outname, y_true, y_score, footer='AUC %f\n' % auc)
+
+        if test_vals['rmsd']:
+            y_aff, y_predaff, rmsd = test_vals['y_aff'], test_vals['y_predaff'], test_vals['rmsd'][-1]
+            write_results_file('%s.rmsd.finaltest' % outname, y_aff, y_predaff, footer='RMSD %f\n' % rmsd)
+
+        if args.prefix2:
+            y_true, y_score, auc = test2_vals['y_true'], test2_vals['y_score'], test2_vals['auc'][-1]
+            write_results_file('%s.auc2.finaltest' % outname, y_true, y_score, footer='AUC %f\n' % auc)
+
+            if test_vals['rmsd']:
+                y_aff, y_predaff, rmsd = test2_vals['y_aff'], test2_vals['y_predaff'], test2_vals['rmsd'][-1]
+                write_results_file('%s.rmsd2.finaltest' % outname, y_aff, y_predaff, footer='RMSD %f\n' % rmsd)
+
+        if i == 'all': #only aggregate crossval results (from different folds)
+            continue
 
         all_y_true.extend(test_vals['y_true'])
         all_y_score.extend(test_vals['y_score'])
@@ -546,26 +568,8 @@ if __name__ == '__main__':
             test_rmsds.append(test_vals['rmsd'])
             train_rmsds.append(train_vals['rmsd'])
 
-        if np.mean(train_aucs) > 0:
-            y_true, y_score, auc = test_vals['y_true'], test_vals['y_score'], test_vals['auc'][-1]
-            write_results_file('%s.auc.finaltest' % outname, y_true, y_score, footer='AUC %f\n' % auc, mode=mode)
-
-        if test_rmsds:
-            y_aff, y_predaff, rmsd = test_vals['y_aff'], test_vals['y_predaff'], test_vals['rmsd'][-1]
-            write_results_file('%s.rmsd.finaltest' % outname, y_aff, y_predaff, footer='RMSD %f\n' % rmsd, mode=mode)
-
-        if args.prefix2:
-            y_true, y_score, auc = test2_vals['y_true'], test2_vals['y_score'], test2_vals['auc'][-1]
-            write_results_file('%s.auc2.finaltest' % outname, y_true, y_score, footer='AUC %f\n' % auc, mode=mode)
-
-            if test_rmsds:
-                y_aff, y_predaff, rmsd = test2_vals['y_aff'], test2_vals['y_predaff'], test2_vals['rmsd'][-1]
-                write_results_file('%s.rmsd2.finaltest' % outname, y_aff, y_predaff, footer='RMSD %f\n' % rmsd, mode=mode)
-
-    #skip post processing if it's not a full crossvalidation
-    if len(args.foldnums) <= 1:
-        sys.exit(0)
-
-    combine_fold_results(outprefix, args.test_interval, test_aucs, train_aucs, all_y_true, all_y_score,
-                         test_rmsds, train_rmsds, all_y_aff, all_y_predaff)
+    #only combine fold results if we have multiple folds
+    if len(test_aucs) > 1:
+        combine_fold_results(outprefix, args.test_interval, test_aucs, train_aucs, all_y_true, all_y_score,
+                             test_rmsds, train_rmsds, all_y_aff, all_y_predaff)
 
