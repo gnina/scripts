@@ -9,6 +9,7 @@ import sklearn.metrics
 
 
 def read_results_file(file):
+    '''Read columns of float data from a file, ignoring # comments'''
     rows = []
     with open(file, 'r') as f:
         for line in f:
@@ -19,9 +20,9 @@ def read_results_file(file):
 
 
 def write_results_file(file, *columns, **kwargs):
-    mode = kwargs.get('mode', 'w')
+    '''Write columns of data to a file, with optional footer comment'''
     footer = kwargs.get('footer', '')
-    with open(file, mode) as f:
+    with open(file, 'w') as f:
         for row in zip(*columns):
             f.write(' '.join(map(str, row)) + '\n')
         if footer:
@@ -96,6 +97,17 @@ def get_results_files(prefix, numfolds, affinity, two_data_sources):
 
 def combine_fold_results(outprefix, test_interval, test_aucs, train_aucs, all_y_true, all_y_score,
                          test_rmsds, train_rmsds, all_y_aff, all_y_predaff, is_data2=False):
+    '''Make results files and graphs combined from results for
+    separate crossvalidation folds. test_aucs and train_aucs are
+    lists of lists of AUCs for each fold, for each test_interval.
+    all_y_true and all_y_score are labels and final test predictions
+    for each fold, in a single list. test_rmsds and train_rmsds
+    are lists of lists of RMSDs for each fold, for each test_interval.
+    all_y_aff and all_y_predaff are actual and predicted affinities
+    for each fold, in a single list. is_data2 is a flag that adjusts
+    the output file names to reflect whether the results are for the
+    second data source of a combined data model. If test_rmsds is not
+    truthy, the rmsd and affinity args are ignored.'''
     two = '2' if is_data2 else ''
 
     #average, min, max test AUC for last 1000 iterations
