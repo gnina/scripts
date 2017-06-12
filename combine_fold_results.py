@@ -77,9 +77,18 @@ def check_file_exists(file):
         raise OSError('%s does not exist' % file)
 
 
-def get_results_files(prefix, numfolds, affinity, two_data_sources):
+def get_results_files(prefix, foldnums, affinity, two_data_sources):
     files = {}
-    for i in range(numfolds):
+    if foldnums is None:
+        foldnums = set()
+        pattern = r'%s\.(\d+)\.(out|(auc|rmsd)\.finaltest2?)$' % prefix
+        for file in glob.glob(prefix + '*'):
+            match = re.match(pattern, file)
+            if match:
+                foldnums.add(int(match.group(1)))
+    elif isinstance(foldnums, str):
+        foldnums = [int(i) for i in foldnums.split(',') if i]
+    for i in foldnums:
         files[i] = {}
         files[i]['out'] = '%s.%d.out' % (prefix, i)
         files[i]['auc_finaltest'] = '%s.%d.auc.finaltest' % (prefix, i)
@@ -159,7 +168,7 @@ def combine_fold_results(outprefix, test_interval, test_aucs, train_aucs, all_y_
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description='Combine training results from different folds and make graphs')
     parser.add_argument('-o','--outprefix',type=str,required=True,help="Prefix for input and output files (--outprefix from train.py)")
-    parser.add_argument('-n','--numfolds',type=int,required=False,help="Number of folds to combine, default is 3",default='3')
+    parser.add_argument('-n','--foldnums',type=str,required=False,help="Fold numbers to combine, default is to determine using glob",default=None)
     parser.add_argument('-a','--affinity',default=False,action='store_true',required=False,help="Whether to look for affinity results files")
     parser.add_argument('-2','--two_data_sources',default=False,action='store_true',required=False,help="Whether to look for 2nd data source results files")
     parser.add_argument('-t','--test_interval',type=int,default=40,required=False,help="Number of iterations between tests")
@@ -170,10 +179,18 @@ if __name__ == '__main__':
     args = parse_args()
 
     try:
-        results_files = get_results_files(args.outprefix, args.numfolds, args.affinity, args.two_data_sources)
+        results_files = get_results_files(args.outprefix, args.foldnums, args.affinity, args.two_data_sources)
     except OSError as e:
         print "error: %s" % e
         sys.exit(1)
+
+    if len(results_files) == 0:
+        print "error: missing results files"
+        sys.exit(1)
+
+    for i in results_files:
+        for key in sorted(results_files[i], key=len):
+            print str(i).rjust(3), key.rjust(14), results_files[i][key]
 
     test_aucs, train_aucs, test_rmsds, train_rmsds = [], [], [], []
     all_y_true, all_y_score, all_y_aff, all_y_predaff = [], [], [], []

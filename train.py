@@ -419,16 +419,12 @@ def train_and_test_model(args, files, outname):
         return test_vals, train_vals
 
 
-def comma_separated_ints(ints):
-     return [int(i) for i in ints.split(',') if i and i != 'None']
-
-
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description='Train neural net on .types data.')
     parser.add_argument('-m','--model',type=str,required=True,help="Model template. Must use TRAINFILE and TESTFILE")
     parser.add_argument('-p','--prefix',type=str,required=True,help="Prefix for training/test files: <prefix>[train|test][num].types")
     parser.add_argument('-d','--data_root',type=str,required=False,help="Root folder for relative paths in train/test files",default='')
-    parser.add_argument('-n','--foldnums',type=comma_separated_ints,required=False,help="Fold numbers to run, default is '0,1,2'",default='0,1,2')
+    parser.add_argument('-n','--foldnums',type=str,required=False,help="Fold numbers to run, default is to determine using glob",default=None)
     parser.add_argument('-a','--allfolds',action='store_true',required=False,help="Train and test file with all data folds, <prefix>.types",default=False)
     parser.add_argument('-i','--iterations',type=int,required=False,help="Number of iterations to run,default 10,000",default=10000)
     parser.add_argument('-s','--seed',type=int,help="Random seed, default 42",default=42)
@@ -467,6 +463,18 @@ def check_file_exists(file):
 
 def get_train_test_files(prefix, foldnums, allfolds, reduced, prefix2):
     files = {}
+    if foldnums is None:
+        foldnums = set()
+        glob_files = glob.glob(prefix + '*')
+        if prefix2:
+            glob_files += glob.glob(prefix2 + '*')
+        pattern = r'(%s|%s)(_reduced)?(train|test)(\d+)\.types$' % (prefix, prefix2)
+        for file in glob_files:
+            match = re.match(pattern, file)
+            if match:
+                foldnums.add(int(match.group(4)))
+    elif isinstance(foldnums, str):
+        foldnums = [int(i) for i in foldnums.split(',') if i]
     for i in foldnums:
         files[i] = {}
         files[i]['train'] = '%strain%d.types' % (prefix, i)
@@ -511,7 +519,8 @@ if __name__ == '__main__':
         sys.exit(1)
 
     for i in train_test_files:
-        print train_test_files[i]
+        for key in sorted(train_test_files[i], key=len):
+            print str(i).rjust(3), key.rjust(14), train_test_files[i][key]
 
     outprefix = args.outprefix
     if outprefix == '':
