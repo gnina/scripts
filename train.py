@@ -11,6 +11,7 @@ import caffe
 from caffe.proto.caffe_pb2 import NetParameter, SolverParameter
 import google.protobuf.text_format as prototxt
 import time
+import psutil
 from combine_fold_results import write_results_file, combine_fold_results
 
 '''Script for training a neural net model from gnina grid data.
@@ -401,7 +402,11 @@ def train_and_test_model(args, files, outname):
         i_time_avg = (i*i_time_avg + i_time)/(i+1)
         i_left = iterations/test_interval - (i+1)
         time_left = i_time_avg * i_left
-        print "Loop time: %f (%.2fh left)" % (i_time, time_left/3600.)
+        time_str = time.strftime('%H:%M:%S', time.gmtime(time_left))
+        print "Loop time: %f (%s left)" % (i_time, time_str)
+
+        mem = psutil.Process(os.getpid()).memory_info().rss
+        print "Memory usage: %.3fgb (%d)" % (mem/1073741824., mem)
 
     if training:
         out.close()
