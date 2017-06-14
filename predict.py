@@ -97,11 +97,11 @@ if __name__ == '__main__':
     #add auc to end of file
     ytrue = []
     yscore = []
-    for line in output:
+    for line in predictions:
         data = line.split(' ')
         ytrue.append(float(data[1]))
         yscore.append(float(data[0]))
     if len(np.unique(ytrue)) > 1:
-	auc = sklearn.metrics.roc_auc_score(ytrue, yscore)
-	out.write("# AUC %.2f\n" % auc)
+        auc = sklearn.metrics.roc_auc_score(ytrue, yscore)
+        out.write("# AUC %.2f\n" % auc)
 
