@@ -87,7 +87,7 @@ def write_solver_file(solver_file, train_model, test_models, type, base_lr, mome
         f.write(str(param))
 
 
-def evaluate_test_net(test_net, n_tests, rotations):
+def evaluate_test_net(test_net, n_tests, n_rotations, offset):
     '''Evaluate a test network and return the results. The number of
     examples in the file the test_net reads from must equal n_tests,
     otherwise output will be misaligned. Can optionally take the average
@@ -95,27 +95,41 @@ def evaluate_test_net(test_net, n_tests, rotations):
     other parameters should be set so that data access is sequential.'''
 
     #evaluate each example with each rotation
-    y_true = []
-    y_scores = [[] for _ in xrange(n_tests)]
-    y_affinity = []
+    y_true     = [-1 for _ in xrange(n_tests)]
+    y_scores   = [[] for _ in xrange(n_tests)]
+    y_affinity = [-1 for _ in xrange(n_tests)]
     y_predaffs = [[] for _ in xrange(n_tests)]
     losses = []
-    for r in xrange(rotations):
-        for x in xrange(n_tests): #TODO handle different batch sizes
-            res = test_net.forward()
+
+    res = None
+    for r in xrange(n_rotations):
+        for x in xrange(n_tests):
+            x = (x + offset) % n_tests
+
+            if not res or i >= batch_size:
+                res = test_net.forward()
+                batch_size = res['output'].shape[0]
+                i = 0
+
             if r == 0:
-                y_true.append(float(res['labelout']))
+                y_true[x] = float(res['labelout'][i])
             else:
-                assert res['labelout'] == y_true[x] #sanity check
-            y_scores[x].append(float(res['output'][0][1])) 
+                assert y_true[x] == res['labelout'][i] #sanity check
+            y_scores[x].append(float(res['output'][i][1]))
+
             if 'affout' in res:
                 if r == 0:
-                    y_affinity.append(float(res['affout']))
+                    y_affinity[x] = float(res['affout'][i])
                 else:
-                    assert res['affout'] == y_affinity[x] #sanity check
-                y_predaffs[x].append(float(res['predaff']))
+                    assert y_affinity[x] == res['affout'][i] #sanity check
+                y_predaffs[x].append(float(res['predaff'][i]))
+
             if 'loss' in res:
                 losses.append(float(res['loss']))
+            i += 1
+
+    #get index of test example that will be at start of next batch
+    offset = (x + 1 + batch_size - i) % n_tests
 
     #average the scores from each rotation
     y_score = []
@@ -145,7 +159,7 @@ def evaluate_test_net(test_net, n_tests, rotations):
     else:
         loss = None
 
-    return auc, y_true, y_score, loss, rmsd, y_affinity, y_predaff
+    return (auc, y_true, y_score, loss, rmsd, y_affinity, y_predaff), offset
 
 
 def count_lines(file):
@@ -211,7 +225,7 @@ def train_and_test_model(args, files, outname):
     solverf = 'solver.%d.prototxt' % pid
     write_solver_file(solverf, test_models[0], test_models, args.solver, args.base_lr, args.momentum, args.weight_decay,
                       args.lr_policy, args.gamma, args.power, args.seed, iterations+args.cont, outname)
-        
+
     #set up solver in caffe
     if args.gpu >= 0:
         caffe.set_device(args.gpu)
@@ -230,7 +244,7 @@ def train_and_test_model(args, files, outname):
     test_nets = {}
     for key, test_file in files.items():
         idx = test_files.index(test_file)
-        test_nets[key] = solver.test_nets[idx], count_lines(test_file)
+        test_nets[key] = solver.test_nets[idx], count_lines(test_file), 0
 
     if training: #outfile is training progress, don't write if we're not training
         if args.cont: #TODO changes in test_interval not reflected in outfile
@@ -270,10 +284,14 @@ def train_and_test_model(args, files, outname):
         #evaluate test set
         start = time.time()
         if args.reduced and not last_test:
-            test_net, n_tests = test_nets['reduced_test']
+            test_net, n_tests, offset = test_nets['reduced_test']
+            result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
+            test_nets['reduced_test'] = test_net, n_tests, offset
         else:
-            test_net, n_tests = test_nets['test']
-        test_auc, y_true, y_score, _, test_rmsd, y_aff, y_predaff = evaluate_test_net(test_net, n_tests, rotations)
+            test_net, n_tests, offset = test_nets['test']
+            result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
+            test_nets['test'] = test_net, n_tests, offset
+        test_auc, y_true, y_score, _, test_rmsd, y_aff, y_predaff = result
         print "Eval test time: %f" % (time.time()-start)
 
         if i > 0 and not (args.reduced and last_test): #check alignment
@@ -299,10 +317,14 @@ def train_and_test_model(args, files, outname):
             #evaluate test set 2
             start = time.time()
             if args.reduced and not last_test:
-                test_net, n_tests = test_nets['reduced_test2']
+                test_net, n_tests, offset = test_nets['reduced_test2']
+                result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
+                test_nets['reduced_test2'] = test_net, n_tests, offset
             else:
-                test_net, n_tests = test_nets['test2']
-            test2_auc, y_true, y_score, _, test2_rmsd, y_aff, y_predaff = evaluate_test_net(test_net, n_tests, rotations)
+                test_net, n_tests, offset = test_nets['test2']
+                result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
+                test_nets['test2'] = test_net, n_tests, offset
+            test2_auc, y_true, y_score, _, test2_rmsd, y_aff, y_predaff = result
             print "Eval test2 time: %f" % (time.time()-start)
 
             if i > 0 and not (args.reduced and last_test): #check alignment
@@ -322,10 +344,14 @@ def train_and_test_model(args, files, outname):
         #evaluate train set
         start = time.time()
         if args.reduced and not last_test:
-            test_net, n_tests = test_nets['reduced_train']
+            test_net, n_tests, offset = test_nets['reduced_train']
+            result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
+            test_nets['reduced_train'] = test_net, n_tests, offset
         else:
-            test_net, n_tests = test_nets['train']
-        train_auc, y_true, y_score, train_loss, train_rmsd, y_aff, y_predaff = evaluate_test_net(test_net, n_tests, rotations)
+            test_net, n_tests, offset = test_nets['train']
+            result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
+            test_nets['train'] = test_net, n_tests, offset
+        train_auc, y_true, y_score, train_loss, train_rmsd, y_aff, y_predaff = result
         print "Eval train time: %f" % (time.time()-start)
 
         if i > 0 and not (args.reduced and last_test): #check alignment
@@ -357,16 +383,20 @@ def train_and_test_model(args, files, outname):
                 best_train_interval = i #reset 
                 best_train_auc = train_auc #the value too, so we can consider the recovery
             if lr < args.step_end:
-                break #end early  
+                break #end early
 
         if args.prefix2:
             #evaluate train set
             start = time.time()
             if args.reduced and not last_test:
-                test_net, n_tests = test_nets['reduced_train2']
+                test_net, n_tests, offset = test_nets['reduced_train2']
+                result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
+                test_nets['reduced_train2'] = test_net, n_tests, offset
             else:
-                test_net, n_tests = test_nets['train2']
-            train2_auc, y_true, y_score, train2_loss, train2_rmsd, y_aff, y_predaff = evaluate_test_net(test_net, n_tests, rotations)
+                test_net, n_tests, offset = test_nets['train2']
+                result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
+                test_nets['train2'] = test_net, n_tests, offset
+            train2_auc, y_true, y_score, train2_loss, train2_rmsd, y_aff, y_predaff = result
             print "Eval train2 time: %f" % (time.time()-start)
 
             if i > 0 and not (args.reduced and last_test): #check alignment
@@ -412,7 +442,7 @@ def train_and_test_model(args, files, outname):
         out.close()
         solver.snapshot()
     del solver #free mem
-    
+
     if not args.keep:
         os.remove(solverf)
         for test_model in test_models:
