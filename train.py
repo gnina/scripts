@@ -100,6 +100,7 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
     y_affinity = [-1 for _ in xrange(n_tests)]
     y_predaffs = [[] for _ in xrange(n_tests)]
     losses = []
+    has_aff = False
 
     res = None
     for r in xrange(n_rotations):
@@ -118,6 +119,7 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
             y_scores[x].append(float(res['output'][i][1]))
 
             if 'affout' in res:
+                has_aff = True
                 if r == 0:
                     y_affinity[x] = float(res['affout'][i])
                 else:
@@ -136,7 +138,7 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
     y_predaff = []
     for x in xrange(n_tests):
         y_score.append(np.mean(y_scores[x]))
-    if y_affinity:
+    if has_aff:
         for x in range(n_tests):
             y_predaff.append(np.mean(y_predaffs[x]))
 
@@ -145,7 +147,7 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
     auc = sklearn.metrics.roc_auc_score(y_true, y_score)
 
     #compute mean squared error (rmsd) of affinity (for actives only)
-    if y_affinity:
+    if has_aff:
         y_predaff = np.array(y_predaff)
         y_affinity = np.array(y_affinity)
         yt = np.array(y_true, np.bool)
@@ -190,29 +192,38 @@ def train_and_test_model(args, files, outname):
     pid = os.getpid()
 
     #write model prototxts (for each file to test)
-    test_model = 'traintest.%d.prototxt' % pid
-    train_model = 'traintrain.%d.prototxt' % pid
-    test_models = [test_model, train_model]
-    test_files = [files['test'], files['train']]
-    test_roots = [args.data_root, args.data_root] #which data_root to use
+    test_on_train = files['test'] == files['train']
+    test_models = ['traintest.%d.prototxt' % pid]
+    test_files = [files['test']]
+    test_roots = [args.data_root] #which data_root to use
     if args.reduced:
-        reduced_test_model = 'trainreducedtest.%d.prototxt' % pid
-        reduced_train_model = 'trainreducedtrain.%d.prototxt' % pid
-        test_models += [reduced_test_model, reduced_train_model]
-        test_files += [files['reduced_test'], files['reduced_train']]
-        test_roots += [args.data_root, args.data_root]
+        test_models += ['trainreducedtest.%d.prototxt' % pid]
+        test_files += [files['reduced_test']]
+        test_roots += [args.data_root]
     if args.prefix2:
-        test2_model = 'traintest2.%d.prototxt' % pid
-        train2_model = 'traintrain2.%d.prototxt' % pid
-        test_models += [test2_model, train2_model]
-        test_files += [files['test2'], files['train2']]
-        test_roots += [args.data_root2, args.data_root2]
+        test_models += ['traintest2.%d.prototxt' % pid]
+        test_files += [files['test2']]
+        test_roots += [args.data_root2]
         if args.reduced:
-            reduced_test2_model = 'trainreducedtest2.%d.prototxt' % pid
-            reduced_train2_model = 'trainreducedtrain2.%d.prototxt' % pid
-            test_models += [reduced_test2_model, reduced_train2_model]
-            test_files += [files['reduced_test2'], files['reduced_train2']]
-            test_roots += [args.data_root2, args.data_root2]
+            test_models += ['trainreducedtest2.%d.prototxt' % pid]
+            test_files += [files['reduced_test2']]
+            test_roots += [args.data_root2]
+    if not test_on_train:
+        test_models += ['traintrain.%d.prototxt' % pid]
+        test_files += [files['train']]
+        test_roots += [args.data_root]
+        if args.reduced:
+            test_models += ['trainreducedtrain.%d.prototxt' % pid]
+            test_files += [files['reduced_train']]
+            test_roots += [args.data_root]
+        if args.prefix2:
+            test_models += ['traintrain2.%d.prototxt' % pid]
+            test_files += [files['train2']]
+            test_roots += [args.data_root2]
+            if args.reduced:
+                test_models += ['trainreducedtrain2.%d.prototxt' % pid]
+                test_files += [files['reduced_train2']]
+                test_roots += [args.data_root2]
 
     for test_model, test_file, test_root in zip(test_models, test_files, test_roots):
         if args.prefix2:
@@ -274,89 +285,83 @@ def train_and_test_model(args, files, outname):
     for i in xrange(iterations/test_interval):
         last_test = i == iterations/test_interval-1
 
-        #train
         i_start = start = time.time()
         if training:
+            #train
             solver.step(test_interval)
             print "Iteration %d" % (args.cont + (i+1)*test_interval)
             print "Train time: %f" % (time.time()-start)
 
-        #evaluate test set
-        start = time.time()
-        if args.reduced and not last_test:
-            test_net, n_tests, offset = test_nets['reduced_test']
-            result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
-            test_nets['reduced_test'] = test_net, n_tests, offset
-        else:
-            test_net, n_tests, offset = test_nets['test']
-            result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
-            test_nets['test'] = test_net, n_tests, offset
-        test_auc, y_true, y_score, _, test_rmsd, y_aff, y_predaff = result
-        print "Eval test time: %f" % (time.time()-start)
-
-        if i > 0 and not (args.reduced and last_test): #check alignment
-            assert np.all(y_true == test_vals['y_true'])
-            assert np.all(y_aff == test_vals['y_aff'])
-
-        test_vals['y_true'] = y_true
-        test_vals['y_aff'] = y_aff
-        test_vals['y_score'] = y_score
-        test_vals['y_predaff'] = y_predaff
-        print "Test AUC: %f" % test_auc
-        test_vals['auc'].append(test_auc)
-        if test_rmsd:
-            print "Test RMSD: %f" % test_rmsd
-            test_vals['rmsd'].append(test_rmsd)
-
-        if training and test_auc > best_test_auc:
-            best_test_auc = test_auc
-            if args.keep_best:
-                solver.snapshot() #a bit too much - gigabytes of data
-
-        if args.prefix2:
-            #evaluate test set 2
+        if not test_on_train:
+            #evaluate test set
             start = time.time()
             if args.reduced and not last_test:
-                test_net, n_tests, offset = test_nets['reduced_test2']
-                result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
-                test_nets['reduced_test2'] = test_net, n_tests, offset
+                key = 'reduced_test'
             else:
-                test_net, n_tests, offset = test_nets['test2']
-                result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
-                test_nets['test2'] = test_net, n_tests, offset
-            test2_auc, y_true, y_score, _, test2_rmsd, y_aff, y_predaff = result
-            print "Eval test2 time: %f" % (time.time()-start)
+                key = 'test'
+            test_net, n_tests, offset = test_nets[key]
+            result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
+            test_nets[key] = test_net, n_tests, offset
+            test_auc, y_true, y_score, _, test_rmsd, y_aff, y_predaff = result
+            print "Eval test time: %f" % (time.time()-start)
 
             if i > 0 and not (args.reduced and last_test): #check alignment
-                assert np.all(y_true == test2_vals['y_true'])
-                assert np.all(y_aff == test2_vals['y_aff'])
+                assert np.all(y_true == test_vals['y_true'])
+                assert np.all(y_aff == test_vals['y_aff'])
 
-            test2_vals['y_true'] = y_true
-            test2_vals['y_aff'] = y_aff
-            test2_vals['y_score'] = y_score
-            test2_vals['y_predaff'] = y_predaff
-            print "Test2 AUC: %f" % test2_auc
-            test2_vals['auc'].append(test2_auc)
-            if test2_rmsd:
-                print "Test2 RMSD: %f" % test2_rmsd
-                test2_vals['rmsd'].append(test2_rmsd)
+            test_vals['y_true'] = y_true
+            test_vals['y_aff'] = y_aff
+            test_vals['y_score'] = y_score
+            test_vals['y_predaff'] = y_predaff
+            print "Test AUC: %f" % test_auc
+            test_vals['auc'].append(test_auc)
+            if test_rmsd:
+                print "Test RMSD: %f" % test_rmsd
+                test_vals['rmsd'].append(test_rmsd)
+
+            if args.prefix2:
+                #evaluate test set 2
+                start = time.time()
+                if args.reduced and not last_test:
+                    key = 'reduced_test2'
+                else:
+                    key = 'test2'
+                test_net, n_tests, offset = test_nets[key]
+                result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
+                test_nets[key] = test_net, n_tests, offset
+                test2_auc, y_true, y_score, _, test2_rmsd, y_aff, y_predaff = result
+                print "Eval test2 time: %f" % (time.time()-start)
+
+                if i > 0 and not (args.reduced and last_test): #check alignment
+                    assert np.all(y_true == test2_vals['y_true'])
+                    assert np.all(y_aff == test2_vals['y_aff'])
+
+                test2_vals['y_true'] = y_true
+                test2_vals['y_aff'] = y_aff
+                test2_vals['y_score'] = y_score
+                test2_vals['y_predaff'] = y_predaff
+                print "Test2 AUC: %f" % test2_auc
+                test2_vals['auc'].append(test2_auc)
+                if test2_rmsd:
+                    print "Test2 RMSD: %f" % test2_rmsd
+                    test2_vals['rmsd'].append(test2_rmsd)
 
         #evaluate train set
         start = time.time()
         if args.reduced and not last_test:
-            test_net, n_tests, offset = test_nets['reduced_train']
-            result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
-            test_nets['reduced_train'] = test_net, n_tests, offset
+            key = 'reduced_train'
         else:
-            test_net, n_tests, offset = test_nets['train']
-            result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
-            test_nets['train'] = test_net, n_tests, offset
+            key = 'train'
+        test_net, n_tests, offset = test_nets[key]
+        result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
+        test_nets[key] = test_net, n_tests, offset
         train_auc, y_true, y_score, train_loss, train_rmsd, y_aff, y_predaff = result
         print "Eval train time: %f" % (time.time()-start)
 
         if i > 0 and not (args.reduced and last_test): #check alignment
             assert np.all(y_true == train_vals['y_true'])
             assert np.all(y_aff == train_vals['y_aff'])
+            print '\n'.join('%d %d' % t for t in zip(train_vals['y_aff'], y_aff))
 
         train_vals['y_true'] = y_true
         train_vals['y_aff'] = y_aff
@@ -370,32 +375,16 @@ def train_and_test_model(args, files, outname):
             print "Train RMSD: %f" % train_rmsd
             train_vals['rmsd'].append(train_rmsd)
 
-        if train_auc > best_train_auc:
-            best_train_auc = train_auc
-            best_train_interval = i
-
-        #check for improvement
-        if training and args.dynamic:
-            lr = solver.get_base_lr()
-            if (i-best_train_interval) > args.step_when: #reduce learning rate
-                lr *= args.step_reduce
-                solver.set_base_lr(lr)
-                best_train_interval = i #reset 
-                best_train_auc = train_auc #the value too, so we can consider the recovery
-            if lr < args.step_end:
-                break #end early
-
         if args.prefix2:
             #evaluate train set
             start = time.time()
             if args.reduced and not last_test:
-                test_net, n_tests, offset = test_nets['reduced_train2']
-                result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
-                test_nets['reduced_train2'] = test_net, n_tests, offset
+                key = 'reduced_train2'
             else:
-                test_net, n_tests, offset = test_nets['train2']
-                result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
-                test_nets['train2'] = test_net, n_tests, offset
+                key = 'train2'
+            test_net, n_tests, offset = test_nets[key]
+            result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
+            test_nets[key] = test_net, n_tests, offset
             train2_auc, y_true, y_score, train2_loss, train2_rmsd, y_aff, y_predaff = result
             print "Eval train2 time: %f" % (time.time()-start)
 
@@ -416,6 +405,27 @@ def train_and_test_model(args, files, outname):
                 train2_vals['rmsd'].append(train2_rmsd)
 
         if training:
+            #check for improvement
+            if test_on_train:
+                test_auc = train_auc
+                test_rmsd = train_rmsd
+            if test_auc > best_test_auc:
+                best_test_auc = test_auc
+                if args.keep_best:
+                    solver.snapshot() #a bit too much - gigabytes of data
+            if train_auc > best_train_auc:
+                best_train_auc = train_auc
+                best_train_interval = i
+            if args.dynamic:
+                lr = solver.get_base_lr()
+                if (i-best_train_interval) > args.step_when: #reduce learning rate
+                    lr *= args.step_reduce
+                    solver.set_base_lr(lr)
+                    best_train_interval = i #reset
+                    best_train_auc = train_auc #the value too, so we can consider the recovery
+                if lr < args.step_end:
+                    break #end early
+
             #write out evaluation results
             out.write('%.4f %.4f %.6f %.6f' % (test_auc, train_auc, train_loss, solver.get_base_lr()))
             if None not in (test_rmsd, train_rmsd):
@@ -442,6 +452,11 @@ def train_and_test_model(args, files, outname):
         out.close()
         solver.snapshot()
     del solver #free mem
+
+    if test_on_train:
+        test_vals = train_vals
+        if args.prefix2:
+            test2_vals = train2_vals
 
     if not args.keep:
         os.remove(solverf)
