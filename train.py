@@ -361,7 +361,6 @@ def train_and_test_model(args, files, outname):
         if i > 0 and not (args.reduced and last_test): #check alignment
             assert np.all(y_true == train_vals['y_true'])
             assert np.all(y_aff == train_vals['y_aff'])
-            print '\n'.join('%d %d' % t for t in zip(train_vals['y_aff'], y_aff))
 
         train_vals['y_true'] = y_true
         train_vals['y_aff'] = y_aff
