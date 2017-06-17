@@ -214,7 +214,7 @@ def checkFolds(dists, target_names, threshold, foldmap):
 
 def readPDBfiles(pdbfiles):
     pdb_parser = PDBParser(PERMISSIVE=1, QUIET=1)
-    with open(args.pdbfiles, 'r') as file:
+    with open(pdbfiles, 'r') as file:
         pdblines = file.readlines()
     pool = Pool()
     function = partial(loadTarget, pdb_parser)
