@@ -5,7 +5,7 @@ from Bio.PDB.PDBParser import PDBParser
 from Bio.PDB.Polypeptide import three_to_one
 from Bio.PDB.Polypeptide import is_aa
 from Bio import pairwise2
-from multiprocessing import Pool
+from multiprocessing import Pool, cpu_count
 from functools import partial
 import scipy.cluster.hierarchy
 import numpy as np
@@ -212,11 +212,11 @@ def checkFolds(dists, target_names, threshold, foldmap):
     return ok
 
 
-def readPDBfiles(pdbfiles):
+def readPDBfiles(pdbfiles,ncpus=cpu_count()):
     pdb_parser = PDBParser(PERMISSIVE=1, QUIET=1)
     with open(pdbfiles, 'r') as file:
         pdblines = file.readlines()
-    pool = Pool()
+    pool = Pool(ncpus)
     function = partial(loadTarget, pdb_parser)
     target_tups = pool.map(function, pdblines)
     target_names, targets = [], []
