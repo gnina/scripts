@@ -16,7 +16,7 @@ if __name__ == '__main__':
     
     target_names = []
     targets = []
-    for line in open(args.pdbseq):
+    for line in open(args.pdbseqs):
         toks = line.rstrip().split()
         target_names.append(toks[0])
         targets.append(toks[1:])
