@@ -21,11 +21,11 @@ def predict(args):
     net = caffe.Net(testfile, args.weights, caffe.TEST)
     output = []
     for line in open(args.input):
-	out = net.forward()
-	if 'output' in out:
-	    predict = out['output'][0][1]
-	elif 'predaff' in out:
-	    predict = out['predaff']
+        out = net.forward()
+        if 'predaff' in out:
+            predict = out['predaff']        
+        elif 'output' in out:
+            predict = out['output'][0][1]
         elif 'rankoutput' in out:
             predict = out['rankoutput']
         output.append('%f %s' % (predict, line))
@@ -97,11 +97,11 @@ if __name__ == '__main__':
     #add auc to end of file
     ytrue = []
     yscore = []
-    for line in output:
+    for line in predictions:
         data = line.split(' ')
         ytrue.append(float(data[1]))
         yscore.append(float(data[0]))
-    if len(np.unique(ytrue)) > 1:
-	auc = sklearn.metrics.roc_auc_score(ytrue, yscore)
-	out.write("# AUC %.2f\n" % auc)
+    if len(np.unique(ytrue)) == 2:
+        auc = sklearn.metrics.roc_auc_score(ytrue, yscore)
+        out.write("# AUC %.2f\n" % auc)
 
