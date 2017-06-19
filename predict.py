@@ -45,6 +45,10 @@ def predict(args):
     output_lines = ['%f %s' % t for t in zip(predict, lines)]
     if args.max_score:
         output_lines = maxLigandScore(output_lines)
+    if args.affinity:
+        output_lines.append("# RMSD %.5f\n" % rmsd)
+    else:
+        output_lines.append("# AUC %.5f\n" % auc)
     if not args.keep:
         os.remove(test_model)
     return output_lines
@@ -115,29 +119,4 @@ if __name__ == '__main__':
         if args.max_score:
             predictions = maxLigandScore(predictions)
     out.writelines(predictions)
-    if args.affinity:
-        y_predaff = []
-        y_true = []
-        y_affinity = []
-        for line in predictions:
-            data = line.split(' ')
-            y_predaff.append(float(data[0]))
-            y_true.append(float(data[1]))
-            y_affinity.append(float(data[2]))
-        if len(np.unique(y_true)) > 1:
-            y_predaff = np.array(y_predaff)
-            y_affinity = np.array(y_affinity)
-            yt = np.array(y_true, np.bool)
-            rmsd = sklearn.metrics.mean_squared_error(y_affinity[yt], y_predaff[yt])
-            out.write("# RMSD %.5f\n" % rmsd)
-    else:
-        y_score = []
-        y_true = []
-        for line in predictions:
-            data = line.split(' ')
-            y_score.append(float(data[0]))
-            y_true.append(float(data[1]))
-        if len(np.unique(y_true)) > 1:
-            auc = sklearn.metrics.roc_auc_score(y_true, y_score)
-            out.write("# AUC %.5f\n" % auc)
 
