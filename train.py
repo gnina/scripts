@@ -11,6 +11,7 @@ import caffe
 from caffe.proto.caffe_pb2 import NetParameter, SolverParameter
 import google.protobuf.text_format as prototxt
 import time
+import psutil
 from combine_fold_results import write_results_file, combine_fold_results
 
 '''Script for training a neural net model from gnina grid data.
@@ -86,42 +87,59 @@ def write_solver_file(solver_file, train_model, test_models, type, base_lr, mome
         f.write(str(param))
 
 
-def evaluate_test_net(test_net, n_tests, rotations):
+def evaluate_test_net(test_net, n_tests, n_rotations, offset):
     '''Evaluate a test network and return the results. The number of
     examples in the file the test_net reads from must equal n_tests,
     otherwise output will be misaligned. Can optionally take the average
-    of multiple rotations of each example. Batch size should be 1 and
-    other parameters should be set so that data access is sequential.'''
+    of multiple rotations of each example. Offset is the index into
+    the test file that will be the first example in the next batch.
+    Net parameters should be set so that data access is sequential.'''
 
     #evaluate each example with each rotation
-    y_true = []
-    y_scores = [[] for _ in xrange(n_tests)]
-    y_affinity = []
+    y_true     = [-1 for _ in xrange(n_tests)]
+    y_scores   = [[] for _ in xrange(n_tests)]
+    y_affinity = [-1 for _ in xrange(n_tests)]
     y_predaffs = [[] for _ in xrange(n_tests)]
     losses = []
-    for r in xrange(rotations):
-        for x in xrange(n_tests): #TODO handle different batch sizes
-            res = test_net.forward()
+    has_aff = False
+
+    res = None
+    for r in xrange(n_rotations):
+        for x in xrange(n_tests):
+            x = (x + offset) % n_tests
+
+            if not res or i >= batch_size:
+                res = test_net.forward()
+                batch_size = res['output'].shape[0]
+                i = 0
+
             if r == 0:
-                y_true.append(float(res['labelout']))
+                y_true[x] = float(res['labelout'][i])
             else:
-                assert res['labelout'] == y_true[x] #sanity check
-            y_scores[x].append(float(res['output'][0][1])) 
+                assert y_true[x] == res['labelout'][i] #sanity check
+            y_scores[x].append(float(res['output'][i][1]))
+
             if 'affout' in res:
+                has_aff = True
                 if r == 0:
-                    y_affinity.append(float(res['affout']))
+                    y_affinity[x] = float(res['affout'][i])
                 else:
-                    assert res['affout'] == y_affinity[x] #sanity check
-                y_predaffs[x].append(float(res['predaff']))
+                    assert y_affinity[x] == res['affout'][i] #sanity check
+                y_predaffs[x].append(float(res['predaff'][i]))
+
             if 'loss' in res:
                 losses.append(float(res['loss']))
+            i += 1
+
+    #get index of test example that will be at start of next batch
+    offset = (x + 1 + batch_size - i) % n_tests
 
     #average the scores from each rotation
     y_score = []
     y_predaff = []
     for x in xrange(n_tests):
         y_score.append(np.mean(y_scores[x]))
-    if y_affinity:
+    if has_aff:
         for x in range(n_tests):
             y_predaff.append(np.mean(y_predaffs[x]))
 
@@ -130,7 +148,7 @@ def evaluate_test_net(test_net, n_tests, rotations):
     auc = sklearn.metrics.roc_auc_score(y_true, y_score)
 
     #compute mean squared error (rmsd) of affinity (for actives only)
-    if y_affinity:
+    if has_aff:
         y_predaff = np.array(y_predaff)
         y_affinity = np.array(y_affinity)
         yt = np.array(y_true, np.bool)
@@ -144,7 +162,7 @@ def evaluate_test_net(test_net, n_tests, rotations):
     else:
         loss = None
 
-    return auc, y_true, y_score, loss, rmsd, y_affinity, y_predaff
+    return (auc, y_true, y_score, loss, rmsd, y_affinity, y_predaff), offset
 
 
 def count_lines(file):
@@ -175,29 +193,38 @@ def train_and_test_model(args, files, outname):
     pid = os.getpid()
 
     #write model prototxts (for each file to test)
-    test_model = 'traintest.%d.prototxt' % pid
-    train_model = 'traintrain.%d.prototxt' % pid
-    test_models = [test_model, train_model]
-    test_files = [files['test'], files['train']]
-    test_roots = [args.data_root, args.data_root] #which data_root to use
+    test_on_train = files['test'] == files['train']
+    test_models = ['traintest.%d.prototxt' % pid]
+    test_files = [files['test']]
+    test_roots = [args.data_root] #which data_root to use
     if args.reduced:
-        reduced_test_model = 'trainreducedtest.%d.prototxt' % pid
-        reduced_train_model = 'trainreducedtrain.%d.prototxt' % pid
-        test_models += [reduced_test_model, reduced_train_model]
-        test_files += [files['reduced_test'], files['reduced_train']]
-        test_roots += [args.data_root, args.data_root]
+        test_models += ['trainreducedtest.%d.prototxt' % pid]
+        test_files += [files['reduced_test']]
+        test_roots += [args.data_root]
     if args.prefix2:
-        test2_model = 'traintest2.%d.prototxt' % pid
-        train2_model = 'traintrain2.%d.prototxt' % pid
-        test_models += [test2_model, train2_model]
-        test_files += [files['test2'], files['train2']]
-        test_roots += [args.data_root2, args.data_root2]
+        test_models += ['traintest2.%d.prototxt' % pid]
+        test_files += [files['test2']]
+        test_roots += [args.data_root2]
         if args.reduced:
-            reduced_test2_model = 'trainreducedtest2.%d.prototxt' % pid
-            reduced_train2_model = 'trainreducedtrain2.%d.prototxt' % pid
-            test_models += [reduced_test2_model, reduced_train2_model]
-            test_files += [files['reduced_test2'], files['reduced_train2']]
-            test_roots += [args.data_root2, args.data_root2]
+            test_models += ['trainreducedtest2.%d.prototxt' % pid]
+            test_files += [files['reduced_test2']]
+            test_roots += [args.data_root2]
+    if not test_on_train:
+        test_models += ['traintrain.%d.prototxt' % pid]
+        test_files += [files['train']]
+        test_roots += [args.data_root]
+        if args.reduced:
+            test_models += ['trainreducedtrain.%d.prototxt' % pid]
+            test_files += [files['reduced_train']]
+            test_roots += [args.data_root]
+        if args.prefix2:
+            test_models += ['traintrain2.%d.prototxt' % pid]
+            test_files += [files['train2']]
+            test_roots += [args.data_root2]
+            if args.reduced:
+                test_models += ['trainreducedtrain2.%d.prototxt' % pid]
+                test_files += [files['reduced_train2']]
+                test_roots += [args.data_root2]
 
     for test_model, test_file, test_root in zip(test_models, test_files, test_roots):
         if args.prefix2:
@@ -210,7 +237,7 @@ def train_and_test_model(args, files, outname):
     solverf = 'solver.%d.prototxt' % pid
     write_solver_file(solverf, test_models[0], test_models, args.solver, args.base_lr, args.momentum, args.weight_decay,
                       args.lr_policy, args.gamma, args.power, args.seed, iterations+args.cont, outname)
-        
+
     #set up solver in caffe
     if args.gpu >= 0:
         caffe.set_device(args.gpu)
@@ -229,7 +256,7 @@ def train_and_test_model(args, files, outname):
     test_nets = {}
     for key, test_file in files.items():
         idx = test_files.index(test_file)
-        test_nets[key] = solver.test_nets[idx], count_lines(test_file)
+        test_nets[key] = solver.test_nets[idx], count_lines(test_file), 0
 
     if training: #outfile is training progress, don't write if we're not training
         if args.cont: #TODO changes in test_interval not reflected in outfile
@@ -259,72 +286,77 @@ def train_and_test_model(args, files, outname):
     for i in xrange(iterations/test_interval):
         last_test = i == iterations/test_interval-1
 
-        #train
         i_start = start = time.time()
         if training:
+            #train
             solver.step(test_interval)
             print "Iteration %d" % (args.cont + (i+1)*test_interval)
             print "Train time: %f" % (time.time()-start)
 
-        #evaluate test set
-        start = time.time()
-        if args.reduced and not last_test:
-            test_net, n_tests = test_nets['reduced_test']
-        else:
-            test_net, n_tests = test_nets['test']
-        test_auc, y_true, y_score, _, test_rmsd, y_aff, y_predaff = evaluate_test_net(test_net, n_tests, rotations)
-        print "Eval test time: %f" % (time.time()-start)
-
-        if i > 0 and not (args.reduced and last_test): #check alignment
-            assert np.all(y_true == test_vals['y_true'])
-            assert np.all(y_aff == test_vals['y_aff'])
-
-        test_vals['y_true'] = y_true
-        test_vals['y_aff'] = y_aff
-        test_vals['y_score'] = y_score
-        test_vals['y_predaff'] = y_predaff
-        print "Test AUC: %f" % test_auc
-        test_vals['auc'].append(test_auc)
-        if test_rmsd:
-            print "Test RMSD: %f" % test_rmsd
-            test_vals['rmsd'].append(test_rmsd)
-
-        if training and test_auc > best_test_auc:
-            best_test_auc = test_auc
-            if args.keep_best:
-                solver.snapshot() #a bit too much - gigabytes of data
-
-        if args.prefix2:
-            #evaluate test set 2
+        if not test_on_train:
+            #evaluate test set
             start = time.time()
             if args.reduced and not last_test:
-                test_net, n_tests = test_nets['reduced_test2']
+                key = 'reduced_test'
             else:
-                test_net, n_tests = test_nets['test2']
-            test2_auc, y_true, y_score, _, test2_rmsd, y_aff, y_predaff = evaluate_test_net(test_net, n_tests, rotations)
-            print "Eval test2 time: %f" % (time.time()-start)
+                key = 'test'
+            test_net, n_tests, offset = test_nets[key]
+            result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
+            test_nets[key] = test_net, n_tests, offset
+            test_auc, y_true, y_score, _, test_rmsd, y_aff, y_predaff = result
+            print "Eval test time: %f" % (time.time()-start)
 
             if i > 0 and not (args.reduced and last_test): #check alignment
-                assert np.all(y_true == test2_vals['y_true'])
-                assert np.all(y_aff == test2_vals['y_aff'])
+                assert np.all(y_true == test_vals['y_true'])
+                assert np.all(y_aff == test_vals['y_aff'])
 
-            test2_vals['y_true'] = y_true
-            test2_vals['y_aff'] = y_aff
-            test2_vals['y_score'] = y_score
-            test2_vals['y_predaff'] = y_predaff
-            print "Test2 AUC: %f" % test2_auc
-            test2_vals['auc'].append(test2_auc)
-            if test2_rmsd:
-                print "Test2 RMSD: %f" % test2_rmsd
-                test2_vals['rmsd'].append(test2_rmsd)
+            test_vals['y_true'] = y_true
+            test_vals['y_aff'] = y_aff
+            test_vals['y_score'] = y_score
+            test_vals['y_predaff'] = y_predaff
+            print "Test AUC: %f" % test_auc
+            test_vals['auc'].append(test_auc)
+            if test_rmsd:
+                print "Test RMSD: %f" % test_rmsd
+                test_vals['rmsd'].append(test_rmsd)
+
+            if args.prefix2:
+                #evaluate test set 2
+                start = time.time()
+                if args.reduced and not last_test:
+                    key = 'reduced_test2'
+                else:
+                    key = 'test2'
+                test_net, n_tests, offset = test_nets[key]
+                result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
+                test_nets[key] = test_net, n_tests, offset
+                test2_auc, y_true, y_score, _, test2_rmsd, y_aff, y_predaff = result
+                print "Eval test2 time: %f" % (time.time()-start)
+
+                if i > 0 and not (args.reduced and last_test): #check alignment
+                    assert np.all(y_true == test2_vals['y_true'])
+                    assert np.all(y_aff == test2_vals['y_aff'])
+
+                test2_vals['y_true'] = y_true
+                test2_vals['y_aff'] = y_aff
+                test2_vals['y_score'] = y_score
+                test2_vals['y_predaff'] = y_predaff
+                print "Test2 AUC: %f" % test2_auc
+                test2_vals['auc'].append(test2_auc)
+                if test2_rmsd:
+                    print "Test2 RMSD: %f" % test2_rmsd
+                    test2_vals['rmsd'].append(test2_rmsd)
 
         #evaluate train set
         start = time.time()
         if args.reduced and not last_test:
-            test_net, n_tests = test_nets['reduced_train']
+            key = 'reduced_train'
         else:
-            test_net, n_tests = test_nets['train']
-        train_auc, y_true, y_score, train_loss, train_rmsd, y_aff, y_predaff = evaluate_test_net(test_net, n_tests, rotations)
+            key = 'train'
+        test_net, n_tests, offset = test_nets[key]
+        result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
+        test_nets[key] = test_net, n_tests, offset
+        train_auc, y_true, y_score, train_loss, train_rmsd, y_aff, y_predaff = result
         print "Eval train time: %f" % (time.time()-start)
 
         if i > 0 and not (args.reduced and last_test): #check alignment
@@ -343,29 +375,17 @@ def train_and_test_model(args, files, outname):
             print "Train RMSD: %f" % train_rmsd
             train_vals['rmsd'].append(train_rmsd)
 
-        if train_auc > best_train_auc:
-            best_train_auc = train_auc
-            best_train_interval = i
-
-        #check for improvement
-        if training and args.dynamic:
-            lr = solver.get_base_lr()
-            if (i-best_train_interval) > args.step_when: #reduce learning rate
-                lr *= args.step_reduce
-                solver.set_base_lr(lr)
-                best_train_interval = i #reset 
-                best_train_auc = train_auc #the value too, so we can consider the recovery
-            if lr < args.step_end:
-                break #end early  
-
         if args.prefix2:
             #evaluate train set
             start = time.time()
             if args.reduced and not last_test:
-                test_net, n_tests = test_nets['reduced_train2']
+                key = 'reduced_train2'
             else:
-                test_net, n_tests = test_nets['train2']
-            train2_auc, y_true, y_score, train2_loss, train2_rmsd, y_aff, y_predaff = evaluate_test_net(test_net, n_tests, rotations)
+                key = 'train2'
+            test_net, n_tests, offset = test_nets[key]
+            result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
+            test_nets[key] = test_net, n_tests, offset
+            train2_auc, y_true, y_score, train2_loss, train2_rmsd, y_aff, y_predaff = result
             print "Eval train2 time: %f" % (time.time()-start)
 
             if i > 0 and not (args.reduced and last_test): #check alignment
@@ -385,6 +405,27 @@ def train_and_test_model(args, files, outname):
                 train2_vals['rmsd'].append(train2_rmsd)
 
         if training:
+            #check for improvement
+            if test_on_train:
+                test_auc = train_auc
+                test_rmsd = train_rmsd
+            if test_auc > best_test_auc:
+                best_test_auc = test_auc
+                if args.keep_best:
+                    solver.snapshot() #a bit too much - gigabytes of data
+            if train_auc > best_train_auc:
+                best_train_auc = train_auc
+                best_train_interval = i
+            if args.dynamic:
+                lr = solver.get_base_lr()
+                if (i-best_train_interval) > args.step_when: #reduce learning rate
+                    lr *= args.step_reduce
+                    solver.set_base_lr(lr)
+                    best_train_interval = i #reset
+                    best_train_auc = train_auc #the value too, so we can consider the recovery
+                if lr < args.step_end:
+                    break #end early
+
             #write out evaluation results
             out.write('%.4f %.4f %.6f %.6f' % (test_auc, train_auc, train_loss, solver.get_base_lr()))
             if None not in (test_rmsd, train_rmsd):
@@ -401,13 +442,22 @@ def train_and_test_model(args, files, outname):
         i_time_avg = (i*i_time_avg + i_time)/(i+1)
         i_left = iterations/test_interval - (i+1)
         time_left = i_time_avg * i_left
-        print "Loop time: %f (%.2fh left)" % (i_time, time_left/3600.)
+        time_str = time.strftime('%H:%M:%S', time.gmtime(time_left))
+        print "Loop time: %f (%s left)" % (i_time, time_str)
+
+        mem = psutil.Process(os.getpid()).memory_info().rss
+        print "Memory usage: %.3fgb (%d)" % (mem/1073741824., mem)
 
     if training:
         out.close()
         solver.snapshot()
     del solver #free mem
-    
+
+    if test_on_train:
+        test_vals = train_vals
+        if args.prefix2:
+            test2_vals = train2_vals
+
     if not args.keep:
         os.remove(solverf)
         for test_model in test_models:
