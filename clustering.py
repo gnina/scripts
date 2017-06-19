@@ -5,7 +5,7 @@ from Bio.PDB.PDBParser import PDBParser
 from Bio.PDB.Polypeptide import three_to_one
 from Bio.PDB.Polypeptide import is_aa
 from Bio import pairwise2
-from multiprocessing import Pool
+from multiprocessing import Pool, cpu_count
 from functools import partial
 import scipy.cluster.hierarchy
 import numpy as np
@@ -21,20 +21,23 @@ CYX cystenine C
 CYM cystenine C'''
 
 
-def getResidueString(structure):
-    seq = ''
+def getResidueStrings(structure):
+    seqs = []
     for model in structure:
-        for residue in model.get_residues():
-            resname = residue.get_resname()
-            if is_aa(resname, standard=True):
-                seq += three_to_one(resname)
-            elif resname in {'HIE', 'HID'}:
-                seq += 'H'
-            elif resname in {'CYX', 'CYM'}:
-                seq += 'C'
-            else:
-                seq += 'X'
-    return seq
+        for ch in model.get_chains():
+            seq = ''
+            for residue in model.get_residues():
+                resname = residue.get_resname()
+                if is_aa(resname, standard=True):
+                    seq += three_to_one(resname)
+                elif resname in {'HIE', 'HID'}:
+                    seq += 'H'
+                elif resname in {'CYX', 'CYM'}:
+                    seq += 'C'
+                else:
+                    seq += 'X'
+            seqs.append(seq)
+    return seqs
 
 
 def calcDistanceMatrix(targets):
@@ -53,10 +56,16 @@ def calcDistanceMatrix(targets):
 def cUTDM2(targets, pair):
     '''compute distance between target pair'''
     (a, b) = pair
-    score = pairwise2.align.globalxx(targets[a], targets[b], score_only=True)
-    length = max(len(targets[a]), len(targets[b]))
-    distance = (length-score)/length
-    return (a, b, distance)
+    mindist = 1.0
+    for seq1 in targets[a]:
+        for seq2 in targets[b]:
+            score = pairwise2.align.globalxx(seq1, seq2, score_only=True)
+            length = max(len(seq1), len(seq2))
+            distance = (length-score)/length
+            if distance < mindist:
+                mindist = distance
+    #print (a,b,mindist)
+    return (a, b, mindist)
 
 
 def assignGroup(dists, t, explore):
@@ -203,11 +212,11 @@ def checkFolds(dists, target_names, threshold, foldmap):
     return ok
 
 
-def readPDBfiles(pdbfiles):
+def readPDBfiles(pdbfiles,ncpus=cpu_count()):
     pdb_parser = PDBParser(PERMISSIVE=1, QUIET=1)
-    with open(args.pdbfiles, 'r') as file:
+    with open(pdbfiles, 'r') as file:
         pdblines = file.readlines()
-    pool = Pool()
+    pool = Pool(ncpus)
     function = partial(loadTarget, pdb_parser)
     target_tups = pool.map(function, pdblines)
     target_names, targets = [], []
@@ -226,8 +235,8 @@ def loadTarget(pdb_parser, line):
     target_pdb = data[1].strip()
     try:
         structure = pdb_parser.get_structure(target_name, target_pdb)
-        seq = getResidueString(structure)
-        return (target_name, seq)
+        seqs = getResidueStrings(structure)
+        return (target_name, seqs)
     except IOError:
         print('warning: {} does not exist'.format(target_pdb))
 
@@ -250,17 +259,20 @@ if __name__ == '__main__':
 
     if args.cpickle:
         with open(args.cpickle, 'r') as file:
-            (distanceMatrix, D, linkageMatrix, target_names) = cPickle.load(file)
+            (distanceMatrix, target_names) = cPickle.load(file)
     elif args.pdbfiles:
+        if args.verbose: print("reading pdbs...")
         target_names, targets = readPDBfiles(args.pdbfiles)
+        if args.verbose: print("calculating distance matrix...")
         distanceMatrix = calcDistanceMatrix(targets)
+        cPickle.dump((distanceMatrix, target_names), open(args.input.replace('.types','.pickle'),'w'),-1)
     else:
         exit('error: need --cpickle or --pdbfiles to compute target distance matrix')
-    print('Number of targets: {}'.format(len(target_names)))
+    if args.verbose: print('Number of targets: {}'.format(len(target_names)))
 
     if args.input:
         cluster_groups = calcClusterGroups(distanceMatrix, target_names, threshold)
-        print('{} clusters created'.format(len(cluster_groups)))
+        if args.verbose: print('{} clusters created'.format(len(cluster_groups)))
         if args.verbose:
             for i, g in enumerate(cluster_groups):
                 print('Cluster {}: {}'.format(i, ' '.join(str(t) for t in g)))
@@ -269,7 +281,7 @@ if __name__ == '__main__':
         for i, fold in enumerate(folds):
             print('{} targets in fold {}'.format(len(fold), i))
 
-        print('Making .types files')
+        if args.verbose: print('Making .types files')
         crossvalidatefiles(folds, args.output, args.number, args)
 
     if args.check:
