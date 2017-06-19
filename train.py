@@ -91,8 +91,9 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
     '''Evaluate a test network and return the results. The number of
     examples in the file the test_net reads from must equal n_tests,
     otherwise output will be misaligned. Can optionally take the average
-    of multiple rotations of each example. Batch size should be 1 and
-    other parameters should be set so that data access is sequential.'''
+    of multiple rotations of each example. Offset is the index into
+    the test file that will be the first example in the next batch.
+    Net parameters should be set so that data access is sequential.'''
 
     #evaluate each example with each rotation
     y_true     = [-1 for _ in xrange(n_tests)]
