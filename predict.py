@@ -7,33 +7,47 @@ import matplotlib.pyplot as plt
 import glob, re, sklearn, collections, argparse, sys, os
 import sklearn.metrics
 import caffe
+from caffe.proto.caffe_pb2 import NetParameter
+import google.protobuf.text_format as prototxt
+from train import evaluate_test_net
+
+
+def write_model_file(model_file, template_file, test_file, root_folder):
+    param = NetParameter()
+    with open(template_file, 'r') as f:
+        prototxt.Merge(f.read(), param)
+    for layer in param.layer:
+        if layer.molgrid_data_param.source == 'TESTFILE':
+            layer.molgrid_data_param.source = test_file
+        if layer.molgrid_data_param.root_folder == 'DATA_ROOT':
+            layer.molgrid_data_param.root_folder = root_folder
+    with open(model_file, 'w') as f:
+        f.write(str(param))
 
 
 def predict(args):
     if args.gpu >= 0:
         caffe.set_device(args.gpu)
     caffe.set_mode_gpu()
-    model = open(args.model).read().replace('TESTFILE', args.input).replace('DATA_ROOT', args.data_root)
-    #very obnoxiously, python interface requires network definition to be in a file
-    testfile = 'predict.%d.prototxt' % os.getpid()
-    with open(testfile, 'w') as f:
-        f.write(model)
-    net = caffe.Net(testfile, args.weights, caffe.TEST)
-    output = []
-    for line in open(args.input):
-	out = net.forward()
-	if 'output' in out:
-	    predict = out['output'][0][1]
-	elif 'predaff' in out:
-	    predict = out['predaff']
-        elif 'rankoutput' in out:
-            predict = out['rankoutput']
-        output.append('%f %s' % (predict, line))
+    test_model = 'predict.%d.prototxt' % os.getpid()
+    write_model_file(test_model, args.model, args.input, args.data_root)
+    test_net = caffe.Net(test_model, args.weights, caffe.TEST)
+    with open(args.input, 'r') as f:
+        lines = f.readlines()
+    result, _ = evaluate_test_net(test_net, len(lines), 1, 0)
+    auc, y_true, y_score, loss, rmsd, y_affinity, y_predaff = result
+    assert np.all(y_true == [float(l.split(' ')[0]) for l in lines]) #check alignment
+    if args.affinity:
+        assert len(y_predaff) > 0
+        predict = y_predaff
+    else:
+        predict = y_score
+    output_lines = ['%f %s' % t for t in zip(predict, lines)]
     if args.max_score:
-        output = maxLigandScore(output)
+        output_lines = maxLigandScore(output_lines)
     if not args.keep:
-        os.remove(testfile)
-    return output
+        os.remove(test_model)
+    return output_lines
 
 
 def get_ligand_key(rec_path, pose_path):
@@ -53,13 +67,19 @@ def get_ligand_key(rec_path, pose_path):
 
 
 def maxLigandScore(lines):
-    #output format: score label paths 
+    #output format: score label [affinity] rec_path pose_path
     ligands = {}
     for line in lines:
         data = line.split(' ')
         score = float(data[0])
-        rec_path = data[2].strip()
-        pose_path = data[3].strip()
+        label = float(data[1])
+        try:
+            affinity = float(data[2])
+            rec_path = data[3].strip()
+            pose_path = data[4].strip()
+        except ValueError:
+            rec_path = data[2].strip()
+            pose_path = data[3].strip()
         key = get_ligand_key(rec_path, pose_path)
         if key not in ligands or score > ligands[key][0]:
             ligands[key] = (score, line)
@@ -77,6 +97,7 @@ def parse_args(argv=None):
     parser.add_argument('-k','--keep',action='store_true',default=False,help="Don't delete prototxt files")
     parser.add_argument('--max_score',action='store_true',default=False,help="take max score per ligand as its score")
     parser.add_argument('--notcalc_predictions', type=str, default='',help='use file of predictions instead of calculating')
+    parser.add_argument('-a','--affinity',default=False,action='store_true',required=False,help='Predict affinity instead of active/decoy label')
     return parser.parse_args(argv)
 
 
@@ -94,14 +115,29 @@ if __name__ == '__main__':
         if args.max_score:
             predictions = maxLigandScore(predictions)
     out.writelines(predictions)
-    #add auc to end of file
-    ytrue = []
-    yscore = []
-    for line in predictions:
-        data = line.split(' ')
-        ytrue.append(float(data[1]))
-        yscore.append(float(data[0]))
-    if len(np.unique(ytrue)) > 1:
-        auc = sklearn.metrics.roc_auc_score(ytrue, yscore)
-        out.write("# AUC %.2f\n" % auc)
+    if args.affinity:
+        y_predaff = []
+        y_true = []
+        y_affinity = []
+        for line in predictions:
+            data = line.split(' ')
+            y_predaff.append(float(data[0]))
+            y_true.append(float(data[1]))
+            y_affinity.append(float(data[2]))
+        if len(np.unique(y_true)) > 1:
+            y_predaff = np.array(y_predaff)
+            y_affinity = np.array(y_affinity)
+            yt = np.array(y_true, np.bool)
+            rmsd = sklearn.metrics.mean_squared_error(y_affinity[yt], y_predaff[yt])
+            out.write("# RMSD %.5f\n" % rmsd)
+    else:
+        y_score = []
+        y_true = []
+        for line in predictions:
+            data = line.split(' ')
+            y_score.append(float(data[0]))
+            y_true.append(float(data[1]))
+        if len(np.unique(y_true)) > 1:
+            auc = sklearn.metrics.roc_auc_score(y_true, y_score)
+            out.write("# AUC %.5f\n" % auc)
 
