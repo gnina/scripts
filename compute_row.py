@@ -26,6 +26,7 @@ if __name__ == '__main__':
         name = target_names[r]
         row = []
         for i in xrange(len(target_names)):
+            print target_names[i]
             (a, b, mindist) = clustering.cUTDM2(targets, (r,i))
             row.append((target_names[i],mindist))
         #output somewhat verbosely
