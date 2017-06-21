@@ -576,10 +576,18 @@ if __name__ == '__main__':
     if outprefix == '':
         outprefix = '%s.%d' % (os.path.splitext(os.path.basename(args.model))[0],os.getpid())
 
-    test_aucs, train_aucs, test_rmsds, train_rmsds = [], [], [], []
-    all_y_true, all_y_score, all_y_aff, all_y_predaff = [], [], [], []
-    test2_aucs, train2_aucs, test2_rmsds, train2_rmsds = [], [], [], []
-    all_y_true2, all_y_score2, all_y_aff2, all_y_predaff2 = [], [], [], []
+    test_aucs, train_aucs = [], []
+    test_rmsds, train_rmsds = [], []
+    test_y_true, train_y_true = [], []
+    test_y_score, train_y_score = [], []
+    test_y_aff, train_y_aff = [], []
+    test_y_predaff, train_y_predaff = [], []
+    test2_aucs, train2_aucs = [], []
+    test2_rmsds, train2_rmsds = [], []
+    test2_y_true, train2_y_true = [], []
+    test2_y_score, train2_y_score = [], []
+    test2_y_aff, train2_y_aff = [], []
+    test2_y_predaff, train2_y_predaff = [], []
 
     #train each pair
     for i in train_test_files:
@@ -593,49 +601,84 @@ if __name__ == '__main__':
         else:
             test_vals, train_vals = results
 
-        #write out the final test results
+        affinity = len(test_vals['y_aff']) > 0
+
+        #write out the final predictions for test and train sets
         y_true, y_score, auc = test_vals['y_true'], test_vals['y_score'], test_vals['auc'][-1]
         write_results_file('%s.auc.finaltest' % outname, y_true, y_score, footer='AUC %f\n' % auc)
-        if test_vals['rmsd']:
+        y_true, y_score, auc = train_vals['y_true'], train_vals['y_score'], train_vals['auc'][-1]
+        write_results_file('%s.auc.finaltrain' % outname, y_true, y_score, footer='AUC %f\n' % auc)
+
+        if affinity:
             y_aff, y_predaff, rmsd = test_vals['y_aff'], test_vals['y_predaff'], test_vals['rmsd'][-1]
             write_results_file('%s.rmsd.finaltest' % outname, y_aff, y_predaff, footer='RMSD %f\n' % rmsd)
+            y_aff, y_predaff, rmsd = train_vals['y_aff'], train_vals['y_predaff'], train_vals['rmsd'][-1]
+            write_results_file('%s.rmsd.finaltrain' % outname, y_aff, y_predaff, footer='RMSD %f\n' % rmsd)
+
         if args.prefix2:
             y_true2, y_score2, auc2 = test2_vals['y_true'], test2_vals['y_score'], test2_vals['auc'][-1]
             write_results_file('%s.auc.finaltest2' % outname, y_true2, y_score2, footer='AUC %f\n' % auc2)
-            if test2_vals['rmsd']:
+            y_true2, y_score2, auc2 = train2_vals['y_true'], train2_vals['y_score'], train2_vals['auc'][-1]
+            write_results_file('%s.auc.finaltrain2' % outname, y_true2, y_score2, footer='AUC %f\n' % auc2)
+
+            if affinity:
                 y_aff2, y_predaff2, rmsd2 = test2_vals['y_aff'], test2_vals['y_predaff'], test2_vals['rmsd'][-1]
                 write_results_file('%s.rmsd.finaltest2' % outname, y_aff2, y_predaff2, footer='RMSD %f\n' % rmsd2)
+                y_aff2, y_predaff2, rmsd2 = train2_vals['y_aff'], train2_vals['y_predaff'], train2_vals['rmsd'][-1]
+                write_results_file('%s.rmsd.finaltrain2' % outname, y_aff2, y_predaff2, footer='RMSD %f\n' % rmsd2)
 
-        if i == 'all': #only aggregate crossval results (from different folds)
+        if i == 'all':
             continue
 
-        all_y_true.extend(test_vals['y_true'])
-        all_y_score.extend(test_vals['y_score'])
-        all_y_aff.extend(test_vals['y_aff'])
-        all_y_predaff.extend(test_vals['y_predaff'])
-        if args.prefix2:
-            all_y_true2.extend(test2_vals['y_true'])
-            all_y_score2.extend(test2_vals['y_score'])
-            all_y_aff2.extend(test2_vals['y_aff'])
-            all_y_predaff2.extend(test2_vals['y_predaff'])
-
+        #aggregate results from different crossval folds
         test_aucs.append(test_vals['auc'])
         train_aucs.append(train_vals['auc'])
-        if test_vals['rmsd'] and train_vals['rmsd']:
+        test_y_true.extend(test_vals['y_true'])
+        test_y_score.extend(test_vals['y_score'])
+        train_y_true.extend(train_vals['y_true'])
+        train_y_score.extend(train_vals['y_score'])
+
+        if affinity:
             test_rmsds.append(test_vals['rmsd'])
             train_rmsds.append(train_vals['rmsd'])
+            test_y_aff.extend(test_vals['y_aff'])
+            test_y_predaff.extend(test_vals['y_predaff'])
+            train_y_aff.extend(train_vals['y_aff'])
+            train_y_predaff.extend(train_vals['y_predaff'])
+
         if args.prefix2:
             test2_aucs.append(test2_vals['auc'])
             train2_aucs.append(train2_vals['auc'])
-            if test2_vals['rmsd'] and train2_vals['rmsd']:
+            test2_y_true.extend(test2_vals['y_true'])
+            test2_y_score.extend(test2_vals['y_score'])
+            train2_y_true.extend(train2_vals['y_true'])
+            train2_y_score.extend(train2_vals['y_score'])
+
+            if affinity:
                 test2_rmsds.append(test2_vals['rmsd'])
                 train2_rmsds.append(train2_vals['rmsd'])
+                test2_y_aff.extend(test2_vals['y_aff'])
+                test2_y_predaff.extend(test2_vals['y_predaff'])
+                train2_y_aff.extend(train2_vals['y_aff'])
+                train2_y_predaff.extend(train2_vals['y_predaff'])
 
     #only combine fold results if we have multiple folds
     if len(test_aucs) > 1:
-        combine_fold_results(outprefix, args.test_interval, test_aucs, train_aucs, all_y_true, all_y_score,
-                             test_rmsds, train_rmsds, all_y_aff, all_y_predaff)
+
+        combine_fold_results(test_aucs, train_aucs, test_y_true, test_y_score, train_y_true, train_y_score,
+                             outprefix, args.test_interval, affinity=False, second_data_source=False)
+
+        if affinity:
+            combine_fold_results(test_rmsds, train_rmsds, test_y_aff, test_y_predaff, train_y_aff, train_y_predaff,
+                                 outprefix, args.test_interval, affinity=True, second_data_source=False,
+                                 filter_actives_test=test_y_true, filter_actives_train=train_y_true)
+
         if args.prefix2:
-            combine_fold_results(outprefix, args.test_interval, test2_aucs, train2_aucs, all_y_true2, all_y_score2,
-                                 test2_rmsds, train2_rmsds, all_y_aff2, all_y_predaff2, True)
+            combine_fold_results(test2_aucs, train2_aucs, test2_y_true, test2_y_score, train2_y_true, train2_y_score,
+                                 outprefix, args.test_interval, affinity=False, second_data_source=True)
+
+            if affinity:
+                combine_fold_results(test2_rmsds, train2_rmsds, test2_y_aff, test2_y_predaff, train2_y_aff, train2_y_predaff,
+                                     outprefix, args.test_interval, affinity=True, second_data_source=True,
+                                     filter_actives_test=test2_y_true, filter_actives_train=train2_y_true)
 
