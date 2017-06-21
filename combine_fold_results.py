@@ -116,16 +116,15 @@ def combine_fold_results(test_metrics, train_metrics, test_labels, test_preds, t
                          outprefix, test_interval, affinity=False, second_data_source=False,
                          filter_actives_test=None, filter_actives_train=None):
     '''Make results files and graphs combined from results for
-    separate crossvalidation folds. test_aucs and train_aucs are
-    lists of lists of AUCs for each fold, for each test_interval.
-    all_y_true and all_y_score are labels and final test predictions
-    for each fold, in a single list. test_rmsds and train_rmsds
-    are lists of lists of RMSDs for each fold, for each test_interval.
-    all_y_aff and all_y_predaff are actual and predicted affinities
-    for each fold, in a single list. is_data2 is a flag that adjusts
-    the output file names to reflect whether the results are for the
-    second data source of a combined data model. If test_rmsds is not
-    truthy, the rmsd and affinity args are ignored.'''
+    separate crossvalidation folds. test_metrics and train_metrics
+    are lists of lists of AUCs or RMSDs for each fold, for each
+    test_interval. test_labels and test_preds are labels and final
+    test predictions for each test fold, in a single list. train_labels
+    and train_preds are labels and predictions for each train fold in
+    a single list. affinity says whether to interpret the labels and
+    predictions as affinities, and the metric as RMSD instead of AUC.
+    second_data_source sets the output file names to reflect whether
+    the results are for the second data source of a combined data model.'''
 
     metric = 'rmsd' if affinity else 'auc'
     two = '2' if second_data_source else ''
