@@ -81,7 +81,7 @@ def get_results_files(prefix, foldnums, affinity, two_data_sources):
     files = {}
     if foldnums is None:
         foldnums = set()
-        pattern = r'%s\.(\d+)\.(out|(auc|rmsd)\.finaltest2?)$' % prefix
+        pattern = r'%s\.(\d+)\.(out|(auc|rmsd)\.final(test|train)2?)$' % prefix
         for file in glob.glob(prefix + '*'):
             match = re.match(pattern, file)
             if match:
@@ -92,20 +92,29 @@ def get_results_files(prefix, foldnums, affinity, two_data_sources):
         files[i] = {}
         files[i]['out'] = '%s.%d.out' % (prefix, i)
         files[i]['auc_finaltest'] = '%s.%d.auc.finaltest' % (prefix, i)
+        files[i]['auc_finaltrain'] = '%s.%d.auc.finaltrain' % (prefix, i)
         if affinity:
             files[i]['rmsd_finaltest'] = '%s.%d.rmsd.finaltest' % (prefix, i)
+            files[i]['rmsd_finaltrain'] = '%s.%d.rmsd.finaltrain' % (prefix, i)
         if two_data_sources:
             files[i]['auc_finaltest2'] = '%s.%d.auc.finaltest2' % (prefix, i)
+            files[i]['auc_finaltrain2'] = '%s.%d.auc.finaltrain2' % (prefix, i)
             if affinity:
                 files[i]['rmsd_finaltest2'] = '%s.%d.rmsd.finaltest2' % (prefix, i)
+                files[i]['rmsd_finaltrain2'] = '%s.%d.rmsd.finaltrain2' % (prefix, i)
     for i in files:
         for file in files[i].values():
             check_file_exists(file)
     return files
 
 
-def combine_fold_results(outprefix, test_interval, test_aucs, train_aucs, all_y_true, all_y_score,
-                         test_rmsds, train_rmsds, all_y_aff, all_y_predaff, is_data2=False):
+def filter_actives(values, y_true):
+    return np.array(values)[np.array(y_true, dtype=np.bool)]
+
+
+def combine_fold_results(test_metrics, train_metrics, test_labels, test_preds, train_labels, train_preds,
+                         outprefix, test_interval, affinity=False, second_data_source=False,
+                         filter_actives_test=None, filter_actives_train=None):
     '''Make results files and graphs combined from results for
     separate crossvalidation folds. test_aucs and train_aucs are
     lists of lists of AUCs for each fold, for each test_interval.
@@ -117,52 +126,63 @@ def combine_fold_results(outprefix, test_interval, test_aucs, train_aucs, all_y_
     the output file names to reflect whether the results are for the
     second data source of a combined data model. If test_rmsds is not
     truthy, the rmsd and affinity args are ignored.'''
-    two = '2' if is_data2 else ''
 
-    #average, min, max test AUC for last 1000 iterations
-    last_iters = 1000
-    avg_auc, max_auc, min_auc = last_iters_statistics(test_aucs, test_interval, last_iters)
-    txt = 'For the last %s iterations:\nmean AUC=%.2f  max AUC=%.2f  min AUC=%.2f' % (last_iters, avg_auc, max_auc, min_auc)
+    metric = 'rmsd' if affinity else 'auc'
+    two = '2' if second_data_source else ''
 
-    #average aucs across folds
-    mean_test_aucs = np.mean(test_aucs, axis=0)
-    mean_train_aucs = np.mean(train_aucs, axis=0)
+    #average metric across folds
+    mean_test_metrics = np.mean(test_metrics, axis=0)
+    mean_train_metrics = np.mean(train_metrics, axis=0)
 
-    #write test and train aucs (mean and for each fold)
-    write_results_file('%s.auc.test%s' % (outprefix, two), mean_test_aucs, *test_aucs)
-    write_results_file('%s.auc.train%s' % (outprefix, two), mean_train_aucs, *train_aucs)
+    #write test and train metrics (mean and for each fold)
+    write_results_file('%s.%s.test%s' % (outprefix, metric, two), mean_test_metrics, *test_metrics)
+    write_results_file('%s.%s.train%s' % (outprefix, metric, two), mean_train_metrics, *train_metrics)
 
-    #training plot of mean auc across folds
-    training_plot('%s_auc_train%s.pdf' % (outprefix, two), mean_train_aucs, mean_test_aucs)
+    #training plot of mean test and train metric across folds
+    training_plot('%s_%s_train%s.pdf' % (outprefix, metric, two), mean_train_metrics, mean_test_metrics)
 
-    #roc curve for the last iteration - combine all tests
-    if len(np.unique(all_y_true)) > 1:
-        fpr, tpr, _ = sklearn.metrics.roc_curve(all_y_true, all_y_score)
-        auc = sklearn.metrics.roc_auc_score(all_y_true, all_y_score)
-        write_results_file('%s.auc.finaltest%s' % (outprefix, two), all_y_true, all_y_score, footer='AUC %f\n' % auc)
-        plot_roc_curve('%s_roc%s.pdf' % (outprefix, two), fpr, tpr, auc, txt)
+    if affinity:
 
-    if test_rmsds:
+        if filter_actives_test is not None:
+            test_preds = filter_actives(test_preds, filter_actives_test)
+            test_labels = filter_actives(test_labels, filter_actives_test)
 
-        #average rmsds across folds
-        mean_test_rmsds = np.mean(test_rmsds, axis=0)
-        mean_train_rmsds = np.mean(train_rmsds, axis=0)
+        #correlation plots for last test iteration
+        rmsd = sklearn.metrics.mean_squared_error(test_preds, test_labels)
+        r2 = sklearn.metrics.r2_score(test_preds, test_labels)
+        write_results_file('%s.rmsd.finaltest%s' % (outprefix, two), test_preds, test_labels, footer='RMSD,R^2 %f %f\n' % (rmsd, r2))
+        plot_correlation('%s_rmsd_test%s.pdf' % (outprefix, two), test_preds, test_labels, rmsd, r2)
 
-        #write test and train rmsds (mean and for each fold)
-        write_results_file('%s.rmsd.test%s' % (outprefix, two), mean_test_rmsds, *test_rmsds)
-        write_results_file('%s.rmsd.train%s' % (outprefix, two), mean_train_rmsds, *train_rmsds)
+        if filter_actives_train is not None:
+            train_preds = filter_actives(train_preds, filter_actives_train)
+            train_labels = filter_actives(train_labels, filter_actives_train)
 
-        #training plot of mean rmsd across folds
-        training_plot('%s_rmsd_train%s.pdf' % (outprefix, two), mean_train_rmsds, mean_test_rmsds)
+        rmsd = sklearn.metrics.mean_squared_error(train_preds, train_labels)
+        r2 = sklearn.metrics.r2_score(train_preds, train_labels)
+        write_results_file('%s.rmsd.finaltrain%s' % (outprefix, two), train_preds, train_labels, footer='RMSD,R^2 %f %f\n' % (rmsd, r2))
+        plot_correlation('%s_rmsd_test%s.pdf' % (outprefix, two), train_preds, train_labels, rmsd, r2)
 
-        all_y_aff = np.array(all_y_aff)
-        all_y_predaff = np.array(all_y_predaff)
-        yt = np.array(all_y_true, dtype=np.bool)
-        rmsdt = sklearn.metrics.mean_squared_error(all_y_aff[yt], all_y_predaff[yt])
-        r2t = sklearn.metrics.r2_score(all_y_aff[yt], all_y_predaff[yt])
-        write_results_file('%s.rmsd.finaltest%s' % (outprefix, two), all_y_aff, all_y_predaff, footer='RMSD,R^2 %f %f\n' % (rmsdt, r2t))
+    else:
 
-        plot_correlation('%s_rmsd%s.pdf' % (outprefix, two), all_y_aff[yt], all_y_predaff[yt], rmsdt, r2t)
+        #roc curves for the last test iteration
+        if len(np.unique(test_labels)) > 1:
+            last_iters = 1000
+            avg_auc, max_auc, min_auc = last_iters_statistics(test_metrics, test_interval, last_iters)
+            txt = 'For the last %s iterations:\nmean AUC=%.2f  max AUC=%.2f  min AUC=%.2f' % (last_iters, avg_auc, max_auc, min_auc)
+            fpr, tpr, _ = sklearn.metrics.roc_curve(test_labels, test_preds)
+            auc = sklearn.metrics.roc_auc_score(test_labels, test_preds)
+            write_results_file('%s.auc.finaltest%s' % (outprefix, two), test_labels, test_preds, footer='AUC %f\n' % auc)
+            plot_roc_curve('%s_roc_test%s.pdf' % (outprefix, two), fpr, tpr, auc, txt)
+
+        if len(np.unique(train_labels)) > 1:
+            last_iters = 1000
+            avg_auc, max_auc, min_auc = last_iters_statistics(train_metrics, test_interval, last_iters)
+            txt = 'For the last %s iterations:\nmean AUC=%.2f  max AUC=%.2f  min AUC=%.2f' % (last_iters, avg_auc, max_auc, min_auc)
+            fpr, tpr, _ = sklearn.metrics.roc_curve(train_labels, train_preds)
+            auc = sklearn.metrics.roc_auc_score(train_labels, train_preds)
+            write_results_file('%s.auc.finaltrain%s' % (outprefix, two), train_labels, train_preds, footer='AUC %f\n' % auc)
+            plot_roc_curve('%s_roc_train%s.pdf' % (outprefix, two), fpr, tpr, auc, txt)
+
 
 
 def parse_args(argv=None):
@@ -190,34 +210,54 @@ if __name__ == '__main__':
 
     for i in results_files:
         for key in sorted(results_files[i], key=len):
-            print str(i).rjust(3), key.rjust(14), results_files[i][key]
+            print str(i).rjust(3), key.rjust(15), results_files[i][key]
 
-    test_aucs, train_aucs, test_rmsds, train_rmsds = [], [], [], []
-    all_y_true, all_y_score, all_y_aff, all_y_predaff = [], [], [], []
-    test2_aucs, train2_aucs, test2_rmsds, train2_rmsds = [], [], [], []
-    all_y_true2, all_y_score2, all_y_aff2, all_y_predaff2 = [], [], [], []
+    test_aucs, train_aucs = [], []
+    test_rmsds, train_rmsds = [], []
+    test_y_true, train_y_true = [], []
+    test_y_score, train_y_score = [], []
+    test_y_aff, train_y_aff = [], []
+    test_y_predaff, train_y_predaff = [], []
+    test2_aucs, train2_aucs = [], []
+    test2_rmsds, train2_rmsds = [], []
+    test2_y_true, train2_y_true = [], []
+    test2_y_score, train2_y_score = [], []
+    test2_y_aff, train2_y_aff = [], []
+    test2_y_predaff, train2_y_predaff = [], []
 
     #read results files
     for i in results_files:
 
         y_true, y_score = read_results_file(results_files[i]['auc_finaltest'])
-        all_y_true.extend(y_true)
-        all_y_score.extend(y_score)
+        test_y_true.extend(y_true)
+        test_y_score.extend(y_score)
+        y_true, y_score = read_results_file(results_files[i]['auc_finaltrain'])
+        train_y_true.extend(y_true)
+        train_y_score.extend(y_score)
 
         if args.affinity:
             y_aff, y_predaff = read_results_file(results_files[i]['rmsd_finaltest'])
-            all_y_aff.extend(y_aff)
-            all_y_predaff.extend(y_predaff)
+            test_y_aff.extend(y_aff)
+            test_y_predaff.extend(y_predaff)
+            y_aff, y_predaff = read_results_file(results_files[i]['rmsd_finaltrain'])
+            train_y_aff.extend(y_aff)
+            train_y_predaff.extend(y_predaff)
 
         if args.two_data_sources:
-            y_true2, y_score2 = read_results_file(results_files[i]['auc_finaltest2'])
-            all_y_true2.extend(y_true2)
-            all_y_score2.extend(y_score2)
+            y_true, y_score = read_results_file(results_files[i]['auc_finaltest2'])
+            test2_y_true.extend(y_true)
+            test2_y_score.extend(y_score)
+            y_true, y_score = read_results_file(results_files[i]['auc_finaltrain2'])
+            train2_y_true.extend(y_true)
+            train2_y_score.extend(y_score)
 
             if args.affinity:
-                y_aff2, y_predaff2 = read_results_file(results_files[i]['rmsd_finaltest2'])
-                all_y_aff2.extend(y_aff2)
-                all_y_predaff2.extend(y_predaff2)
+                y_aff, y_predaff = read_results_file(results_files[i]['rmsd_finaltest2'])
+                test2_y_aff.extend(y_aff)
+                test2_y_predaff.extend(y_predaff)
+                y_aff, y_predaff = read_results_file(results_files[i]['rmsd_finaltrain2'])
+                train2_y_aff.extend(y_aff)
+                train2_y_predaff.extend(y_predaff)
 
         #test_auc train_auc train_loss lr [test_rmsd train_rmsd] [test2_auc train2_auc train2_loss [test2_rmsd train2_rmsd]]
         out_columns = read_results_file(results_files[i]['out'])
@@ -244,9 +284,20 @@ if __name__ == '__main__':
             test2_aucs.append(test2_auc)
             train2_aucs.append(train2_auc)
 
-    combine_fold_results(args.outprefix, args.test_interval, test_aucs, train_aucs, all_y_true, all_y_score,
-                         test_rmsds, train_rmsds, all_y_aff, all_y_predaff)
+    combine_fold_results(test_aucs, train_aucs, test_y_true, test_y_score, train_y_true, train_y_score,
+                         args.outprefix, args.test_interval, affinity=False, second_data_source=False)
+
+    if args.affinity:
+        combine_fold_results(test_rmsds, train_rmsds, test_y_aff, test_y_predaff, train_y_aff, train_y_predaff,
+                             args.outprefix, args.test_interval, affinity=True, second_data_source=False,
+                             filter_actives_test=test_y_true, filter_actives_train=train_y_true)
+
     if args.two_data_sources:
-        combine_fold_results(args.outprefix, args.test_interval, test2_aucs, train2_aucs, all_y_true2, all_y_score2,
-                             test2_rmsds, train2_rmsds, all_y_aff2, all_y_predaff2, True)
+        combine_fold_results(test2_aucs, train2_aucs, test2_y_true, test2_y_score, train2_y_true, train2_y_score,
+                             args.outprefix, args.test_interval, affinity=False, second_data_source=True)
+
+        if args.affinity:
+            combine_fold_results(test2_rmsds, train2_rmsds, test2_y_aff, test2_y_predaff, train2_y_aff, train2_y_predaff,
+                                 args.outprefix, args.test_interval, affinity=True, second_data_source=True,
+                                 filter_actives_test=test2_y_true, filter_actives_train=train2_y_true)
 
