@@ -606,6 +606,19 @@ if __name__ == '__main__':
                 y_aff2, y_predaff2, rmsd2 = test2_vals['y_aff'], test2_vals['y_predaff'], test2_vals['rmsd'][-1]
                 write_results_file('%s.rmsd.finaltest2' % outname, y_aff2, y_predaff2, footer='RMSD %f\n' % rmsd2)
 
+        #write out the final train results
+        y_true, y_score, auc = train_vals['y_true'], train_vals['y_score'], train_vals['auc'][-1]
+        write_results_file('%s.auc.finaltrain' % outname, y_true, y_score, footer='AUC %f\n' % auc)
+        if train_vals['rmsd']:
+            y_aff, y_predaff, rmsd = train_vals['y_aff'], train_vals['y_predaff'], train_vals['rmsd'][-1]
+            write_results_file('%s.rmsd.finaltrain' % outname, y_aff, y_predaff, footer='RMSD %f\n' % rmsd)
+        if args.prefix2:
+            y_true2, y_score2, auc2 = train2_vals['y_true'], train2_vals['y_score'], train2_vals['auc'][-1]
+            write_results_file('%s.auc.finaltrain2' % outname, y_true2, y_score2, footer='AUC %f\n' % auc2)
+            if train2_vals['rmsd']:
+                y_aff2, y_predaff2, rmsd2 = train2_vals['y_aff'], train2_vals['y_predaff'], train2_vals['rmsd'][-1]
+                write_results_file('%s.rmsd.finaltrain2' % outname, y_aff2, y_predaff2, footer='RMSD %f\n' % rmsd2)
+
         if i == 'all': #only aggregate crossval results (from different folds)
             continue
 
