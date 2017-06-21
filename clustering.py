@@ -252,6 +252,7 @@ if __name__ == '__main__':
     parser.add_argument('-s','--similarity',type=float,default=0.8,help='what percentage similarity to cluster by. default=0.8')
     parser.add_argument('-d','--data_root',type=str,default='/home/dkoes/PDBbind/general-set-with-refined/',help="path to target dirs")
     parser.add_argument('--posedir',required=False,default='',help='subdir of target dirs where ligand poses are located')
+    parser.add_argument('--randomize',required=False,type=int,default=None,help='randomize inputs to get a different split, number is random seed')
     parser.add_argument('-v','--verbose',action='store_true',default=False,help='verbose output')
     args = parser.parse_args()
 
@@ -270,6 +271,14 @@ if __name__ == '__main__':
         exit('error: need --cpickle or --pdbfiles to compute target distance matrix')
     if args.verbose: print('Number of targets: {}'.format(len(target_names)))
 
+    if args.randomize != None:
+        np.random.seed(args.randomize)
+        n = len(target_names)
+        indices = np.random.choice(n,n,False)
+        target_names = list(np.array(target_names)[indices])
+        distanceMatrix = distanceMatrix[indices]
+        distanceMatrix = distanceMatrix[:,indices]
+        
     if args.input:
         cluster_groups = calcClusterGroups(distanceMatrix, target_names, threshold)
         if args.verbose: print('{} clusters created'.format(len(cluster_groups)))
