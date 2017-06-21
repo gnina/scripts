@@ -91,13 +91,14 @@ def evaluate_test_net(test_net, n_tests, rotations):
     otherwise output will be misaligned. Can optionally take the average
     of multiple rotations of each example. Batch size should be 1 and
     other parameters should be set so that data access is sequential.'''
-
+    print("evaulating netowrk")
     #evaluate each example with each rotation
     y_true = []
     y_scores = [[] for _ in xrange(n_tests)]
     y_affinity = []
     y_predaffs = [[] for _ in xrange(n_tests)]
     losses = []
+    print("evaluate")
     for r in xrange(rotations):
         for x in xrange(n_tests): #TODO handle different batch sizes
             res = test_net.forward()
@@ -105,7 +106,9 @@ def evaluate_test_net(test_net, n_tests, rotations):
                 y_true.append(float(res['labelout']))
             else:
                 assert res['labelout'] == y_true[x] #sanity check
-            y_scores[x].append(float(res['output'][0][1])) 
+            
+            if 'output' in res:
+                y_scores[x].append(float(res['output'][0][1])) 
             if 'affout' in res:
                 if r == 0:
                     y_affinity.append(float(res['affout']))
@@ -118,16 +121,17 @@ def evaluate_test_net(test_net, n_tests, rotations):
     #average the scores from each rotation
     y_score = []
     y_predaff = []
-    for x in xrange(n_tests):
-        y_score.append(np.mean(y_scores[x]))
+    #for x in xrange(n_tests):
+        #y_score.append(np.mean(y_scores[x]))
+
     if y_affinity:
         for x in range(n_tests):
             y_predaff.append(np.mean(y_predaffs[x]))
-
+	    
     #compute auc
-    assert len(np.unique(y_true)) > 1
-    auc = sklearn.metrics.roc_auc_score(y_true, y_score)
-
+    #assert len(np.unique(y_true)) > 1
+    auc = 0
+    print("the AUC is",auc)
     #compute mean squared error (rmsd) of affinity (for actives only)
     if y_affinity:
         y_predaff = np.array(y_predaff)
@@ -136,14 +140,16 @@ def evaluate_test_net(test_net, n_tests, rotations):
         rmsd = sklearn.metrics.mean_squared_error(y_affinity[yt], y_predaff[yt])
     else:
         rmsd = None
-
+        print("none")
     #compute mean loss
     if losses:
-        loss = np.mean(losses)
+        loss = np.mean(losses) 
+	print("the losses are", loss)
     else:
-        loss = None
-
-    return auc, y_true, y_score, loss, rmsd, y_affinity, y_predaff
+        loss = 0
+	
+    print(y_affinity,y_predaff)	
+    return auc, y_true, loss, rmsd, y_affinity, y_predaff
 
 
 def count_lines(file):
@@ -156,10 +162,11 @@ def train_and_test_model(args, files, outname):
     of the train and test files. Return AUC (and RMSD, if affinity model)
     for every test iteration, and also the labels and predictions for the
     final test iteration.'''
+    print("about to train")
     template = args.model
     test_interval = args.test_interval
     iterations = args.iterations
-
+    print("pow")
     if test_interval > iterations: #need to test once
         test_interval = iterations
 
@@ -176,6 +183,7 @@ def train_and_test_model(args, files, outname):
     test_models = [test_model, train_model]
     test_files = [files['test'], files['train']]
     test_roots = [args.data_root, args.data_root] #which data_root to use
+    print("alpha")
     if args.reduced:
         reduced_test_model = 'trainreducedtest.%d.prototxt' % pid
         reduced_train_model = 'trainreducedtrain.%d.prototxt' % pid
@@ -222,7 +230,8 @@ def train_and_test_model(args, files, outname):
     for key, test_file in files.items():
         idx = test_files.index(test_file)
         test_nets[key] = solver.test_nets[idx], count_lines(test_file)
-
+	
+    print(test_nets)
     if args.cont:
         mode = 'a'    
         modelname = '%s_iter_%d.caffemodel' % (outname, args.cont)
@@ -248,7 +257,7 @@ def train_and_test_model(args, files, outname):
     best_train_interval = 0
 
     i_time_avg = 0
-
+    print("power")
     for i in xrange(iterations/test_interval):
         last_test = i == iterations/test_interval-1
 
@@ -257,23 +266,24 @@ def train_and_test_model(args, files, outname):
         solver.step(test_interval)
         print "Iteration %d" % (args.cont + (i+1)*test_interval)
         print "Train time: %f" % (time.time()-start)
-
+	
+	print("candy")
         #evaluate test set
         start = time.time()
         if args.reduced and not last_test:
             test_net, n_tests = test_nets['reduced_test']
         else:
             test_net, n_tests = test_nets['test']
-        test_auc, y_true, y_score, _, test_rmsd, y_aff, y_predaff = evaluate_test_net(test_net, n_tests, rotations)
+        test_auc, y_true, _, test_rmsd, y_aff, y_predaff = evaluate_test_net(test_net, n_tests, rotations)
         print "Eval test time: %f" % (time.time()-start)
-
+	print("We tested")
         if i > 0 and not (args.reduced and last_test): #check alignment
             assert np.all(y_true == test_vals['y_true'])
             assert np.all(y_aff == test_vals['y_aff'])
 
         test_vals['y_true'] = y_true
         test_vals['y_aff'] = y_aff
-        test_vals['y_score'] = y_score
+        #test_vals['y_score'] = y_score
         test_vals['y_predaff'] = y_predaff
         print "Test AUC: %f" % test_auc
         test_vals['auc'].append(test_auc)
@@ -285,7 +295,8 @@ def train_and_test_model(args, files, outname):
             best_test_auc = test_auc
             if args.keep_best:
                 solver.snapshot() #a bit too much - gigabytes of data
-
+	
+	print("dance")
         if args.prefix2:
             #evaluate test set 2
             start = time.time()
@@ -293,16 +304,16 @@ def train_and_test_model(args, files, outname):
                 test_net, n_tests = test_nets['reduced_test2']
             else:
                 test_net, n_tests = test_nets['test2']
-            test2_auc, y_true, y_score, _, test2_rmsd, y_aff, y_predaff = evaluate_test_net(test_net, n_tests, rotations)
+            test2_auc, y_true, _, test2_rmsd, y_aff, y_predaff = evaluate_test_net(test_net, n_tests, rotations)
             print "Eval test2 time: %f" % (time.time()-start)
 
             if i > 0 and not (args.reduced and last_test): #check alignment
                 assert np.all(y_true == test2_vals['y_true'])
                 assert np.all(y_aff == test2_vals['y_aff'])
-
+	    print("We tested(2)")	
             test2_vals['y_true'] = y_true
             test2_vals['y_aff'] = y_aff
-            test2_vals['y_score'] = y_score
+            #test2_vals['y_score'] = y_score
             test2_vals['y_predaff'] = y_predaff
             print "Test2 AUC: %f" % test2_auc
             test2_vals['auc'].append(test2_auc)
@@ -316,7 +327,7 @@ def train_and_test_model(args, files, outname):
             test_net, n_tests = test_nets['reduced_train']
         else:
             test_net, n_tests = test_nets['train']
-        train_auc, y_true, y_score, train_loss, train_rmsd, y_aff, y_predaff = evaluate_test_net(test_net, n_tests, rotations)
+        train_auc, y_true, train_loss, train_rmsd, y_aff, y_predaff = evaluate_test_net(test_net, n_tests, rotations)
         print "Eval train time: %f" % (time.time()-start)
 
         if i > 0 and not (args.reduced and last_test): #check alignment
@@ -325,7 +336,7 @@ def train_and_test_model(args, files, outname):
 
         train_vals['y_true'] = y_true
         train_vals['y_aff'] = y_aff
-        train_vals['y_score'] = y_score
+        #train_vals['y_score'] = y_score
         train_vals['y_predaff'] = y_predaff
         print "Train AUC: %f" % train_auc
         train_vals['auc'].append(train_auc)
@@ -357,7 +368,7 @@ def train_and_test_model(args, files, outname):
                 test_net, n_tests = test_nets['reduced_train2']
             else:
                 test_net, n_tests = test_nets['train2']
-            train2_auc, y_true, y_score, train2_loss, train2_rmsd, y_aff, y_predaff = evaluate_test_net(test_net, n_tests, rotations)
+            train2_auc, y_true, train2_loss, train2_rmsd, y_aff, y_predaff = evaluate_test_net(test_net, n_tests, rotations)
             print "Eval train2 time: %f" % (time.time()-start)
 
             if i > 0 and not (args.reduced and last_test): #check alignment
@@ -366,7 +377,7 @@ def train_and_test_model(args, files, outname):
 
             train2_vals['y_true'] = y_true
             train2_vals['y_aff'] = y_aff
-            train2_vals['y_score'] = y_score
+            #train2_vals['y_score'] = y_score
             train2_vals['y_predaff'] = y_predaff
             print "Train2 AUC: %f" % train2_auc
             train2_vals['auc'].append(train2_auc)
@@ -424,6 +435,7 @@ def last_iters_statistics(test_aucs, iterations, test_interval, last_iters):
     if last_iters > iterations:
         last_iters = iterations
     num_test_aucs = last_iters/test_interval
+    		
     for fold_test_aucs in test_aucs:
         a = fold_test_aucs[-num_test_aucs:]
         if a:
@@ -541,6 +553,7 @@ def get_train_test_files(prefix, foldnums, allfolds, reduced, prefix2):
     for i in files:
         for file in files[i].values():
             check_file_exists(file)
+    print(files)
     return files
 
 
@@ -582,8 +595,10 @@ if __name__ == '__main__':
     for i in train_test_files:
 
         outname = '%s.%s' % (outprefix, i)
-
+	print(outname)
         results = train_and_test_model(args, train_test_files[i], outname)
+	
+
 
         if i == 'all': #only want crossval results
             continue
@@ -594,7 +609,7 @@ if __name__ == '__main__':
             test_vals, train_vals = results
 
         all_y_true.extend(test_vals['y_true'])
-        all_y_score.extend(test_vals['y_score'])
+        #all_y_score.extend(test_vals['y_score'])
         all_y_aff.extend(test_vals['y_aff'])
         all_y_predaff.extend(test_vals['y_predaff'])
 
@@ -604,17 +619,17 @@ if __name__ == '__main__':
             test_rmsds.append(test_vals['rmsd'])
             train_rmsds.append(train_vals['rmsd'])
 
-        if np.mean(train_aucs) > 0:
-            y_true, y_score, auc = test_vals['y_true'], test_vals['y_score'], test_vals['auc'][-1]
-            write_finaltest_file('%s.auc.finaltest' % outname, y_true, y_score, '# AUC %f\n' % auc, mode)
+        #if np.mean(train_aucs) > 0:
+            #y_true, y_score, auc = test_vals['y_true'], test_vals['y_score'], test_vals['auc'][-1]
+            #write_finaltest_file('%s.auc.finaltest' % outname, y_true, y_score, '# AUC %f\n' % auc, mode)
 
         if test_rmsds:
             y_aff, y_predaff, rmsd = test_vals['y_aff'], test_vals['y_predaff'], test_vals['rmsd'][-1]
             write_finaltest_file('%s.rmsd.finaltest' % outname, y_aff, y_predaff, '# RMSD %f\n' % rmsd, mode)
 
-        if args.prefix2:
-            y_true, y_score, auc = test2_vals['y_true'], test2_vals['y_score'], test2_vals['auc'][-1]
-            write_finaltest_file('%s.auc2.finaltest' % outname, y_true, y_score, '# AUC %f\n' % auc, mode)
+        #if args.prefix2:
+            #y_true, y_score, auc = test2_vals['y_true'], test2_vals['y_score'], test2_vals['auc'][-1]
+            #write_finaltest_file('%s.auc2.finaltest' % outname, y_true, y_score, '# AUC %f\n' % auc, mode)
 
             if test_rmsds:
                 y_aff, y_predaff, rmsd = test2_vals['y_aff'], test2_vals['y_predaff'], test2_vals['rmsd'][-1]
@@ -630,12 +645,12 @@ if __name__ == '__main__':
     txt = 'For the last %s iterations:\nmean AUC=%.2f  max AUC=%.2f  min AUC=%.2f' % (last_iters, avg_auc, max_auc, min_auc)
 
     #due to early termination length of results may not be equivalent
-    test_aucs = np.array(zip(*test_aucs))
-    train_aucs = np.array(zip(*train_aucs))
+    #test_aucs = np.array(zip(*test_aucs))
+    #train_aucs = np.array(zip(*train_aucs))
 
     #average aucs across folds
-    mean_test_aucs = test_aucs.mean(axis=1)
-    mean_train_aucs = train_aucs.mean(axis=1)
+    #mean_test_aucs = test_aucs.mean(axis=1)
+    #mean_train_aucs = train_aucs.mean(axis=1)
 
     #write test and train aucs (mean and for each fold)
     with open('%s.test' % outprefix, mode) as out:
@@ -650,11 +665,11 @@ if __name__ == '__main__':
     training_plot('%s_train.pdf' % outprefix, mean_train_aucs, mean_test_aucs)
 
     #roc curve for the last iteration - combine all tests
-    if len(np.unique(all_y_true)) > 1:
-        fpr, tpr, _ = sklearn.metrics.roc_curve(all_y_true, all_y_score)
-        auc = sklearn.metrics.roc_auc_score(all_y_true, all_y_score)
-        write_finaltest_file('%s.finaltest' % outprefix, all_y_true, all_y_score, '# AUC %f\n' % auc, mode)
-        plot_roc_curve('%s_roc.pdf' % outprefix, fpr, tpr, auc, txt)
+    #if len(np.unique(all_y_true)) > 1:
+        #fpr, tpr, _ = sklearn.metrics.roc_curve(all_y_true, all_y_score)
+        #auc = sklearn.metrics.roc_auc_score(all_y_true, all_y_score)
+        #write_finaltest_file('%s.finaltest' % outprefix, all_y_true, all_y_score, '# AUC %f\n' % auc, mode)
+        #plot_roc_curve('%s_roc.pdf' % outprefix, fpr, tpr, auc, txt)
 
     if test_rmsds:
 
@@ -664,7 +679,7 @@ if __name__ == '__main__':
         #average rmsds across folds
         mean_test_rmsds = test_rmsds.mean(axis=1)
         mean_train_rmsds = train_rmsds.mean(axis=1)
-
+	
         #write test and train rmsds (mean and for each fold)
         with open('%s.rmsd.test' % outprefix, mode) as out:
             for m, r in zip(mean_test_rmsds, test_rmsds):
