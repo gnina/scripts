@@ -494,11 +494,6 @@ def train_and_test_model(args, files, outname):
         solver.snapshot()
     del solver #free mem
 
-    if test_on_train:
-        test = train
-        if args.prefix2:
-            test2 = train2
-
     if not args.keep:
         os.remove(solverf)
         for test_model in test_models:
