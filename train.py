@@ -329,10 +329,10 @@ def train_and_test_model(args, files, outname):
             test.y_score = result.y_score
             test.y_aff = result.y_aff
             test.y_predaff = result.y_predaff
-            if result.auc:
+            if result.auc is not None:
                 print "Test AUC: %f" % result.auc
                 test.aucs.append(result.auc)
-            if result.rmsd:
+            if result.rmsd is not None:
                 print "Test RMSD: %f" % result.rmsd
                 test.rmsds.append(result.rmsd)
 
@@ -356,10 +356,10 @@ def train_and_test_model(args, files, outname):
                 test2.y_aff = result.y_aff
                 test2.y_score = result.y_score
                 test2.y_predaff = result.y_predaff
-                if result.auc:
+                if result.auc is not None:
                     print "Test2 AUC: %f" % result.auc
                     test2.aucs.append(result.auc)
-                if result.rmsd:
+                if result.rmsd is not None:
                     print "Test2 RMSD: %f" % result.rmsd
                     test2.rmsds.append(result.rmsd)
 
@@ -382,13 +382,12 @@ def train_and_test_model(args, files, outname):
         train.y_score = result.y_score
         train.y_aff = result.y_aff
         train.y_predaff = result.y_predaff
-        if result.auc:
+        if result.auc is not None:
             print "Train AUC: %f" % result.auc
             train.aucs.append(result.auc)
-        if result.loss:
             print "Train loss: %f" % result.loss
             train.losses.append(result.loss)
-        if result.rmsd:
+        if result.rmsd is not None:
             print "Train RMSD: %f" % result.rmsd
             train.rmsds.append(result.rmsd)
 
@@ -412,68 +411,62 @@ def train_and_test_model(args, files, outname):
             train2.y_score = result.y_score
             train2.y_aff = result.y_aff
             train2.y_predaff = result.y_predaff
-            if result.auc:
+            if result.auc is not None:
                 print "Train2 AUC: %f" % result.auc
                 train2.aucs.append(result.auc)
-            if result.loss:
                 print "Train2 loss: %f" % result.loss
                 train2.losses.append(result.loss)
-            if result.rmsd:
+            if result.rmsd is not None:
                 print "Train2 RMSD: %f" % result.rmsd
                 train2.rmsds.append(result.rmsd)
 
         if training:
-            if result.auc:
+            if result.auc is not None:
                 test_auc = test.aucs[-1]
                 train_auc = train.aucs[-1]
-            if result.rmsd:
+                train_loss = train.losses[-1]
+            if result.rmsd is not None:
                 test_rmsd = test.rmsds[-1]
                 train_rmsd = train.rmsds[-1]
-            if result.loss:
-                train_loss = train.losses[-1]
             if args.prefix2:
                 if result.auc:
                     test2_auc = test2.aucs[-1]
                     train2_auc = train2.aucs[-1]
+                    train2_loss = train2.losses[-1]
                 if result.rmsd:
                     test2_rmsd = test2.rmsds[-1]
                     train2_rmsd = train2.rmsds[-1]
-                if result.loss:
-                    train2_loss = train2.losses[-1]
 
             #check for improvement
-            if test_auc > best_test_auc:
-                best_test_auc = test_auc
-                if args.keep_best:
-                    solver.snapshot() #a bit too much - gigabytes of data
-            if train_auc > best_train_auc:
-                best_train_auc = train_auc
-                best_train_interval = i
-            if args.dynamic:
-                lr = solver.get_base_lr()
-                if (i-best_train_interval) > args.step_when: #reduce learning rate
-                    lr *= args.step_reduce
-                    solver.set_base_lr(lr)
-                    best_train_interval = i #reset
-                    best_train_auc = train_auc #the value too, so we can consider the recovery
-                if lr < args.step_end:
-                    break #end early
+            if result.auc is not None:
+                if test_auc > best_test_auc:
+                    best_test_auc = test_auc
+                    if args.keep_best:
+                        solver.snapshot() #a bit too much - gigabytes of data
+                if train_auc > best_train_auc:
+                    best_train_auc = train_auc
+                    best_train_interval = i
+                if args.dynamic:
+                    lr = solver.get_base_lr()
+                    if (i-best_train_interval) > args.step_when: #reduce learning rate
+                        lr *= args.step_reduce
+                        solver.set_base_lr(lr)
+                        best_train_interval = i #reset
+                        best_train_auc = train_auc #the value too, so we can consider the recovery
+                    if lr < args.step_end:
+                        break #end early
 
             #write out evaluation results
             row = []
-            if result.auc:
-                row += [test_auc, train_auc]
-            if result.loss:
-                row += [train_loss]
+            if result.auc is not None:
+                row += [test_auc, train_auc, train_loss]
             row += [solver.get_base_lr()]
-            if result.rmsd:
+            if result.rmsd is not None:
                 row += [test_rmsd, train_rmsd]
             if args.prefix2:
-                if result.auc:
-                    row += [test2_auc, train2_auc]
-                if result.loss:
-                    row += [train2_loss]
-                if result.rmsd:
+                if result.auc is not None:
+                    row += [test2_auc, train2_auc, train2_loss]
+                if result.rmsd is not None:
                     row += [test2_rmsd, train2_rmsd]
             out.write(' '.join('%.6f' % x for x in row) + '\n')
             out.flush()
@@ -626,6 +619,7 @@ if __name__ == '__main__':
     test2_y_predaff, train2_y_predaff = [], []
 
     #train each pair
+    numfolds = 0
     for i in train_test_files:
 
         outname = '%s.%s' % (outprefix, i)
@@ -656,6 +650,7 @@ if __name__ == '__main__':
 
         if i == 'all':
             continue
+        numfolds += 1
 
         #aggregate results from different crossval folds
         if test.aucs:
@@ -692,7 +687,7 @@ if __name__ == '__main__':
                 train2_y_predaff.extend(train2.y_predaff)
 
     #only combine fold results if we have multiple folds
-    if len(test_aucs) > 1:
+    if numfolds > 1:
 
         if any(test_aucs):
             combine_fold_results(test_aucs, train_aucs, test_y_true, test_y_score, train_y_true, train_y_score,

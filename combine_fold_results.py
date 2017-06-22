@@ -77,7 +77,7 @@ def check_file_exists(file):
         raise OSError('%s does not exist' % file)
 
 
-def get_results_files(prefix, foldnums, affinity, two_data_sources):
+def get_results_files(prefix, foldnums, binary_class, affinity, two_data_sources):
     files = {}
     if foldnums is None:
         foldnums = set()
@@ -91,14 +91,16 @@ def get_results_files(prefix, foldnums, affinity, two_data_sources):
     for i in foldnums:
         files[i] = {}
         files[i]['out'] = '%s.%d.out' % (prefix, i)
-        files[i]['auc_finaltest'] = '%s.%d.auc.finaltest' % (prefix, i)
-        files[i]['auc_finaltrain'] = '%s.%d.auc.finaltrain' % (prefix, i)
+        if binary_class:
+            files[i]['auc_finaltest'] = '%s.%d.auc.finaltest' % (prefix, i)
+            files[i]['auc_finaltrain'] = '%s.%d.auc.finaltrain' % (prefix, i)
         if affinity:
             files[i]['rmsd_finaltest'] = '%s.%d.rmsd.finaltest' % (prefix, i)
             files[i]['rmsd_finaltrain'] = '%s.%d.rmsd.finaltrain' % (prefix, i)
         if two_data_sources:
-            files[i]['auc_finaltest2'] = '%s.%d.auc.finaltest2' % (prefix, i)
-            files[i]['auc_finaltrain2'] = '%s.%d.auc.finaltrain2' % (prefix, i)
+            if binary_class:
+                files[i]['auc_finaltest2'] = '%s.%d.auc.finaltest2' % (prefix, i)
+                files[i]['auc_finaltrain2'] = '%s.%d.auc.finaltrain2' % (prefix, i)
             if affinity:
                 files[i]['rmsd_finaltest2'] = '%s.%d.rmsd.finaltest2' % (prefix, i)
                 files[i]['rmsd_finaltrain2'] = '%s.%d.rmsd.finaltrain2' % (prefix, i)
@@ -142,7 +144,7 @@ def combine_fold_results(test_metrics, train_metrics, test_labels, test_preds, t
 
     if affinity:
 
-        if filter_actives_test is not None:
+        if filter_actives_test:
             test_preds = filter_actives(test_preds, filter_actives_test)
             test_labels = filter_actives(test_labels, filter_actives_test)
 
@@ -150,16 +152,16 @@ def combine_fold_results(test_metrics, train_metrics, test_labels, test_preds, t
         rmsd = sklearn.metrics.mean_squared_error(test_preds, test_labels)
         r2 = sklearn.metrics.r2_score(test_preds, test_labels)
         write_results_file('%s.rmsd.finaltest%s' % (outprefix, two), test_preds, test_labels, footer='RMSD,R^2 %f %f\n' % (rmsd, r2))
-        plot_correlation('%s_rmsd_test%s.pdf' % (outprefix, two), test_preds, test_labels, rmsd, r2)
+        plot_correlation('%s_corr_test%s.pdf' % (outprefix, two), test_preds, test_labels, rmsd, r2)
 
-        if filter_actives_train is not None:
+        if filter_actives_train:
             train_preds = filter_actives(train_preds, filter_actives_train)
             train_labels = filter_actives(train_labels, filter_actives_train)
 
         rmsd = sklearn.metrics.mean_squared_error(train_preds, train_labels)
         r2 = sklearn.metrics.r2_score(train_preds, train_labels)
         write_results_file('%s.rmsd.finaltrain%s' % (outprefix, two), train_preds, train_labels, footer='RMSD,R^2 %f %f\n' % (rmsd, r2))
-        plot_correlation('%s_rmsd_test%s.pdf' % (outprefix, two), train_preds, train_labels, rmsd, r2)
+        plot_correlation('%s_corr_train%s.pdf' % (outprefix, two), train_preds, train_labels, rmsd, r2)
 
     else:
 
@@ -188,7 +190,8 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description='Combine training results from different folds and make graphs')
     parser.add_argument('-o','--outprefix',type=str,required=True,help="Prefix for input and output files (--outprefix from train.py)")
     parser.add_argument('-n','--foldnums',type=str,required=False,help="Fold numbers to combine, default is to determine using glob",default=None)
-    parser.add_argument('-a','--affinity',default=False,action='store_true',required=False,help="Whether to look for affinity results files")
+    parser.add_argument('-a','--affinity',default=False,action='store_true',required=False,help="Also look for affinity results files")
+    parser.add_argument('--affinity_only',default=False,action='store_true',required=False,help="ONLY look for affinity results files")
     parser.add_argument('-2','--two_data_sources',default=False,action='store_true',required=False,help="Whether to look for 2nd data source results files")
     parser.add_argument('-t','--test_interval',type=int,default=40,required=False,help="Number of iterations between tests")
     return parser.parse_args(argv)
@@ -197,8 +200,16 @@ def parse_args(argv=None):
 if __name__ == '__main__':
     args = parse_args()
 
+    binary_class = True
+    affinity = False
+    if args.affinity:
+        affinity = True
+    if args.affinity_only:
+        affinity = True
+        binary_class = False
+
     try:
-        results_files = get_results_files(args.outprefix, args.foldnums, args.affinity, args.two_data_sources)
+        results_files = get_results_files(args.outprefix, args.foldnums, binary_class, affinity, args.two_data_sources)
     except OSError as e:
         print "error: %s" % e
         sys.exit(1)
@@ -227,14 +238,15 @@ if __name__ == '__main__':
     #read results files
     for i in results_files:
 
-        y_true, y_score = read_results_file(results_files[i]['auc_finaltest'])
-        test_y_true.extend(y_true)
-        test_y_score.extend(y_score)
-        y_true, y_score = read_results_file(results_files[i]['auc_finaltrain'])
-        train_y_true.extend(y_true)
-        train_y_score.extend(y_score)
+        if binary_class:
+            y_true, y_score = read_results_file(results_files[i]['auc_finaltest'])
+            test_y_true.extend(y_true)
+            test_y_score.extend(y_score)
+            y_true, y_score = read_results_file(results_files[i]['auc_finaltrain'])
+            train_y_true.extend(y_true)
+            train_y_score.extend(y_score)
 
-        if args.affinity:
+        if affinity:
             y_aff, y_predaff = read_results_file(results_files[i]['rmsd_finaltest'])
             test_y_aff.extend(y_aff)
             test_y_predaff.extend(y_predaff)
@@ -243,14 +255,15 @@ if __name__ == '__main__':
             train_y_predaff.extend(y_predaff)
 
         if args.two_data_sources:
-            y_true, y_score = read_results_file(results_files[i]['auc_finaltest2'])
-            test2_y_true.extend(y_true)
-            test2_y_score.extend(y_score)
-            y_true, y_score = read_results_file(results_files[i]['auc_finaltrain2'])
-            train2_y_true.extend(y_true)
-            train2_y_score.extend(y_score)
+            if binary_class:
+                y_true, y_score = read_results_file(results_files[i]['auc_finaltest2'])
+                test2_y_true.extend(y_true)
+                test2_y_score.extend(y_score)
+                y_true, y_score = read_results_file(results_files[i]['auc_finaltrain2'])
+                train2_y_true.extend(y_true)
+                train2_y_score.extend(y_score)
 
-            if args.affinity:
+            if affinity:
                 y_aff, y_predaff = read_results_file(results_files[i]['rmsd_finaltest2'])
                 test2_y_aff.extend(y_aff)
                 test2_y_predaff.extend(y_predaff)
@@ -258,44 +271,51 @@ if __name__ == '__main__':
                 train2_y_aff.extend(y_aff)
                 train2_y_predaff.extend(y_predaff)
 
-        #test_auc train_auc train_loss lr [test_rmsd train_rmsd] [test2_auc train2_auc train2_loss [test2_rmsd train2_rmsd]]
+        #[test_auc train_auc train_loss] lr [test_rmsd train_rmsd] [[test2_auc train2_auc train2_loss] [test2_rmsd train2_rmsd]]
         out_columns = read_results_file(results_files[i]['out'])
 
-        test_auc, train_auc = out_columns[0:2]
-        test_aucs.append(test_auc)
-        train_aucs.append(train_auc)
+        col_idx = 0
+        if binary_class:
+            test_aucs.append(out_columns[col_idx])
+            train_aucs.append(out_columns[col_idx+1])
+            #ignore train_loss
+            col_idx += 3
 
-        if args.affinity:
-            test_rmsd, train_rmsd = out_columns[4:6]
-            test_rmsds.append(test_rmsd)
-            train_rmsds.append(train_rmsd)
+        #ignore learning rate
+        col_idx += 1
 
-            if args.two_data_sources:
-                test2_auc, train2_auc = out_columns[6:8]
-                test2_rmsd, train2_rmsd = out_columns[9:11]
-                test2_aucs.append(test2_auc)
-                train2_aucs.append(train2_auc)
-                test2_rmsds.append(test2_rmsd)
-                train2_rmsds.append(train2_rmsd)
+        if affinity:
+            test_rmsds.append(out_columns[col_idx])
+            train_rmsds.append(out_columns[col_idx+1])
+            col_idx += 2
 
-        elif args.two_data_sources:
-            test2_auc, train2_auc = out_columns[4:6]
-            test2_aucs.append(test2_auc)
-            train2_aucs.append(train2_auc)
+        if args.two_data_sources:
+            if binary_class:
+                test2_aucs.append(out_columns[col_idx])
+                train2_aucs.append(out_columns[col_idx+1])
+                #ignore train2_loss
+                col_idx += 3
 
-    combine_fold_results(test_aucs, train_aucs, test_y_true, test_y_score, train_y_true, train_y_score,
-                         args.outprefix, args.test_interval, affinity=False, second_data_source=False)
+            if affinity:
+                test2_rmsds.append(out_columns[col_idx])
+                train2_rmsds.append(out_columns[col_idx+1])
+                col_idx += 2
 
-    if args.affinity:
+    if binary_class:
+        combine_fold_results(test_aucs, train_aucs, test_y_true, test_y_score, train_y_true, train_y_score,
+                             args.outprefix, args.test_interval, affinity=False, second_data_source=False)
+
+    if affinity:
         combine_fold_results(test_rmsds, train_rmsds, test_y_aff, test_y_predaff, train_y_aff, train_y_predaff,
                              args.outprefix, args.test_interval, affinity=True, second_data_source=False,
                              filter_actives_test=test_y_true, filter_actives_train=train_y_true)
 
     if args.two_data_sources:
-        combine_fold_results(test2_aucs, train2_aucs, test2_y_true, test2_y_score, train2_y_true, train2_y_score,
-                             args.outprefix, args.test_interval, affinity=False, second_data_source=True)
+        if binary_class:
+            combine_fold_results(test2_aucs, train2_aucs, test2_y_true, test2_y_score, train2_y_true, train2_y_score,
+                                 args.outprefix, args.test_interval, affinity=False, second_data_source=True)
 
-        if args.affinity:
+        if affinity:
             combine_fold_results(test2_rmsds, train2_rmsds, test2_y_aff, test2_y_predaff, train2_y_aff, train2_y_predaff,
                                  args.outprefix, args.test_interval, affinity=True, second_data_source=True,
                                  filter_actives_test=test2_y_true, filter_actives_train=train2_y_true)
