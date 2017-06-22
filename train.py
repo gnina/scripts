@@ -110,14 +110,19 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
 
             if not res or i >= batch_size:
                 res = test_net.forward()
-                batch_size = res['output'].shape[0]
+                if 'output' in res:
+                  batch_size = res['output'].shape[0]
+                else:
+                  batch_size = res['affout'].shape[0]
                 i = 0
 
-            if r == 0:
+            if 'labelout' in res:
+              if r == 0:
                 y_true[x] = float(res['labelout'][i])
-            else:
+              else:
                 assert y_true[x] == res['labelout'][i] #sanity check
-            y_scores[x].append(float(res['output'][i][1]))
+            if 'output' in res:
+                y_scores[x].append(float(res['output'][i][1]))
 
             if 'affout' in res:
                 has_aff = True
@@ -144,8 +149,10 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
             y_predaff.append(np.mean(y_predaffs[x]))
 
     #compute auc
-    assert len(np.unique(y_true)) > 1
-    auc = sklearn.metrics.roc_auc_score(y_true, y_score)
+    if len(np.unique(y_true)) > 1:
+      auc = sklearn.metrics.roc_auc_score(y_true, y_score)
+    else:
+      auc = 0
 
     #compute mean squared error (rmsd) of affinity (for actives only)
     if has_aff:
@@ -160,7 +167,7 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
     if losses:
         loss = np.mean(losses)
     else:
-        loss = None
+        loss = 0
 
     return (auc, y_true, y_score, loss, rmsd, y_affinity, y_predaff), offset
 
