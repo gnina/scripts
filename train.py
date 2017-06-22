@@ -115,10 +115,10 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
 
             if not res or i >= batch_size:
                 res = test_net.forward()
-                if 'affout' in res:
-                    batch_size = res['affout'].shape[0]
+                if 'output' in res:
+                    batch_size = res['output'].shape[0]
                 else:
-                    batch_size = res['labelout'].shape[0]
+                    batch_size = res['affout'].shape[0]
                 i = 0
 
             if 'labelout' in res:
