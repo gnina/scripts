@@ -75,6 +75,7 @@ optional arguments:
                         files for combined training
   --data_ratio DATA_RATIO
                         Ratio to combine training data from 2 sources
+  --test_only           Don't train, just evaluate test nets once
 ```
 
 MODEL is a caffe model file and is required. It should have a MolGridDataLayer
