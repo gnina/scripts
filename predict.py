@@ -35,20 +35,19 @@ def predict(args):
     with open(args.input, 'r') as f:
         lines = f.readlines()
     result, _ = evaluate_test_net(test_net, len(lines), 1, 0)
-    auc, y_true, y_score, loss, rmsd, y_affinity, y_predaff = result
-    assert np.all(y_true == [float(l.split(' ')[0]) for l in lines]) #check alignment
+    assert np.all(result.y_true == [float(l.split(' ')[0]) for l in lines]) #check alignment
     if args.affinity:
-        assert len(y_predaff) > 0
-        predict = y_predaff
+        assert len(result.y_predaff) > 0
+        predict = result.y_predaff
     else:
-        predict = y_score
+        predict = result.y_score
     output_lines = ['%f %s' % t for t in zip(predict, lines)]
     if args.max_score:
         output_lines = maxLigandScore(output_lines)
     if args.affinity:
-        output_lines.append("# RMSD %.5f\n" % rmsd)
+        output_lines.append("# RMSD %.5f\n" % result.rmsd)
     else:
-        output_lines.append("# AUC %.5f\n" % auc)
+        output_lines.append("# AUC %.5f\n" % result.auc)
     if not args.keep:
         os.remove(test_model)
     return output_lines
