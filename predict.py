@@ -35,20 +35,58 @@ def predict(args):
     with open(args.input, 'r') as f:
         lines = f.readlines()
     result, _ = evaluate_test_net(test_net, len(lines), 1, 0)
-    auc, y_true, y_score, loss, rmsd, y_affinity, y_predaff = result
-    assert np.all(y_true == [float(l.split(' ')[0]) for l in lines]) #check alignment
-    if args.affinity:
-        assert len(y_predaff) > 0
-        predict = y_predaff
-    else:
-        predict = y_score
-    output_lines = ['%f %s' % t for t in zip(predict, lines)]
-    if args.max_score:
-        output_lines = maxLigandScore(output_lines)
-    if args.affinity:
+    auc = result.auc
+    y_true = result.y_true
+    y_score = result.y_score
+    loss = result.loss
+    rmsd = result.rmsd
+    y_affinity = result.y_aff
+    y_predaff = result.y_predaff
+    
+#    auc, y_true, y_score, loss, rmsd, y_affinity, y_predaff = result
+
+    if 'labelout' in test_net.outputs:
+        assert np.all(y_true == [float(l.split(' ')[0]) for l in lines]) #check alignment
+    if 'affout' in test_net.outputs:
+        for (l,a) in zip(lines,y_affinity):
+            lval = float(l.split()[1])
+            if abs(lval-a) > 0.001:
+                print "Mismatching values",a,l
+                sys.exit(-1)
+
+    if rmsd != None and auc != None:
+        output_lines = ['%f %f %s' % t for t in zip(y_score, y_predaff, lines)]
+    elif rmsd != None:
+        output_lines = ['%f %s' % t for t in zip(y_predaff, lines)]
+    elif auc != None:
+        output_lines = ['%f %s' % t for t in zip(y_score, lines)]
+                        
+
+    if args.max_score or args.max_affinity:
+        output_lines = maxLigandScore(output_lines, args.max_affinity)
+        #have to recalculate RMSD and AUC
+        labelindex = 1
+        if rmsd != None: labelindex = 2
+        affpredindex = 0
+        afflabelindex = 2
+        if auc != None: 
+            affpredindex = 1
+            afflabelindex = 3
+            
+        if auc != None:
+            y_true = [float(line.split()[labelindex]) for line in output_lines]
+            y_score = [float(line.split()[0]) for line in output_lines]
+            auc = sklearn.metrics.roc_auc_score(y_true, y_score)
+        if rmsd != None:
+            y_affinity = [float(line.split()[afflabelindex]) for line in output_lines]
+            y_predaff = [float(line.split()[affpredindex]) for line in output_lines]
+            rmsd = np.sqrt(sklearn.metrics.mean_squared_error(np.abs(y_affinity),y_predaff))
+        
+    if rmsd != None:
         output_lines.append("# RMSD %.5f\n" % rmsd)
-    else:
+    if auc != None:
         output_lines.append("# AUC %.5f\n" % auc)
+        
     if not args.keep:
         os.remove(test_model)
     return output_lines
@@ -70,20 +108,29 @@ def get_ligand_key(rec_path, pose_path):
     return tuple([rec_name] + pose_name_nums[:-1])
 
 
-def maxLigandScore(lines):
+def maxLigandScore(lines, useaff):
     #output format: score label [affinity] rec_path pose_path
     ligands = {}
     for line in lines:
-        data = line.split(' ')
-        score = float(data[0])
-        label = float(data[1])
-        try:
-            affinity = float(data[2])
-            rec_path = data[3].strip()
-            pose_path = data[4].strip()
-        except ValueError:
+        data = line.split('#')[0].split()
+        if len(data) == 4: #only score present
+            score = float(data[0])
             rec_path = data[2].strip()
             pose_path = data[3].strip()
+        elif len(data) == 5: #only affinity present
+            score = float(data[0])
+            rec_path = data[3].strip()
+            pose_path = data[4].strip()            
+        elif len(data) == 6:
+            if useaff:
+                score = float(data[1]) 
+            else:
+                score = float(data[0])
+            rec_path = data[4].strip()
+            pose_path = data[5].strip()
+        else:
+            print line
+
         key = get_ligand_key(rec_path, pose_path)
         if key not in ligands or score > ligands[key][0]:
             ligands[key] = (score, line)
@@ -100,8 +147,8 @@ def parse_args(argv=None):
     parser.add_argument('-o','--output',type=str,help='Output file name',default=None)
     parser.add_argument('-k','--keep',action='store_true',default=False,help="Don't delete prototxt files")
     parser.add_argument('--max_score',action='store_true',default=False,help="take max score per ligand as its score")
+    parser.add_argument('--max_affinity',action='store_true',default=False,help="take max affinity per ligand as its score")
     parser.add_argument('--notcalc_predictions', type=str, default='',help='use file of predictions instead of calculating')
-    parser.add_argument('-a','--affinity',default=False,action='store_true',required=False,help='Predict affinity instead of active/decoy label')
     return parser.parse_args(argv)
 
 
@@ -116,7 +163,7 @@ if __name__ == '__main__':
     else:
         with open(args.notcalc_predictions, 'r') as f:
             predictions = f.readlines()
-        if args.max_score:
-            predictions = maxLigandScore(predictions)
+        if args.max_score or args.max_affinity:
+            predictions = maxLigandScore(predictions, args.max_affinity)
     out.writelines(predictions)
 

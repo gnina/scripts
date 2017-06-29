@@ -160,15 +160,18 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
 
     #compute auc
     if result.y_true and result.y_score:
-        assert len(np.unique(result.y_true)) > 1
-        result.auc = sklearn.metrics.roc_auc_score(result.y_true, result.y_score)
+        if len(np.unique(result.y_true)) > 1:
+            result.auc = sklearn.metrics.roc_auc_score(result.y_true, result.y_score)
+        else: # may be evaluating all crystal poses?
+            print "Warning: only one unique label"
+            result.auc = 1.0
 
     #compute mean squared error (rmsd) of affinity (for actives only)
     if result.y_aff and result.y_predaff:
         if result.y_true:
             y_predaff_true = filter_actives(result.y_predaff, result.y_true)
             y_aff_true = filter_actives(result.y_aff, result.y_true)
-        result.rmsd = sklearn.metrics.mean_squared_error(y_aff_true, y_predaff_true)
+        result.rmsd = np.sqrt(sklearn.metrics.mean_squared_error(y_aff_true, y_predaff_true))
 
     #compute mean loss
     if losses:
