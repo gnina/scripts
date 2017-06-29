@@ -299,6 +299,7 @@ def train_and_test_model(args, files, outname):
     #also keep track of best test and train aucs
     best_test_auc = 0
     best_train_auc = 0
+    best_test_rmsd = np.inf
     best_train_interval = 0
 
     i_time_avg = 0
@@ -458,7 +459,13 @@ def train_and_test_model(args, files, outname):
                         best_train_auc = train_auc #the value too, so we can consider the recovery
                     if lr < args.step_end:
                         break #end early
-
+            #check for rmse improvement
+            if result.rmsd is not None:
+                if test_rmsd < best_test_rmsd:
+                    best_test_rmsd = test_rmsd
+                    if args.keep_best:
+                        solver.snapshot() #a bit too much - gigabytes of data                    
+                    
             #write out evaluation results
             row = []
             if result.auc is not None:
