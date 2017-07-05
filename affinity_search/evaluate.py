@@ -83,7 +83,7 @@ def evaluate_fold(testfile, caffemodel):
                 ligand = tokens[t+1]
                 break
         
-        #(correct, prediction, receptor, ligand, label (optional), posescore (optional))
+        #(correct, prediction, receptor, ligand, label (optional), posescore (optional))       
         if posescore < 0:
             ret.append((correct, prediction, receptor, ligand))
         else:
@@ -135,8 +135,8 @@ def analyze_results(results, uniquify=None):
     if uniquify and len(results[0]) > 5:
         labels = np.array([r[4] for r in results])
         posescores = np.array([r[5] for r in results])
-        aucpose = sklearn.metrics.auc(labels, posescores)
-        aucaff = sklearn.metrics.auc(labels, predictions)
+        aucpose = sklearn.metrics.roc_auc_score(labels, posescores)
+        aucaff = sklearn.metrics.roc_auc_score(labels, predictions)
         top = np.count_nonzero(labels > 0)/float(len(labels))
         return (rmse, R, S, aucpose, aucaff, top)
     else:
@@ -148,7 +148,7 @@ name = sys.argv[1]
 
 allresults = []
 #for each test dataset
-for testprefix in ['all']:
+for testprefix in ['crystal','bestonly','all']:
     #find the relevant models for each fold
     testresults = {'best25': [], 'best50': [], 'best100': [], '100k': [] }
     for fold in [0,1,2]:
@@ -183,12 +183,11 @@ for testprefix in ['all']:
             allresults.append( ('all_affinity', n) + analyze_results(testresults[n],'affinity'))
         else:    
             allresults.append( (testprefix, n) + analyze_results(testresults[n]) )
-    break
+    
 if len(sys.argv) > 2:
     out = open(sys.argv[2],'w')
 else:
     out = sys.stdout
 
-print allresults
 for a in allresults:
     out.write(' '.join(map(str,a))+'\n')

@@ -80,3 +80,5 @@ done
 # multiple train splits to determine statistical significance of different accuracies
 
 ./makemodels.py > cmds
+
+#evaluate on crystal, bestonly, and all
