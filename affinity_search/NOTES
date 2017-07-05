@@ -1,0 +1,82 @@
+Trying to get a handle on how to best train affinity.
+
+Variables under consideration:
+gapped loss: 0, 1, 2
+pose type (input data):
+    A. crystal structs "crystal"  nobalance
+    B. best rmsd docked "bestonly" nobalance
+    C. best rmsd w/negated all other  (2X multiple) "besty" - needs reduced
+    D. <2 rmsd  (nX multiple)  "posonly" nobalance - doesn't hurt to have reduced, n~4
+    E. <2 rmsd w/negated highrmsd (nX multiple)  "all" - needs reduced, n~4
+pose sampling (always balance):
+    balanced if there are negative examples (but otherwise uniform)
+    receptor stratified (not applicable to A or B)
+    affinity stratified
+    receptor and affinity stratified
+pose prediction
+    none (affonly)
+    included (not applicable to A, B, or D)
+
+
+Should also re-evaluate traditional hyper-parameters.
+Consider slightly deeper/wider models.
+
+Evaluation:
+kind: RMSE, Spearman, and Pearson
+test set: crystal only, best rmsd only, all poses (highest prediction)
+
+Run predict using best model and best model after normalized # of iterations
+
+
+#include minified poses
+cat pdbbind.train cnnmin.types cnnmin2.types > affinity_search/all.types
+
+#Create new train/test sets:
+
+~/git/gninascripts/compute_seqs.py --pdbfiles pdbinfo --out pdb.seqs
+# distribute the row computation
+~/git/gninascripts/compute_row.py --pdbseqs pdb.seqs -r 0 --out seqdist/row.0
+~/git/gninascripts/combine_rows.py seqrow.*
+ 
+
+~/git/gninascripts/clustering.py -i crystal.types --cpickle matrix.pickle -s 0.5 -v -d .. -o crystal_0.5_0_
+for i in {1..4} 
+do 
+~/git/gninascripts/clustering.py -i crystal.types --cpickle matrix.pickle -s 0.5 -v -d .. -o crystal_0.5_${i}_ --randomize $i
+done
+
+~/git/gninascripts/clustering.py -i all.types --cpickle matrix.pickle -s 0.5 -v -d .. -o all_0.5_0_
+for i in {1..4} 
+do 
+~/git/gninascripts/clustering.py -i all.types --cpickle matrix.pickle -s 0.5 -v -d .. -o all_0.5_${i}_ --randomize $i
+done
+
+#posonly  training set
+for i in all_*.types; do  awk '$1 > 0 {print $0}' $i > posonly${i#all}; done
+
+#bestonly
+for i in posonly_0.5_*; do sort -n -k6,6 $i | sort -s -k3,3 -u > bestonly${i#posonly}; done
+
+#besty
+for i in all_*; do ./makebesty.py $i > besty${i#all}; done
+
+for i in *_test*.types
+do
+ n=`echo $i | sed 's/_test/__reducedtest/'`
+ ./makereduced.py $i > $n
+done
+
+for i in *_train*.types
+do
+ n=`echo $i | sed 's/_train/__reducedtrain/'`
+ ./makereduced.py $i > $n
+done
+
+# use the default (0) split for hyper parameter optimization
+
+# should eventually measure variance of different random seed vs. different training set
+
+# plan is to evaluate all configurations on the pareto optimal curve with
+# multiple train splits to determine statistical significance of different accuracies
+
+./makemodels.py > cmds
