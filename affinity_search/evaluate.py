@@ -97,14 +97,12 @@ def evaluate_fold(testfile, caffemodel):
     
 
 def reduce_results(results, index):
-    '''Return results with only one tuple for every receptor+ligand value,
+    '''Return results with only one tuple for every receptor value,
     taking the one with the max value at index in the tuple (predicted affinity or pose score)
     '''
     res = dict() #indexed by receptor+ligand
     for r in results:
-        receptor = r[2]
-        ligand = r[3]
-        name = receptor+ligand
+        name = r[2]
         if name not in res:
             res[name] = r
         elif res[name][index] < r[index]:
@@ -119,7 +117,15 @@ def analyze_results(results, uniquify=None):
     Returns tuple:
     (RMSE, Pearson, Spearman, AUCpose, AUCaffinity, top-1)
     '''
-    
+
+    #calc auc before reduction
+    if len(results[0]) > 5:
+        labels = np.array([r[4] for r in results])
+        posescores = np.array([r[5] for r in results])
+        predictions = np.array([r[1] for r in results])
+        aucpose = sklearn.metrics.roc_auc_score(labels, posescores)
+        aucaff = sklearn.metrics.roc_auc_score(labels, predictions)
+
     if uniquify == 'affinity':
         results = reduce_results(results, 1)
     elif uniquify == 'pose':
@@ -135,9 +141,6 @@ def analyze_results(results, uniquify=None):
     
     if uniquify and len(results[0]) > 5:
         labels = np.array([r[4] for r in results])
-        posescores = np.array([r[5] for r in results])
-        aucpose = sklearn.metrics.roc_auc_score(labels, posescores)
-        aucaff = sklearn.metrics.roc_auc_score(labels, predictions)
         top = np.count_nonzero(labels > 0)/float(len(labels))
         return (rmse, R, S, aucpose, aucaff, top)
     else:
@@ -149,7 +152,7 @@ name = sys.argv[1]
 
 allresults = []
 #for each test dataset
-for testprefix in ['crystal','bestonly','all']:
+for testprefix in ['all','crystal','bestonly']:
     #find the relevant models for each fold
     testresults = {'best25': [], 'best50': [], 'best100': [], '100k': [] }
     for fold in [0,1,2]:
@@ -184,7 +187,7 @@ for testprefix in ['crystal','bestonly','all']:
             allresults.append( ('all_affinity', n) + analyze_results(testresults[n],'affinity'))
         else:    
             allresults.append( (testprefix, n) + analyze_results(testresults[n]) )
-    
+     
 if len(sys.argv) > 2:
     out = open(sys.argv[2],'w')
 else:
