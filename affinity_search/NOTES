@@ -82,3 +82,6 @@ done
 ./makemodels.py > cmds
 
 #evaluate on crystal, bestonly, and all
+
+for i in `awk '{print $NF}' cmds`; do echo ./evaluate.py $i ${i}.summary; done > evals
+

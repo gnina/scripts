@@ -100,7 +100,7 @@ def reduce_results(results, index):
     '''Return results with only one tuple for every receptor value,
     taking the one with the max value at index in the tuple (predicted affinity or pose score)
     '''
-    res = dict() #indexed by receptor+ligand
+    res = dict() #indexed by receptor
     for r in results:
         name = r[2]
         if name not in res:
@@ -119,7 +119,7 @@ def analyze_results(results, uniquify=None):
     '''
 
     #calc auc before reduction
-    if len(results[0]) > 5:
+    if uniquify and len(results[0]) > 5:
         labels = np.array([r[4] for r in results])
         posescores = np.array([r[5] for r in results])
         predictions = np.array([r[1] for r in results])
