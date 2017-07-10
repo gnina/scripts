@@ -1,10 +1,10 @@
-#!/usr/bin/env python
+#!/usr/bin/env python 
 
 '''Take a prefix, run predictions, and generate evaluations for crystal, bestonly, 
 and all test sets (take max affinity; if pose score is available also consider
 max pose score).
 Generates graphs and overall CV results.  Takes the prefix and (for now) assumes trial 0.
-Will evaluate 100k model and best model prior to 100k, 50k and 25k
+Will evaluate 100k model and best model prior to 100k, 50k and 25k 
 '''
 
 import numpy as np
@@ -109,13 +109,14 @@ def reduce_results(results, index):
             res[name] = r
     return res.values()
 
-def analyze_results(results, uniquify=None):
+def analyze_results(results, outname, uniquify=None):
     '''Compute error metrics from resuls.  RMSE, Pearson, Spearman.
     If uniquify is set, AUC and top-1 percentage are also computed,
     uniquify can be None, 'affinity', or 'pose' and is set with
     the all training set to select the pose used for scoring.
     Returns tuple:
     (RMSE, Pearson, Spearman, AUCpose, AUCaffinity, top-1)
+    Writes (correct,prediction) pairs to outname.predictions
     '''
 
     #calc auc before reduction
@@ -138,7 +139,12 @@ def analyze_results(results, uniquify=None):
     rmse = np.sqrt(sklearn.metrics.mean_squared_error(correctaff, predictions))
     R = scipy.stats.pearsonr(correctaff, predictions)[0]
     S = scipy.stats.spearmanr(correctaff, predictions)[0]
-    
+    out = open('%s.predictions'%outname,'w')
+    for (c,p) in zip(correctaff,predictions):
+        out.write('%f %f\n' % (c,p))
+    out.write('#RMSD %f\n'%rmse)
+    out.write('#R %f\n'%R)
+
     if uniquify and len(results[0]) > 5:
         labels = np.array([r[4] for r in results])
         top = np.count_nonzero(labels > 0)/float(len(labels))
@@ -183,10 +189,10 @@ for testprefix in ['all','crystal','bestonly']:
             continue
         if testprefix == 'all':
             if len(testresults[n][0]) == 6:
-                allresults.append( ('all_pose', n) + analyze_results(testresults[n],'pose'))
-            allresults.append( ('all_affinity', n) + analyze_results(testresults[n],'affinity'))
+                allresults.append( ('all_pose', n) + analyze_results(testresults[n],'all_pose_'+name+'_'+n,'pose'))
+            allresults.append( ('all_affinity', n) + analyze_results(testresults[n],'all_affinity_'+name+'_'+n,'affinity'))
         else:    
-            allresults.append( (testprefix, n) + analyze_results(testresults[n]) )
+            allresults.append( (testprefix, n) + analyze_results(testresults[n], testprefix+'_'+name+'_'+n) )
      
 if len(sys.argv) > 2:
     out = open(sys.argv[2],'w')
