@@ -31,6 +31,8 @@ Run predict using best model and best model after normalized # of iterations
 #include minified poses
 cat pdbbind.train cnnmin.types cnnmin2.types > affinity_search/all.types
 
+../addaffinities.py all.types ../refinedSet.txt 
+
 #Create new train/test sets:
 
 ~/git/gninascripts/compute_seqs.py --pdbfiles pdbinfo --out pdb.seqs
@@ -111,4 +113,45 @@ train.py -m affinity_g0_p0_rec1_astrat0_b1_h4.model -p all_0.5_0_ --keep_best -t
 train.py -m affinity_g0_p1_rec1_astrat0_b1_h1.model -p all_0.5_0_ --keep_best -t 1000 -i 100000 --reduced -o all_affinity_g0_p1_rec1_astrat0_b1_h1
 train.py -m affinity_g0_p1_rec1_astrat0_b1_h2.model -p all_0.5_0_ --keep_best -t 1000 -i 100000 --reduced -o all_affinity_g0_p1_rec1_astrat0_b1_h2
 train.py -m affinity_g0_p1_rec1_astrat0_b1_h4.model -p all_0.5_0_ --keep_best -t 1000 -i 100000 --reduced -o all_affinity_g0_p1_rec1_astrat0_b1_h4
+
+#h4 is best performing so far, but h6 and h8 fail to converge consistently
+
+train.py -m affinity_g0_p1_rec1_astrat0_b1_h6.model -p all_0.5_0_ --keep_best -t 1000 -i 100000 --reduced -o all_affinity_g0_p1_rec1_astrat0_b1_h6
+train.py -m affinity_g0_p1_rec1_astrat0_b1_h8.model -p all_0.5_0_ --keep_best -t 1000 -i 100000 --reduced -o all_affinity_g0_p1_rec1_astrat0_b1_h8
+train.py -m affinity_g0_p1_rec1_astrat1_b1_h4.model -p all_0.5_0_ --keep_best -t 1000 -i 100000 --reduced -o all_affinity_g0_p1_rec1_astrat1_b1_h4
+train.py -m affinity_g2_p1_rec1_astrat0_b1_h4.model -p all_0.5_0_ --keep_best -t 1000 -i 100000 --reduced -o all_affinity_g2_p1_rec1_astrat0_b1_h4
+train.py -m affinity_g0_p1_rec1_astrat0_b1_h4_y1.model -p all_0.5_0_ --keep_best -t 1000 -i 100000 --reduced -o all_affinity_g0_p1_rec1_astrat0_b1_h4_y1
+train.py -m affinity_g0_p1_rec1_astrat0_b1_h4_y2.model -p all_0.5_0_ --keep_best -t 1000 -i 100000 --reduced -o all_affinity_g0_p1_rec1_astrat0_b1_h4_y2
+
+#Note: at this point I realized that  2cer and 2gyi were both incorrectly being included (0 affinity) and removed them
+
+#investigating effect of only training on extrema - can we get a better slope on the regression line?
+cat all.types | awk '{print sqrt($2*$2),$0}' | sort -n | tail -24999 | head
+cat all.types | awk '{print sqrt($2*$2),$0}' | sort -n | tail -24999 >> extrema.types 
+awk '{print $2,$3,$4,$5,$6,$7,$8}' extrema.types > e
+mv e extrema.types
+~/git/gninascripts/clustering.py -i extrema.types --cpickle matrix.pickle  -s 0.5 -v -d .. -o extrema_0.5_0_
+
+train.py -m affinity_g0_p1_rec1_astrat0_b1_h4.model -p extrema_0.5_0_ --keep_best -t 1000 -i 100000 -o extrema_affinity_g0_p1_rec1_astrat0_b1_h4
+
+# more analysis in summaries.ipynb
+# basically, training set is fitting just fine :-(
+
+### BREAK: realized model didn't include Boron (instead had Bromine twice)
+# archive everything to firstattempt
+
+#Plan: 
+# iteration1: vary training approach (training set, poses, rec strat, aff strat)
+# iteration2: build on that (presumably all,p1,rec1,strat0) with loss modifications: h[1,2,4,6], penalty[0,1,2], gap[0,1,2], rankloss??
+# iteration3: build on that with network modifications
+
+cd iteration1
+./makemodels1.py > cmds1
+
+for i in `awk '{print $NF}' cmds1`; do echo ../evaluate.py $i ${i}.summary; done > evals1
+
+
+cd iteration2
+./makemodels2.py  > cmds2
+for i in `awk '{print $NF}' cmds2`; do echo ../evaluate.py $i ${i}.summary; done > evals2
 

@@ -29,7 +29,7 @@ basemodel = '''layer {
     shuffle: false
     balanced: false
     has_affinity: true
-    root_folder: ".."
+    root_folder: "../../"
   }
 }
 layer {
@@ -55,7 +55,7 @@ layer {
     has_affinity: true
     random_rotation: true
     random_translate: 2
-    root_folder: ".."
+    root_folder: "../.."
   }
 }
 
