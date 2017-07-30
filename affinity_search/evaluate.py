@@ -4,7 +4,7 @@
 and all test sets (take max affinity; if pose score is available also consider
 max pose score).
 Generates graphs and overall CV results.  Takes the prefix and (for now) assumes trial 0.
-Will evaluate 100k model and best model prior to 100k, 50k and 25k 
+Will evaluate 100k model and best model prior to 100k, 50k and 25k
 '''
 
 import numpy as np
@@ -34,7 +34,11 @@ def evaluate_fold(testfile, caffemodel):
         print "Couldn't parse:",caffemodel
     modelname = m.group(1)+".model"
     if not os.path.exists(modelname):
-        print modelname,"does not exist"
+        m = re.search(r'_(affinity.*)_lr\S+\.\d_iter_\d+.caffemodel',caffemodel)
+        if m:
+           modelname = m.group(1)+".model"
+        if not os.path.exists(modelname):
+           print modelname,"does not exist"
         
     caffe.set_mode_gpu()
     test_model = 'predict.%d.prototxt' % os.getpid()
@@ -177,7 +181,7 @@ for testprefix in ['all','crystal','bestonly']:
                 best100 = inum
                 
         #evalute this fold
-        testfile = '%s_0.5_0_test%d.types' % (testprefix,fold)
+        testfile = '../types/%s_0.5_0_test%d.types' % (testprefix,fold)
         if best25 > 0: testresults['best25'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best25))
         if best50 > 0: testresults['best50'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best50))
         if best100 > 0: testresults['best100'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best100))

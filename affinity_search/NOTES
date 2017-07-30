@@ -143,15 +143,39 @@ train.py -m affinity_g0_p1_rec1_astrat0_b1_h4.model -p extrema_0.5_0_ --keep_bes
 #Plan: 
 # iteration1: vary training approach (training set, poses, rec strat, aff strat)
 # iteration2: build on that (presumably all,p1,rec1,strat0) with loss modifications: h[1,2,4,6], penalty[0,1,2], gap[0,1,2], rankloss??
-# iteration3: build on that with network modifications
+# iteration3: activation functions and normalizations
 
 cd iteration1
 ./makemodels1.py > cmds1
 
 for i in `awk '{print $NF}' cmds1`; do echo ../evaluate.py $i ${i}.summary; done > evals1
 
+# all,poses, rec1, strat2
 
 cd iteration2
 ./makemodels2.py  > cmds2
 for i in `awk '{print $NF}' cmds2`; do echo ../evaluate.py $i ${i}.summary; done > evals2
 
+# no penalty, gap=1, huber=0 (surprise!)
+
+
+#normalization, activation function, and learning rate
+# NOTE: switched to fixed sized conv layers here (accidentally actually) and got a little worse
+cd iteration3
+./makemodels3.py  > cmds3
+for i in `awk '{print $NF}' cmds3`; do echo ../evaluate.py $i ${i}.summary; done > evals
+
+# .1 lr is horrible, 0.001 too slow
+# sigmoid is bad, others are about the same, tanh slightly worse, elu particularly good on crystals(?)
+# batch generally worse, although sometimes better, lrn slightly better, but particularly good on crystals
+# switch to elu and lrn, at least until we consider speed penalty
+
+
+cd iteration4
+# variables: 
+# kernel size: 3, 5, 7
+# depth: 2, 3, 4
+# width: 16, 32, 64, 128
+# doubling of width: true/false (e.g, 128->256->512)
+
+./makemodels4.py  > cmds
