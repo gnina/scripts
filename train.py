@@ -39,22 +39,25 @@ def write_model_file(model_file, template_file, train_file, test_file, root_fold
     with open(template_file, 'r') as f:
         prototxt.Merge(f.read(), param)
     for layer in param.layer:
-        if layer.molgrid_data_param.source == 'TRAINFILE':
-            layer.molgrid_data_param.source = train_file
-        if layer.molgrid_data_param.source == 'TESTFILE':
-            layer.molgrid_data_param.source = test_file
-        if layer.molgrid_data_param.root_folder == 'DATA_ROOT':
+        param = layer.molgrid_data_param
+        if not param:
+            param = layer.ndim_data_param
+        if param.source == 'TRAINFILE':
+            param.source = train_file
+        if param.source == 'TESTFILE':
+            param.source = test_file
+        if param.root_folder == 'DATA_ROOT':
             if test_root_folder and 'TEST' in str(layer):
-                layer.molgrid_data_param.root_folder = test_root_folder
+                param.root_folder = test_root_folder
             else:
-                layer.molgrid_data_param.root_folder = root_folder
-        if train_file2 and layer.molgrid_data_param.source2 == 'TRAINFILE2':
-            layer.molgrid_data_param.source2 = train_file2
-            layer.molgrid_data_param.source_ratio = ratio
-        if root_folder2 and layer.molgrid_data_param.root_folder2 == 'DATA_ROOT2':
-            layer.molgrid_data_param.root_folder2 = root_folder2
+                param.root_folder = root_folder
+        if train_file2 and param.source2 == 'TRAINFILE2':
+            param.source2 = train_file2
+            param.source_ratio = ratio
+        if root_folder2 and param.root_folder2 == 'DATA_ROOT2':
+            param.root_folder2 = root_folder2
         if avg_rotations and 'TEST' in str(layer):
-            layer.molgrid_data_param.rotate = 24 #TODO axial rotations aren't working
+            param.rotate = 24 #TODO axial rotations aren't working
             #layer.molgrid_data_param.random_rotation = True
     with open(model_file, 'w') as f:
         f.write(str(param))

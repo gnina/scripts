@@ -2,11 +2,7 @@
 
 '''Generate models for affinity predictions'''
 
-# variables: 
-# kernel size: 3, 5, 7
-# depth: 2, 3, 4
-# width: 16, 32, 64, 128
-# doubling of width: true/false (e.g, 128->256->512)
+# [SGD|Adam] * [regular|rankloss|ranklosswneg] [xaviar|radial] [0.01|0.001]
 
 modelstart = '''layer {
   name: "data"
@@ -124,6 +120,8 @@ layer {
     penalty: 0
     pseudohuber: false
     delta: 0
+    ranklossmult: RANKLOSS
+    ranklossneg: RANKNEG
   }
 }
 
@@ -165,11 +163,12 @@ layer {
   top: "unitNUMBER_conv1"
   convolution_param {
     num_output: OUTPUT
-    pad: PAD
-    kernel_size: KSIZE
+    pad: 1
+    kernel_size: 3
     stride: 1
     weight_filler {
-      type: "xavier"
+      type: "FILLER"
+      symmetric_fraction: FRACTION      
     }
   }
 }'''
@@ -203,48 +202,58 @@ layer {
 
 # normalization: none, LRN (across and within), Batch
 # learning rat
-def create_unit(num, ksize, width, double):
-        
+# depth 3, width 32 (doubled)
+def create_unit(num, filler, fraction):
+    width = 32
+    double = True
     ret = convunit.replace('NUMBER', str(num))
     if num == 1:
         ret = ret.replace('INLAYER','data')
     else:
-        ret = ret.replace('INLAYER', 'unit%d_conv1'%(num-1))
-                
-    if num == 4:
-        ksize = 3  #only 3x3 at this point
-        
-    pad = int(ksize/2)
-    ret = ret.replace('PAD',str(pad))
-    ret = ret.replace('KSIZE', str(ksize))
+        ret = ret.replace('INLAYER', 'unit%d_conv1'%(num-1))            
+
     outsize = width
     if double:
         outsize *= 2**(num-1)
     ret = ret.replace('OUTPUT', str(outsize)) 
+    ret = ret.replace('FILLER', filler)
+    ret = ret.replace('FRACTION', str(fraction))
         
     ret += finishunit.replace('NUMBER', str(num))
     return ret
 
 
-def makemodel(depth, width, double, ksize):
+def makemodel(filler, fraction, ranklossm, rankneg):
     m = modelstart
+    depth = 3
     for i in xrange(1,depth+1):
-        m += create_unit(i, ksize, width, double)
-    m += endmodel.replace('LASTCONV','unit%d_conv1'%depth)
+        m += create_unit(i, filler, fraction)
+    m += endmodel.replace('LASTCONV','unit%d_conv1'%depth).replace('RANKLOSS',str(ranklossm)).replace('RANKNEG',str(rankneg))
     
     return m
     
 
 models = []
-for depth in [4,3,2]:
-    for width in [128, 64, 32, 16]:
-        for double in [True, False]:                
-            for ksize in [7,5,3]:
-                model = makemodel(depth,width, double, ksize)
-                m = 'affinity_%d_%d_%d_%d.model'%(depth,width,int(double),ksize)
-                models.append(m)
-                out = open(m,'w')
-                out.write(model)
+           
+# [SGD|Adam] * [regular|rankloss|ranklosswneg] [xaviar|radial|radial.5] [0.01|0.001][
+
+for ranklossm in [0, 0.01,0.1,1]:
+    for rankneg in [0,1]:
+        if ranklossm == 0 and rankneg == 1:
+            continue
+        for filler in ['xavier']:
+            fraction = 1.0
+            if filler == 'radial.5':
+                filler = 'radial'
+                fraction = 0.5
+            model = makemodel(filler, fraction,ranklossm, rankneg)
+            m = 'affinity_%.3f_%d.model'%(ranklossm,rankneg)
+            models.append(m)
+            out = open(m,'w')
+            out.write(model)
+        
             
 for m in models:
-    print "train.py -m %s -p ../types/all_0.5_0_  --keep_best -t 1000 -i 100000 --reduced -o all_%s"%(m,m.replace('.model',''))
+    for baselr in [0.01, 0.001]:
+        for solver in ['SGD','Adam']:
+            print "train.py -m %s -p ../types/all_0.5_0_  --keep_best -t 1000 -i 100000 --solver %s --base_lr %f --reduced -o all_%s_%s_%.3f"%(m,solver, baselr, m.replace('.model',''),solver,baselr)

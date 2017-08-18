@@ -179,3 +179,46 @@ cd iteration4
 # doubling of width: true/false (e.g, 128->256->512)
 
 ./makemodels4.py  > cmds
+for i in `awk '{print $NF}' cmds`; do echo ../evaluate.py $i ${i}.summary; done > evals
+
+# depth 3 with width 32 is best (16 might be okay), but doubling doesn't seem to be such a good idea (consider narrowing??)
+# ksize of 7 does best :-(
+
+
+# while waiting for these larger models to train... implemented radial weight filling
+# evaluate different weight initialization (using depth 3, width 32/64/128)
+# initialization: gaussian, positive_unitball, uniform, xavier, msra, radial
+# since the symmetry gets blown away in the first step, my guess is radial won't matter, so not bothering with fraction
+# kernel size: 3, 5
+cd iteration4.5
+./makemodels4.5.py > cmds
+for i in `awk '{print $NF}' cmds`; do echo ../evaluate.py $i ${i}.summary; done > evals
+
+#xavier generally does best, positive_unitball can work too
+#ksize=5 is no good, but didn't run on non-radial
+
+#iteration 4 is still running..
+#interested in looking at the solver, rankloss, and baselr (give up on radial)
+#(adam seems to be a bit more robust)
+# [SGD|Adam] * [ranklosswneg 0,1] [ranklossm - 0, 0.01,0.1,1] [0.01|0.001]
+cd iteration4.6
+./makemodels4.6.py > cmds
+for i in `awk '{print $NF}' cmds`; do echo ../evaluate.py $i ${i}.summary; done > evals
+
+#rankloss didn't help - large values could destabilize training, smaller values were the same or worse; larger values did push slope upwards at the expense of rmse
+#rankneg either didn't have a big difference or made things definitively worse
+#solver could go either way - sometimes meaningfully better, sometimes worse; adam might be a bit more robust
+#similar ambivalence for lr 
+#conclusion - don't change training regime
+#alt conclusion, on further analysis, maybe switch to adam solver - train performance is improved and it appears to be less sensitive to hyperparameter values
+#however, SGD has better test at 100k - perhaps adam is learning faster and overfitting is starting - adam's best values are at much earlier iterations than sgd
+#so we could probably switch to Adam and 50k iterations (but didn't do this for iteration 5)
+
+# iteration 5 - need to further investigate 3 vs 7 kernel sizes, can we have a stride? stride vs pool? narrowing of features
+# kernel size: 3 or 7
+# width: [32,32,32] [64,32,32] [64,32,16] [32,16,16]
+# pool or not
+# stride 1,2,3 (>1 if no pool)
+
+./makemodels5.py > cmds
+for i in `awk '{print $NF}' cmds`; do echo ../evaluate.py $i ${i}.summary; done > evals

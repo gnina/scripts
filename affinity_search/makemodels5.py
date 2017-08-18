@@ -3,10 +3,10 @@
 '''Generate models for affinity predictions'''
 
 # variables: 
-# kernel size: 3, 5, 7
-# depth: 2, 3, 4
-# width: 16, 32, 64, 128
-# doubling of width: true/false (e.g, 128->256->512)
+# kernel size: 3 or 7
+# width: [32,32,32] [64,32,32] [64,32,16] [32,16,16]
+# pool or not
+# stride 1,2,3 (>1 if no pool)
 
 modelstart = '''layer {
   name: "data"
@@ -146,7 +146,7 @@ layer {
 
 '''
 
-convunit = '''
+poollayer = '''
 layer {
   name: "unitNUMBER_pool"
   type: "Pooling"
@@ -158,6 +158,20 @@ layer {
     stride: 2
   }
 }
+'''
+
+fakepool = '''
+layer {
+    name: "unitNUMBER_pool"
+    type: "Split"
+    bottom: "INLAYER"
+    top: "unitNUMBER_pool"
+}
+'''
+
+convunit = '''
+POOLLAYER
+
 layer {
   name: "unitNUMBER_conv1"
   type: "Convolution"
@@ -167,7 +181,7 @@ layer {
     num_output: OUTPUT
     pad: PAD
     kernel_size: KSIZE
-    stride: 1
+    stride: STRIDE
     weight_filler {
       type: "xavier"
     }
@@ -203,45 +217,47 @@ layer {
 
 # normalization: none, LRN (across and within), Batch
 # learning rat
-def create_unit(num, ksize, width, double):
+def create_unit(num, ksize, width, pool,stride):
         
-    ret = convunit.replace('NUMBER', str(num))
+    if pool:
+        ret = convunit.replace('POOLLAYER',poollayer)
+    else:
+        ret = convunit.replace('POOLLAYER',fakepool)
+    ret = ret.replace('NUMBER', str(num))
     if num == 1:
         ret = ret.replace('INLAYER','data')
     else:
         ret = ret.replace('INLAYER', 'unit%d_conv1'%(num-1))
                 
-    if num == 4:
-        ksize = 3  #only 3x3 at this point
         
     pad = int(ksize/2)
     ret = ret.replace('PAD',str(pad))
-    ret = ret.replace('KSIZE', str(ksize))
-    outsize = width
-    if double:
-        outsize *= 2**(num-1)
-    ret = ret.replace('OUTPUT', str(outsize)) 
+    ret = ret.replace('KSIZE', str(ksize))    
+    ret = ret.replace('STRIDE',str(stride))
+    ret = ret.replace('OUTPUT', str(width)) 
         
     ret += finishunit.replace('NUMBER', str(num))
     return ret
 
 
-def makemodel(depth, width, double, ksize):
+def makemodel(widths, ksize, pool, stride):
     m = modelstart
-    for i in xrange(1,depth+1):
-        m += create_unit(i, ksize, width, double)
-    m += endmodel.replace('LASTCONV','unit%d_conv1'%depth)
+    for (i,w) in enumerate(widths):
+        m += create_unit(i+1, ksize, w, pool, stride)
+    m += endmodel.replace('LASTCONV','unit%d_conv1'%len(widths))
     
     return m
     
 
 models = []
-for depth in [4,3,2]:
-    for width in [128, 64, 32, 16]:
-        for double in [True, False]:                
-            for ksize in [7,5,3]:
-                model = makemodel(depth,width, double, ksize)
-                m = 'affinity_%d_%d_%d_%d.model'%(depth,width,int(double),ksize)
+for widths in [[32,32,32], [64,32,32], [64,32,16], [32,16,16]]:
+    for ksize in [7,3]:
+        for pool in [True,False]:
+            for stride in [1,2,3]:
+                if stride > 1 and pool:
+                    continue
+                model = makemodel(widths, ksize, pool, stride)
+                m = 'affinity_%s_%d_%d_%d.model'%('-'.join(map(str,widths)),ksize,int(pool),stride)
                 models.append(m)
                 out = open(m,'w')
                 out.write(model)
