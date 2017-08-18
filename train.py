@@ -39,10 +39,11 @@ def write_model_file(model_file, template_file, train_file, test_file, root_fold
     with open(template_file, 'r') as f:
         prototxt.Merge(f.read(), netparam)
     for layer in netparam.layer:
-        param = layer.molgrid_data_param
-        if not param:
+        if layer.type == "NDimData":
             param = layer.ndim_data_param
-        if not param:
+        elif layer.type == "MolGridData":
+            param = layer.molgrid_data_param
+        else:
             continue
         if param.source == 'TRAINFILE':
             param.source = train_file
