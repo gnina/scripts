@@ -35,13 +35,15 @@ def write_model_file(model_file, template_file, train_file, test_file, root_fold
     For the root_folder2 parameter, "DATA_ROOT2" is replaced with root_folder2.
     If the avg_rotations argument is set and the layer is TEST phase,
     the rotate parameter is set to 24.'''
-    param = NetParameter()
+    netparam = NetParameter()
     with open(template_file, 'r') as f:
-        prototxt.Merge(f.read(), param)
-    for layer in param.layer:
+        prototxt.Merge(f.read(), netparam)
+    for layer in netparam.layer:
         param = layer.molgrid_data_param
         if not param:
             param = layer.ndim_data_param
+        if not param:
+            continue
         if param.source == 'TRAINFILE':
             param.source = train_file
         if param.source == 'TESTFILE':
@@ -60,7 +62,7 @@ def write_model_file(model_file, template_file, train_file, test_file, root_fold
             param.rotate = 24 #TODO axial rotations aren't working
             #layer.molgrid_data_param.random_rotation = True
     with open(model_file, 'w') as f:
-        f.write(str(param))
+        f.write(str(netparam))
 
 
 def write_solver_file(solver_file, train_model, test_models, type, base_lr, momentum, weight_decay,

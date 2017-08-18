@@ -222,3 +222,6 @@ for i in `awk '{print $NF}' cmds`; do echo ../evaluate.py $i ${i}.summary; done 
 
 ./makemodels5.py > cmds
 for i in `awk '{print $NF}' cmds`; do echo ../evaluate.py $i ${i}.summary; done > evals
+
+#with ksize=3, 32-32-32 does well, 32-16-16 is slightly better at 100k (less overfitting)
+#a stride of 2 (no pool) can do okay, but pooling is generally better
