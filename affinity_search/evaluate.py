@@ -173,6 +173,7 @@ for testprefix in ['all','crystal','bestonly']:
         best25 = 0
         best50 = 0
         best100 = 0
+        best250 = 0
         #identify best iteration models at each cut point for this fold
         for model in glob.glob('%s.%d_iter_*.caffemodel'%(name,fold)):
             m = re.search(r'_iter_(\d+).caffemodel', model)
@@ -183,16 +184,23 @@ for testprefix in ['all','crystal','bestonly']:
                 best50 = inum
             elif inum < 100000 and inum > best100:
                 best100 = inum
-                
+            elif inum < 250000 and inum > best250:
+                best250 = inum                
         #evalute this fold
         testfile = '../types/%s_0.5_0_test%d.types' % (testprefix,fold)
         if best25 > 0: testresults['best25'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best25))
         if best50 > 0: testresults['best50'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best50))
         if best100 > 0: testresults['best100'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best100))
-        testresults['100k'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,100000))
+        if os.path.exists('%s.%d_iter_%d.caffemodel' % (name,fold,100000)): #100k
+            testresults['100k'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,100000))
+            last = '100k'
+        if os.path.exists('%s.%d_iter_%d.caffemodel' % (name,fold,250000)): #possibility that the 100k model was output even if went to 250k
+            if best250 > 0: testresults['best250'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best250))
+            testresults['250k'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,250000))
+            last = '250k'
         
     for n in testresults.keys():
-        if len(testresults[n]) != len(testresults['100k']) or len(testresults['100k']) == 0:
+        if len(testresults[n]) != len(testresults[last]) or len(testresults[last]) == 0:
             print "Missing data with",n
             continue
         if testprefix == 'all':

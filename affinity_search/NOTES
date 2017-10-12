@@ -225,3 +225,48 @@ for i in `awk '{print $NF}' cmds`; do echo ../evaluate.py $i ${i}.summary; done 
 
 #with ksize=3, 32-32-32 does well, 32-16-16 is slightly better at 100k (less overfitting)
 #a stride of 2 (no pool) can do okay, but pooling is generally better
+#default: affinity_32-32-32_3_1_1.model
+
+
+# iteration 6 - evaluate alternative initial layers, all of which generate the same dimension as 2x2 pooling on a .5A grid
+# resolutions: 0.125, 0.25, 0.5, 1.0
+# reductions: pooling, strided convolution
+# grid resolution:  0.25, 0.5, 1.0  # skipping 0.125 since the input size is just too large
+# convolution: none, 2x2 (stride 2), 4x4 (stride 4), 8x8 (stride 8)
+#  convolution can have activation function after it or not, be grouped or not
+# max pooling: none, 2x2, 4x4, 8x8
+# above are combined to generate 1A grid for next layer
+# NOTE: have to use a reduced batch size (20)
+# Double NOTE: initially had a bug where func1 wasn't doing anything and had to rerun
+
+./makemodels6.py > cmds
+for i in `awk '{print $NF}' cmds`; do echo ../evaluate.py $i ${i}.summary; done > evals
+
+# 0.25 resolution -> conv2 -> pool2 (grouped) does best
+# clear signal that 0.25 is better for pose prediction
+# initial convolution better for pose prediction
+# swapping genearlly a little worse, but can go either way; worse for pose prediction
+# grouped is less clear, probably a little better, but can be much worse
+# similar for func
+# should evaluate cost of switching to grouped, no func conv instead of max pool
+# our default is best for pose prediction at 0.5 (unsurprisingly?)
+# but a 4x convolution is best for 0.25
+
+
+# TAKING STOCK
+# looking across all the iterations (summaries.ipynb) we haven't actually been
+# pushing the pareto frontier forward since iteration 2/3  :-(
+# perhaps elu/lrn was a poor choice?
+# best pose prediction is clearly with 0.25, even with smaller batch size
+
+#in any event, looking at the pareto optimal points (at 100k for all_affinity), evaluate the following
+#for statistical difference:
+
+# iteration2-g1_p0_h0
+# iteration3-batch_relu_lr0.010
+# iteration6-0.250_conv4_pool1_grouped0_func1_swap0   - needs to be trained 250k
+
+cd check1
+cp ../iteration2/affinity_g1_p0_h0.model .
+cp ../iteration3/affinity_batch_relu.model .
+cp ../iteration6/affinity_0.250_conv4_pool1_grouped0_func1_swap0.model .
