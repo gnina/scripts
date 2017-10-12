@@ -42,7 +42,7 @@ def evaluate_fold(testfile, caffemodel):
            if m:
               modelname = m.group(1)+".model"
         if not os.path.exists(modelname): #try stripping off random seed
-            m = re.search(r'affinity.*)_\d+.model',modelname)
+            m = re.search(r'(affinity.*)_\d+.model',modelname)
             if m:
                 modelname = m.group(1)+".model"
         if not os.path.exists(modelname):
