@@ -25,7 +25,7 @@ https://github.com/gnina/models/tree/master/data
 **4) In the model file, in all layers of type “MolGridData” change the root folder to:**  
 "/net/pulsar/home/koes/dkoes/PDBbind/refined-set/"
 
-**5) Install python dependencies.
+**5) Install python dependencies.**
 ```
 pip install --user -I numpy scipy sklearn scikit-image google protobuf psutil Pillow
 ```
