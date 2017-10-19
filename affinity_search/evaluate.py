@@ -48,7 +48,8 @@ def evaluate_fold(testfile, caffemodel):
         if not os.path.exists(modelname):
            print modelname,"does not exist"
         
-    caffe.set_mode_gpu()
+    caffe.set_
+    mode_gpu()
     test_model = 'predict.%d.prototxt' % os.getpid()
     train.write_model_file(test_model, modelname, testfile, testfile, '')
     test_net = caffe.Net(test_model, caffemodel, caffe.TEST)

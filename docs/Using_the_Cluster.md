@@ -25,8 +25,12 @@ https://github.com/gnina/models/tree/master/data
 **4) In the model file, in all layers of type “MolGridData” change the root folder to:**  
 "/net/pulsar/home/koes/dkoes/PDBbind/refined-set/"
 
+**5) Install python dependencies.
+```
+pip install --user -I numpy scipy sklearn scikit-image google protobuf psutil Pillow
+```
 
-**5) Include the following exports in your PBS script (before the python command):**  
+**6) Include the following exports in your PBS script (before the python command):**  
 Refer to provided pbs script for a complete template.
 
 
@@ -36,13 +40,13 @@ export LD_LIBRARY_PATH=/net/pulsar/home/koes/dkoes/local/lib:/usr/lib64:/usr/lib
 export PYTHONPATH=/net/pulsar/home/koes/dkoes/local/python:$PYTHONPATH
 ```
 
-**6) Copy working directory onto server/back to local machine (scp command):**
+**7) Copy working directory onto server/back to local machine (scp command):**
 ```
 scp -r ~/Desktop/test_folder username@gpu.csb.pitt.edu:~
 scp -r test_folder username@perigee/apogee.csb.pitt.edu:~/Desktop
 ```
 
-**7) Test on cluster nodes, not head node:**  
+**8) Test on cluster nodes, not head node:**  
 Launch job with `qsub script.pbs` from directory with required files. Use `qstat -au username` to check job status.
 
 #### Do NOT run python directly in terminal after ssh.
@@ -55,6 +59,12 @@ Use `cat` to read output file (located in folder `qsub` was run in) and `pip` to
 ```
 pip install -I --user [package]
 ```
+
+Launch an interactive `qsub` session to get a commandline on a cluster node:
+```
+qsub -I -l nodes=1:ppn=1:gpus=1 -q dept_gpu
+```
+
 _____
 
 ## Quick Tips

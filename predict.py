@@ -34,7 +34,7 @@ def predict(args):
     test_net = caffe.Net(test_model, args.weights, caffe.TEST)
     with open(args.input, 'r') as f:
         lines = f.readlines()
-    result, _ = evaluate_test_net(test_net, len(lines), 1, 0)
+    result, _ = evaluate_test_net(test_net, len(lines), args.rotations, 0)
     auc = result.auc
     y_true = result.y_true
     y_score = result.y_score
@@ -145,7 +145,9 @@ def parse_args(argv=None):
     parser.add_argument('-i','--input',type=str,required=True,help="Input .types file to predict")
     parser.add_argument('-g','--gpu',type=int,help='Specify GPU to run on',default=-1)
     parser.add_argument('-o','--output',type=str,help='Output file name',default=None)
+    parser.add_argument('-s','--seed',type=int,help='Random seed',default=None)
     parser.add_argument('-k','--keep',action='store_true',default=False,help="Don't delete prototxt files")
+    parser.add_argument('--rotations',type=int,help='Number of rotations; rotatation must be enabled in test net!',default=1)
     parser.add_argument('--max_score',action='store_true',default=False,help="take max score per ligand as its score")
     parser.add_argument('--max_affinity',action='store_true',default=False,help="take max affinity per ligand as its score")
     parser.add_argument('--notcalc_predictions', type=str, default='',help='use file of predictions instead of calculating')
@@ -158,6 +160,8 @@ if __name__ == '__main__':
         out = sys.stdout
     else:
         out = open(args.output, 'w')
+    if args.seed != None:
+        caffe.set_random_seed(args.seed)
     if not args.notcalc_predictions:
         predictions = predict(args)
     else:

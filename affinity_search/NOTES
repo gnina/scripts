@@ -270,3 +270,13 @@ cd check1
 cp ../iteration2/affinity_g1_p0_h0.model .
 cp ../iteration3/affinity_batch_relu.model .
 cp ../iteration6/affinity_0.250_conv4_pool1_grouped0_func1_swap0.model .
+
+# Basically - it's all in the noise.  Pose prediciton (top) improvement is statistically significatn for 0.250
+# Affinity predicition (correlation) _might_ be _barely_ significant for initial model
+
+# evaluate variation due to random seed vs testset
+cd check2
+cp ../iteration2/affinity_g1_p0_h0.model .
+cp ../iteration3/affinity_batch_relu.model .
+cp ../iteration6/affinity_0.250_conv4_pool1_grouped0_func1_swap0.model .
+#cmds only vary seed

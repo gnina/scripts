@@ -14,6 +14,7 @@ import time
 import psutil
 from combine_fold_results import write_results_file, combine_fold_results, filter_actives
 
+
 '''Script for training a neural net model from gnina grid data.
 A model template is provided along with training and test sets of the form
 <prefix>[train|test][num].types
@@ -144,6 +145,8 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
 
             if 'predaff' in res:
                 y_predaffs[x].append(float(res['predaff'][i]))
+                if x == 0:
+                    print res['predaff'][i]
 
             if 'loss' in res:
                 losses.append(float(res['loss']))
