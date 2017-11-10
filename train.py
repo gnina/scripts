@@ -109,91 +109,210 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
     Net parameters should be set so that data access is sequential.'''
 
     #evaluate each example with each rotation
-    y_true     = [-1 for _ in xrange(n_tests)]
-    y_scores   = [[] for _ in xrange(n_tests)]
-    y_affinity = [-1 for _ in xrange(n_tests)]
-    y_predaffs = [[] for _ in xrange(n_tests)]
-    losses = []
+    y_true = np.zeros(n_tests)
+    y_score = np.zeros((n_tests, n_rotations))
+    y_loss = np.zeros((n_tests, n_rotations))
+    aff_true = np.zeros(n_tests)
+    aff_pred = np.zeros((n_tests, n_rotations))
+    aff_loss = np.zeros((n_tests, n_rotations))
+    rmsd_true = np.zeros(n_tests)
+    rmsd_pred = np.zeros((n_tests, n_rotations))
+    rmsd_loss = np.zeros((n_tests, n_rotations))
+
+    #get relevant test net blobs, or None if they don't exist
+    y_true_blob = test_net.blobs.get('label')
+    y_score_blob = test_net.blobs.get('output')
+    y_loss_blob = test_net.blobs.get('loss')
+    aff_true_blob = test_net.blobs.get('affinity')
+    aff_pred_blob = test_net.blobs.get('predaff')
+    aff_loss_blob = test_net.blobs.get('aff_loss')
+    rmsd_true_blob = test_net.blobs.get('rmsd_true')
+    rmsd_pred_blob = test_net.blobs.get('rmsd_pred')
+    rmsd_loss_blob = test_net.blobs.get('rmsd_loss')
 
     batch_size = i = test_net.blobs['data'].shape[0]
     for r in xrange(n_rotations):
         for x in xrange(n_tests):
             x = (x + offset) % n_tests
 
+            #evaluate next batch as needed
             if i >= batch_size:
                 test_net.forward()
                 i = 0
 
-            if 'label' in test_net.blobs:
-                label_blob = test_net.blobs['label']
+            if y_true_blob:
                 if r == 0:
-                    y_true[x] = float(label_blob.data[i])
+                    y_true[x] = float(y_true_blob.data[i])
                 else:
-                    assert y_true[x] == label_blob.data[i] #sanity check
+                    assert y_true[x] == y_true_blob.data[i] #sanity check
 
-            if 'output' in test_net.blobs:
-                output_blob = test_net.blobs['output']
-                if len(output_blob.data[i]) == 2:
-                    y_scores[x].append(float(output_blob.data[i][1]))
+            if y_score_blob:
+                if y_score_blob.shape[1] == 2:
+                    y_score[x][r] = float(y_score_blob.data[i][1])
                 else:
-                    y_scores[x].append(float(output_blob.data[i][0]))
+                    y_score[x][r] = float(y_score_blob.data[i][0])
 
-            if 'affinity' in test_net.blobs:
-                affinity_blob = test_net.blobs['affinity']
+            if y_loss_blob:
+                y_loss[x][r] = float(y_loss_blob.data)
+
+            if aff_true_blob:
                 if r == 0:
-                    y_affinity[x] = float(affinity_blob.data[i])
+                    aff_true[x] = float(aff_true_blob.data[i])
                 else:
-                    assert y_affinity[x] == affinity_blob.data[i] #sanity check
+                    assert aff_true[x] == aff_true_blob.data[i] #sanity check
 
-            if 'predaff' in test_net.blobs:
-                predaff_blob = test_net.blobs['predaff']
-                y_predaffs[x].append(float(predaff_blob.data[i]))
+            if aff_pred_blob:
+                aff_pred[x][r] = float(aff_pred_blob.data[i])
 
-            if 'loss' in test_net.blobs:
-                loss_blob = test_net.blobs['loss']
-                losses.append(float(loss_blob.data))
+            if aff_loss_blob:
+                aff_loss[x][r] = float(aff_loss_blob.data)
+
+            if rmsd_true_blob:
+                if r == 0:
+                    rmsd_true[x] = float(rmsd_true_blob.data[i])
+                else:
+                    assert rmsd_true[x] == rmsd_true_blob.data[i] #sanity check
+
+            if rmsd_pred_blob:
+                rmsd_pred[x][r] = float(rmsd_pred_blob.data[i])
+
+            if rmsd_loss_blob:
+                rmsd_loss[x][r] = float(rmsd_loss_blob.data)
+
             i += 1
 
     #get index of test example that will be at start of next batch
     offset = (x + 1 + batch_size - i) % n_tests
 
-    result = Namespace(auc=None, y_true=y_true, y_score=[], loss=None,
-                       rmse=None, y_aff=y_affinity, y_predaff=[])
+    #average predictions across each rotation
+    y_score = y_score.mean(axis=1)
+    aff_pred = aff_pred.mean(axis=1)
+    rmsd_pred = rmsd_pred.mean(axis=1)
 
-    #average the scores from each rotation
-    if any(y_scores):
-        for x in xrange(n_tests):
-            result.y_score.append(np.mean(y_scores[x]))
-
-    if any(y_predaffs):
-        for x in range(n_tests):
-            result.y_predaff.append(np.mean(y_predaffs[x]))
+    #average loss across entire test set and rotations
+    y_loss = y_loss.mean()
+    aff_loss = aff_loss.mean()
+    rmsd_loss = rmsd_loss.mean()
 
     #compute auc
-    if result.y_true and result.y_score:
-        if len(np.unique(result.y_true)) > 1:
-            result.auc = sklearn.metrics.roc_auc_score(result.y_true, result.y_score)
+    if y_true_blob and y_score_blob:
+        if len(np.unique(y_true)) > 1:
+            auc = sklearn.metrics.roc_auc_score(y_true, y_score)
         else: # may be evaluating all crystal poses?
             print "Warning: only one unique label"
-            result.auc = 1.0
+            auc = -1.0
+    else:
+        auc = None
 
-    #compute mean squared error (rmse) of affinity (for actives only)
-    if result.y_aff and result.y_predaff:
-        if result.y_true:
-            y_predaff_true = filter_actives(result.y_predaff, result.y_true)
-            y_aff_true = filter_actives(result.y_aff, result.y_true)
+    #compute root mean squared error (rmse) of affinity
+    if aff_true_blob and aff_pred_blob:
         #remove negative affinities
-        y_aff_true = np.array(y_aff_true)
-        y_predaff_true = np.array(y_predaff_true)
-        y_predaff_true = y_predaff_true[y_aff_true>0]
-        y_aff_true = y_aff_true[y_aff_true>0]
-        result.rmse = np.sqrt(sklearn.metrics.mean_squared_error(y_aff_true, y_predaff_true))
+        aff_true_pos = aff_true[aff_true >= 0]
+        aff_pred_pos = aff_pred[aff_true >= 0]
+        #if there are labels, remove decoys
+        if y_true_blob:
+            aff_pred_active = filter_actives(aff_pred_pos, y_true)
+            aff_true_active = filter_actives(aff_true_pos, y_true)
+            aff_rmse = np.sqrt(sklearn.metrics.mean_squared_error(aff_pred_active, aff_true_active))
+        else:
+            aff_rmse = np.sqrt(sklearn.metrics.mean_squared_error(aff_pred_pos, aff_true_pos))
+    else:
+        aff_rmse = None
 
-    #compute mean loss
-    if losses:
-        result.loss = np.mean(losses)
+    #compute root mean squared error (rmse) of rmsd
+    if rmsd_true_blob and rmsd_pred_blob:
+        rmsd_rmse = np.sqrt(sklearn.metrics.mean_squared_error(rmsd_pred, rmsd_true))
+    else:
+        rmsd_rmse = None
 
+    #put test results in a namespace object to better organize different test_nets
+    result = Namespace()
+    result.y_true = y_true
+    result.y_score = y_score
+    result.y_loss = y_loss
+    result.auc = auc
+    result.aff_true = aff_true
+    result.aff_pred = aff_pred
+    result.aff_loss = aff_loss
+    result.aff_rmse = aff_rmse
+    result.rmsd_true = rmsd_true
+    result.rmsd_pred = rmsd_pred
+    result.rmsd_loss = rmsd_loss
+    result.rmsd_rmse = rmsd_rmse
     return result, offset
+
+
+def append_test_result(name, results, new_result, check_alignment):
+
+    if check_alignment:
+        assert np.all(new_result.y_true == results.y_true)
+        assert np.all(new_result.aff_true == results.aff_true)
+        assert np.all(new_result.rmsd_true == results.rmsd_true)
+
+    results.y_true = new_result.y_true
+    results.y_score = new_result.y_score
+    results.aff_true = new_result.aff_true
+    results.aff_pred = new_result.aff_pred
+    results.rmsd_true = new_result.rmsd_true
+    results.rmsd_pred = new_result.rmsd_pred
+
+    if new_result.auc is not None:
+        print "%s auc = %f" % (name, new_result.auc)
+        results.auc.append(new_result.auc)
+
+        if new_result.y_loss is not None:
+            print "%s y_loss = %f" % (name, new_result.y_loss)
+            results.y_loss.append(new_result.y_loss)
+
+    if new_result.aff_rmse is not None:
+        print "%s aff_rmse = %f" % (name, new_result.aff_rmse)
+        results.aff_rmse.append(new_result.aff_rmse)
+
+        if new_result.aff_loss is not None:
+            print "%s aff_loss = %f" % (name, new_result.aff_loss)
+            results.aff_loss.append(new_result.aff_loss)
+
+    if new_result.rmsd_rmse is not None:
+        print "%s rmsd_rmse = %f" % (name, new_result.rmsd_rmse)
+        results.rmsd_rmse.append(new_result.rmsd_rmse)
+
+        if new_result.rmsd_loss is not None:
+            print "%s rmsd_loss = %f" % (name, new_result.rmsd_loss)
+            results.rmsd_loss.append(new_result.rmsd_loss)
+
+
+def get_metric_names(results, prefix):
+    names = []
+    if results.auc:
+        names.append(prefix + '_auc')
+    if results.y_loss:
+        names.append(prefix + '_y_loss')
+    if results.aff_rmse:
+        names.append(prefix + '_aff_rmse')
+    if results.aff_loss:
+        names.append(prefix + '_aff_loss')
+    if results.rmsd_rmse:
+        names.append(prefix + '_rmsd_rmse')
+    if results.rmsd_loss:
+        names.append(prefix + '_rmsd_loss')
+    return names
+
+
+def get_last_test_metrics(results):
+    metrics = []
+    if results.auc:
+        metrics.append(results.auc[-1])
+    if results.y_loss:
+        metrics.append(results.y_loss[-1])
+    if results.aff_rmse:
+        metrics.append(results.aff_rmse[-1])
+    if results.aff_loss:
+        metrics.append(results.aff_loss[-1])
+    if results.rmsd_rmse:
+        metrics.append(results.rmsd_rmse[-1])
+    if results.rmsd_loss:
+        metrics.append(results.rmsd_loss[-1])
+    return metrics
 
 
 def count_lines(file):
@@ -297,30 +416,30 @@ def train_and_test_model(args, files, outname):
         outfile = '%s.out' % outname
         out = open(outfile, mode, 0) #unbuffered
 
-    #return evaluation results:
-    #  auc, loss, and rmse from each test
-    #  y_true, y_score, y_aff, y_predaff from last test
-    train = Namespace(aucs=[], y_true=[], y_score=[], losses=[], rmses=[], y_aff=[], y_predaff=[])
-    if not test_on_train:
-        test = Namespace(aucs=[], y_true=[], y_score=[], losses=[], rmses=[], y_aff=[], y_predaff=[])
-    else:
+    #store test evaluation metrics, test labels and most recent predictions in namespace objects
+    train = Namespace(auc=[],y_loss=[],aff_rmse=[],aff_loss=[],rmsd_rmse=[],rmsd_loss=[])
+    if test_on_train:
         test = train
+    else:
+        test = Namespace(auc=[],y_loss=[],aff_rmse=[],aff_loss=[],rmsd_rmse=[],rmsd_loss=[])
     if args.prefix2:
-        train2 = Namespace(aucs=[], y_true=[], y_score=[], losses=[], rmses=[], y_aff=[], y_predaff=[])
-        if not test_on_train:
-            test2 = Namespace(aucs=[], y_true=[], y_score=[], losses=[], rmses=[], y_aff=[], y_predaff=[])
-        else:
+        train2 = Namespace(auc=[],y_loss=[],aff_rmse=[],aff_loss=[],rmsd_rmse=[],rmsd_loss=[])
+        if test_on_train:
             test2 = train2
+        else:
+            test2 = Namespace(auc=[],y_loss=[],aff_rmse=[],aff_loss=[],rmsd_rmse=[],rmsd_loss=[])
 
     #also keep track of best test and train aucs
     best_test_auc = 0
     best_train_auc = 0
-    best_test_rmse = np.inf
+    best_test_aff_rmse = np.inf
+    best_test_rmsd_rmse = np.inf
     best_train_interval = 0
 
     i_time_avg = 0
     for i in xrange(iterations/test_interval):
         last_test = i == iterations/test_interval-1
+        check_alignment = i > 0 and not (args.reduced and last_test)
 
         i_start = start = time.time()
         if training:
@@ -339,22 +458,8 @@ def train_and_test_model(args, files, outname):
             test_net, n_tests, offset = test_nets[key]
             result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
             test_nets[key] = test_net, n_tests, offset
+            append_test_result('test', test, result, check_alignment)
             print "Eval test time: %f" % (time.time()-start)
-
-            if i > 0 and not (args.reduced and last_test): #check alignment
-                assert np.all(result.y_true == test.y_true)
-                assert np.all(result.y_aff == test.y_aff)
-
-            test.y_true = result.y_true
-            test.y_score = result.y_score
-            test.y_aff = result.y_aff
-            test.y_predaff = result.y_predaff
-            if result.auc is not None:
-                print "Test AUC: %f" % result.auc
-                test.aucs.append(result.auc)
-            if result.rmse is not None:
-                print "Test RMSE: %f" % result.rmse
-                test.rmse.append(result.rmse)
 
             if args.prefix2:
                 #evaluate test set 2
@@ -366,22 +471,8 @@ def train_and_test_model(args, files, outname):
                 test_net, n_tests, offset = test_nets[key]
                 result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
                 test_nets[key] = test_net, n_tests, offset
+                append_test_result('test2', test2, result, check_alignment)
                 print "Eval test2 time: %f" % (time.time()-start)
-
-                if i > 0 and not (args.reduced and last_test): #check alignment
-                    assert np.all(result.y_true == test2.y_true)
-                    assert np.all(result.y_aff == test2.y_aff)
-
-                test2.y_true = result.y_true
-                test2.y_aff = result.y_aff
-                test2.y_score = result.y_score
-                test2.y_predaff = result.y_predaff
-                if result.auc is not None:
-                    print "Test2 AUC: %f" % result.auc
-                    test2.aucs.append(result.auc)
-                if result.rmse is not None:
-                    print "Test2 RMSE: %f" % result.rmse
-                    test2.rmses.append(result.rmse)
 
         #evaluate train set
         start = time.time()
@@ -392,24 +483,8 @@ def train_and_test_model(args, files, outname):
         test_net, n_tests, offset = test_nets[key]
         result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
         test_nets[key] = test_net, n_tests, offset
+        append_test_result('train', train, result, check_alignment)
         print "Eval train time: %f" % (time.time()-start)
-
-        if i > 0 and not (args.reduced and last_test): #check alignment
-            assert np.all(result.y_true == train.y_true)
-            assert np.all(result.y_aff == train.y_aff)
-
-        train.y_true = result.y_true
-        train.y_score = result.y_score
-        train.y_aff = result.y_aff
-        train.y_predaff = result.y_predaff
-        if result.auc is not None:
-            print "Train AUC: %f" % result.auc
-            train.aucs.append(result.auc)
-            print "Train loss: %f" % result.loss
-            train.losses.append(result.loss)
-        if result.rmse is not None:
-            print "Train RMSE: %f" % result.rmse
-            train.rmses.append(result.rmse)
 
         if args.prefix2:
             #evaluate train set 2
@@ -421,79 +496,52 @@ def train_and_test_model(args, files, outname):
             test_net, n_tests, offset = test_nets[key]
             result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
             test_nets[key] = test_net, n_tests, offset
+            append_test_result('train2', train2, result, check_alignment)
             print "Eval train2 time: %f" % (time.time()-start)
 
-            if i > 0 and not (args.reduced and last_test): #check alignment
-                assert np.all(result.y_true == train2.y_true)
-                assert np.all(result.y_aff == train2.y_aff)
-
-            train2.y_true = result.y_true
-            train2.y_score = result.y_score
-            train2.y_aff = result.y_aff
-            train2.y_predaff = result.y_predaff
-            if result.auc is not None:
-                print "Train2 AUC: %f" % result.auc
-                train2.aucs.append(result.auc)
-                print "Train2 loss: %f" % result.loss
-                train2.losses.append(result.loss)
-            if result.rmse is not None:
-                print "Train2 RMSE: %f" % result.rmse
-                train2.rmses.append(result.rmse)
-
         if training:
-            if result.auc is not None:
-                test_auc = test.aucs[-1]
-                train_auc = train.aucs[-1]
-                train_loss = train.losses[-1]
-            if result.rmse is not None:
-                test_rmse = test.rmses[-1]
-                train_rmse = train.rmses[-1]
-            if args.prefix2:
-                if result.auc:
-                    test2_auc = test2.aucs[-1]
-                    train2_auc = train2.aucs[-1]
-                    train2_loss = train2.losses[-1]
-                if result.rmse:
-                    test2_rmse = test2.rmses[-1]
-                    train2_rmse = train2.rmses[-1]
-
-            #check for improvement
-            if result.auc is not None:
-                if test_auc > best_test_auc:
-                    best_test_auc = test_auc
+            #check for auc improvement
+            if test.auc:
+                if test.auc[-1] > best_test_auc:
+                    best_test_auc = test.auc[-1]
                     if args.keep_best:
                         solver.snapshot() #a bit too much - gigabytes of data
-                if train_auc > best_train_auc:
-                    best_train_auc = train_auc
-                    best_train_interval = i
+                if train.auc[-1] > best_train_auc:
+                    best_train_auc = train.auc[-1]
+                    best_train_auc_i = i
                 if args.dynamic:
                     lr = solver.get_base_lr()
-                    if (i-best_train_interval) > args.step_when: #reduce learning rate
+                    if (i - best_train_interval) > args.step_when: #reduce learning rate
                         lr *= args.step_reduce
                         solver.set_base_lr(lr)
                         best_train_interval = i #reset
-                        best_train_auc = train_auc #the value too, so we can consider the recovery
+                        best_train_auc = train.auc[-1] #the value too, so we can consider the recovery
                     if lr < args.step_end:
                         break #end early
-            #check for rmse improvement
-            if result.rmse is not None:
-                if test_rmse < best_test_rmse:
-                    best_test_rmse = test_rmse
+            #check for aff_rmse improvement
+            if test.aff_rmse:
+                if test.aff_rmse[-1] < best_test_aff_rmse:
+                    best_test_aff_rmse = test.aff_rmse[-1]
                     if args.keep_best:
-                        solver.snapshot() #a bit too much - gigabytes of data                    
-                    
+                        solver.snapshot() #a bit too much - gigabytes of data
+            #check for rmsd_rmse improvement
+            if test.rmsd_rmse:
+                if test.rmsd_rmse[-1] < best_test_rmsd_rmse:
+                    best_test_rmsd_rmse = test.rmsd_rmse[-1]
+                    if args.keep_best:
+                        solver.snapshot() #a bit too much - gigabytes of data
+
             #write out evaluation results
-            row = []
-            if result.auc is not None:
-                row += [test_auc, train_auc, train_loss]
-            row += [solver.get_base_lr()]
-            if result.rmse is not None:
-                row += [test_rmse, train_rmse]
+            row = get_last_test_metrics(test) + get_last_test_metrics(train)
             if args.prefix2:
-                if result.auc is not None:
-                    row += [test2_auc, train2_auc, train2_loss]
-                if result.rmse is not None:
-                    row += [test2_rmse, train2_rmse]
+                row += get_last_test_metrics(test2) + get_last_test_metrics(train2)
+            row.append(solver.get_base_lr())
+            if i == 0:
+                col_names = get_metric_names(test, 'test') + get_metric_names(train, 'train')
+                if args.prefix2:
+                    col_names += get_metric_names(test2, 'test2') + get_metric_names(train2, 'train2')
+                col_names.append('base_lr')
+                out.write(' '.join(col_names) + '\n')
             out.write(' '.join('%.6f' % x for x in row) + '\n')
             out.flush()
 
@@ -631,18 +679,29 @@ if __name__ == '__main__':
     if outprefix == '':
         outprefix = '%s.%d' % (os.path.splitext(os.path.basename(args.model))[0],os.getpid())
 
-    test_aucs, train_aucs = [], []
-    test_rmses, train_rmses = [], []
+    test_auc, train_auc = [], []
     test_y_true, train_y_true = [], []
     test_y_score, train_y_score = [], []
-    test_y_aff, train_y_aff = [], []
-    test_y_predaff, train_y_predaff = [], []
-    test2_aucs, train2_aucs = [], []
-    test2_rmses, train2_rmses = [], []
+
+    test_aff_rmse, train_aff_rmse = [], []
+    test_aff_true, train_aff_true = [], []
+    test_aff_pred, train_aff_pred = [], []
+
+    test_rmsd_rmse, train_rmsd_rmse = [], []
+    test_rmsd_true, train_rmsd_true = [], []
+    test_rmsd_pred, train_rmsd_pred = [], []
+
+    test2_auc, train2_auc = [], []
     test2_y_true, train2_y_true = [], []
     test2_y_score, train2_y_score = [], []
-    test2_y_aff, train2_y_aff = [], []
-    test2_y_predaff, train2_y_predaff = [], []
+
+    test2_aff_rmse, train2_aff_rmse = [], []
+    test2_aff_true, train2_aff_true = [], []
+    test2_aff_pred, train2_aff_pred = [], []
+
+    test2_rmsd_rmse, train2_rmsd_rmse = [], []
+    test2_rmsd_true, train2_rmsd_true = [], []
+    test2_rmsd_pred, train2_rmsd_pred = [], []
 
     #train each pair
     numfolds = 0
@@ -657,79 +716,115 @@ if __name__ == '__main__':
             test, train = results
 
         #write out the final predictions for test and train sets
-        if test.aucs:
-            write_results_file('%s.auc.finaltest' % outname, test.y_true, test.y_score, footer='AUC %f\n' % test.aucs[-1])
-            write_results_file('%s.auc.finaltrain' % outname, train.y_true, train.y_score, footer='AUC %f\n' % train.aucs[-1])
+        if test.auc:
+            write_results_file('%s.auc.finaltest' % outname,
+                test.y_true, test.y_score, footer='auc = %f\n' % test.auc[-1])
+            write_results_file('%s.auc.finaltrain' % outname,
+                train.y_true, train.y_score, footer='auc = %f\n' % train.auc[-1])
 
-        if test.rmses:
-            write_results_file('%s.rmse.finaltest' % outname, test.y_aff, test.y_predaff, footer='RMSE %f\n' % test.rmses[-1])
-            write_results_file('%s.rmse.finaltrain' % outname, train.y_aff, train.y_predaff, footer='RMSE %f\n' % train.rmses[-1])
+        if test.aff_rmse:
+            write_results_file('%s.aff_rmse.finaltest' % outname,
+                test.aff_true, test.aff_pred, footer='aff_rmse = %f\n' % test.aff_rmse[-1])
+            write_results_file('%s.aff_rmse.finaltrain' % outname,
+                train.aff_true, train.aff_pred, footer='aff_rmse = %f\n' % train.aff_rmse[-1])
+
+        if test.rmsd_rmse:
+            write_results_file('%s.rmsd_rmse.finaltest' % outname,
+                test.rmsd_true, test.rmsd_pred, footer='rmsd_rmse = %f\n' % test.rmsd_rmse[-1])
+            write_results_file('%s.rmsd_rmse.finaltrain' % outname,
+                train.rmsd_true, train.rmsd_pred, footer='rmsd_rmse = %f\n' % train.rmsd_rmse[-1])
 
         if args.prefix2:
-            if test2.aucs:
-                write_results_file('%s.auc.finaltest2' % outname, test2.y_true, test2.y_score, footer='AUC %f\n' % test2.aucs[-1])
-                write_results_file('%s.auc.finaltrain2' % outname, train2.y_true, train2.y_score, footer='AUC %f\n' % train2.aucs[-1])
+            if test2.auc:
+                write_results_file('%s.auc.finaltest2' % outname,
+                    test2.y_true, test2.y_score, footer='auc = %f\n' % test2.auc[-1])
+                write_results_file('%s.auc.finaltrain2' % outname,
+                    train2.y_true, train2.y_score, footer='auc = %f\n' % train2.auc[-1])
 
-            if test2.rmses:
-                write_results_file('%s.rmse.finaltest2' % outname, test2.y_aff, test2.y_predaff, footer='RMSE %f\n' % test2.rmses[-1])
-                write_results_file('%s.rmse.finaltrain2' % outname, train2.y_aff, train2.y_predaff, footer='RMSE %f\n' % train2.rmses[-1])
+            if test2.aff_rmse:
+                write_results_file('%s.aff_rmse.finaltest2' % outname,
+                    test2.aff_true, test2.aff_pred, footer='aff_rmse = %f\n' % test2.aff_rmse[-1])
+                write_results_file('%s.aff_rmse.finaltrain2' % outname,
+                    train2.aff_true, train2.aff_pred, footer='aff_rmse = %f\n' % train2.aff_rmse[-1])
+
+            if test2.rmsd_rmse:
+                write_results_file('%s.rmsd_rmse.finaltest2' % outname,
+                    test2.rmsd_true, test2.rmsd_pred, footer='rmsd_rmse = %f\n' % test2.rmsd_rmse[-1])
+                write_results_file('%s.rmsd_rmse.finaltrain2' % outname,
+                    train2.rmsd_true, train2.rmsd_pred, footer='rmsd_rmse = %f\n' % train2.rmsd_rmse[-1])
 
         if i == 'all':
             continue
         numfolds += 1
 
         #aggregate results from different crossval folds
-        if test.aucs:
-            test_aucs.append(test.aucs)
-            train_aucs.append(train.aucs)
+        if test.auc:
+            test_auc.append(test.auc)
+            train_auc.append(train.auc)
             test_y_true.extend(test.y_true)
             test_y_score.extend(test.y_score)
             train_y_true.extend(train.y_true)
             train_y_score.extend(train.y_score)
 
-        if test.rmses:
-            test_rmses.append(test.rmses)
-            train_rmses.append(train.rmses)
-            test_y_aff.extend(test.y_aff)
-            test_y_predaff.extend(test.y_predaff)
-            train_y_aff.extend(train.y_aff)
-            train_y_predaff.extend(train.y_predaff)
+        if test.aff_rmse:
+            test_aff_rmse.append(test.aff_rmse)
+            train_aff_rmse.append(train.aff_rmse)
+            test_aff_true.extend(test.aff_true)
+            test_aff_pred.extend(test.aff_pred)
+            train_aff_true.extend(train.aff_true)
+            train_aff_pred.extend(train.aff_pred)
+
+        if test.rmsd_rmse:
+            test_rmsd_rmse.append(test.rmsd_rmse)
+            train_rmsd_rmse.append(train.rmsd_rmse)
+            test_rmsd_true.extend(test.rmsd_true)
+            test_rmsd_pred.extend(test.rmsd_pred)
+            train_rmsd_true.extend(train.rmsd_true)
+            train_rmsd_pred.extend(train.rmsd_pred)
 
         if args.prefix2:
-            if test2.aucs:
-                test2_aucs.append(test2.aucs)
-                train2_aucs.append(train2.aucs)
+            if test2.auc:
+                test2_auc.append(test2.auc)
+                train2_auc.append(train2.auc)
                 test2_y_true.extend(test2.y_true)
                 test2_y_score.extend(test2.y_score)
                 train2_y_true.extend(train2.y_true)
                 train2_y_score.extend(train2.y_score)
 
-            if test2.rmses:
-                test2_rmses.append(test2.rmses)
-                train2_rmses.append(train2.rmses)
-                test2_y_aff.extend(test2.y_aff)
-                test2_y_predaff.extend(test2.y_predaff)
-                train2_y_aff.extend(train2.y_aff)
-                train2_y_predaff.extend(train2.y_predaff)
+            if test2.aff_rmse:
+                test2_aff_rmse.append(test2.aff_rmse)
+                train2_aff_rmse.append(train2.aff_rmse)
+                test2_aff_true.extend(test2.aff_true)
+                test2_aff_pred.extend(test2.aff_pred)
+                train2_aff_true.extend(train2.aff_true)
+                train2_aff_pred.extend(train2.aff_pred)
+
+            if test2.rmsd_rmse:
+                test2_rmsd_rmse.append(test2.rmsd_rmse)
+                train2_rmsd_rmse.append(train2.rmsd_rmse)
+                test2_rmsd_true.extend(test2.rmsd_true)
+                test2_rmsd_pred.extend(test2.rmsd_pred)
+                train2_rmsd_true.extend(train2.rmsd_true)
+                train2_rmsd_pred.extend(train2.rmsd_pred)
 
     #only combine fold results if we have multiple folds
     if numfolds > 1:
 
-        if any(test_aucs):
-            combine_fold_results(test_aucs, train_aucs, test_y_true, test_y_score, train_y_true, train_y_score,
+        if any(test_auc):
+            combine_fold_results(test_auc, train_auc, test_y_true, test_y_score, train_y_true, train_y_score,
                                  outprefix, args.test_interval, affinity=False, second_data_source=False)
 
-        if any(test_rmses):
-            combine_fold_results(test_rmses, train_rmses, test_y_aff, test_y_predaff, train_y_aff, train_y_predaff,
+        if any(test_aff_rmse):
+            combine_fold_results(test_aff_rmse, train_aff_rmse, test_aff_true, test_aff_pred, train_aff_true, train_aff_pred,
                                  outprefix, args.test_interval, affinity=True, second_data_source=False,
                                  filter_actives_test=test_y_true, filter_actives_train=train_y_true)
 
-        if any(test2_aucs):
-            combine_fold_results(test2_aucs, train2_aucs, test2_y_true, test2_y_score, train2_y_true, train2_y_score,
+        if any(test2_auc):
+            combine_fold_results(test2_auc, train2_auc, test2_y_true, test2_y_score, train2_y_true, train2_y_score,
                                  outprefix, args.test_interval, affinity=False, second_data_source=True)
 
-        if any(test2_rmses):
-            combine_fold_results(test2_rmses, train2_rmses, test2_y_aff, test2_y_predaff, train2_y_aff, train2_y_predaff,
+        if any(test2_aff_rmse):
+            combine_fold_results(test2_aff_rmse, train2_aff_rmse, test2_aff_true, test2_aff_pred, train2_aff_true, train2_aff_pred,
                                  outprefix, args.test_interval, affinity=True, second_data_source=True,
                                  filter_actives_test=test2_y_true, filter_actives_train=train2_y_true)
 
