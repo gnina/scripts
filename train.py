@@ -115,48 +115,50 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
     y_predaffs = [[] for _ in xrange(n_tests)]
     losses = []
 
-    res = None
+    batch_size = i = test_net.blobs['data'].shape[0]
     for r in xrange(n_rotations):
         for x in xrange(n_tests):
             x = (x + offset) % n_tests
 
-            if not res or i >= batch_size:
-                res = test_net.forward()
-                if 'output' in res:
-                    batch_size = res['output'].shape[0]
-                else:
-                    batch_size = res['affout'].shape[0]
+            if i >= batch_size:
+                test_net.forward()
                 i = 0
 
-            if 'labelout' in res:
+            if 'label' in test_net.blobs:
+                label_blob = test_net.blobs['label']
                 if r == 0:
-                    y_true[x] = float(res['labelout'][i])
+                    y_true[x] = float(label_blob.data[i])
                 else:
-                    assert y_true[x] == res['labelout'][i] #sanity check
+                    assert y_true[x] == label_blob.data[i] #sanity check
 
-            if 'output' in res:
-                y_scores[x].append(float(res['output'][i][1]))
+            if 'output' in test_net.blobs:
+                output_blob = test_net.blobs['output']
+                if len(output_blob.data[i]) == 2:
+                    y_scores[x].append(float(output_blob.data[i][1]))
+                else:
+                    y_scores[x].append(float(output_blob.data[i][0]))
 
-            if 'affout' in res:
+            if 'affinity' in test_net.blobs:
+                affinity_blob = test_net.blobs['affinity']
                 if r == 0:
-                    y_affinity[x] = float(res['affout'][i])
+                    y_affinity[x] = float(affinity_blob.data[i])
                 else:
-                    assert y_affinity[x] == res['affout'][i] #sanity check
+                    assert y_affinity[x] == affinity_blob.data[i] #sanity check
 
-            if 'predaff' in res:
-                y_predaffs[x].append(float(res['predaff'][i]))
-                if x == 0:
-                    print res['predaff'][i]
+            if 'predaff' in test_net.blobs:
+                predaff_blob = test_net.blobs['predaff']
+                y_predaffs[x].append(float(predaff_blob.data[i]))
 
-            if 'loss' in res:
-                losses.append(float(res['loss']))
+            if 'loss' in test_net.blobs:
+                loss_blob = test_net.blobs['loss']
+                losses.append(float(loss_blob.data))
             i += 1
 
     #get index of test example that will be at start of next batch
     offset = (x + 1 + batch_size - i) % n_tests
 
     result = Namespace(auc=None, y_true=y_true, y_score=[], loss=None,
-                       rmsd=None, y_aff=y_affinity, y_predaff=[])
+                       rmse=None, y_aff=y_affinity, y_predaff=[])
 
     #average the scores from each rotation
     if any(y_scores):
@@ -175,7 +177,7 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
             print "Warning: only one unique label"
             result.auc = 1.0
 
-    #compute mean squared error (rmsd) of affinity (for actives only)
+    #compute mean squared error (rmse) of affinity (for actives only)
     if result.y_aff and result.y_predaff:
         if result.y_true:
             y_predaff_true = filter_actives(result.y_predaff, result.y_true)
@@ -185,7 +187,7 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
         y_predaff_true = np.array(y_predaff_true)
         y_predaff_true = y_predaff_true[y_aff_true>0]
         y_aff_true = y_aff_true[y_aff_true>0]
-        result.rmsd = np.sqrt(sklearn.metrics.mean_squared_error(y_aff_true, y_predaff_true))
+        result.rmse = np.sqrt(sklearn.metrics.mean_squared_error(y_aff_true, y_predaff_true))
 
     #compute mean loss
     if losses:
@@ -201,7 +203,7 @@ def count_lines(file):
 def train_and_test_model(args, files, outname):
     '''Train caffe model for iterations steps using provided model template
     and training file(s), and every test_interval iterations evaluate each
-    of the train and test files. Return AUC (and RMSD, if affinity model)
+    of the train and test files. Return AUC (and RMSE, if affinity model)
     for every test iteration, and also the labels and predictions for the
     final test iteration.'''
     template = args.model
@@ -296,24 +298,24 @@ def train_and_test_model(args, files, outname):
         out = open(outfile, mode, 0) #unbuffered
 
     #return evaluation results:
-    #  auc, loss, and rmsd from each test
+    #  auc, loss, and rmse from each test
     #  y_true, y_score, y_aff, y_predaff from last test
-    train = Namespace(aucs=[], y_true=[], y_score=[], losses=[], rmsds=[], y_aff=[], y_predaff=[])
+    train = Namespace(aucs=[], y_true=[], y_score=[], losses=[], rmses=[], y_aff=[], y_predaff=[])
     if not test_on_train:
-        test = Namespace(aucs=[], y_true=[], y_score=[], losses=[], rmsds=[], y_aff=[], y_predaff=[])
+        test = Namespace(aucs=[], y_true=[], y_score=[], losses=[], rmses=[], y_aff=[], y_predaff=[])
     else:
         test = train
     if args.prefix2:
-        train2 = Namespace(aucs=[], y_true=[], y_score=[], losses=[], rmsds=[], y_aff=[], y_predaff=[])
+        train2 = Namespace(aucs=[], y_true=[], y_score=[], losses=[], rmses=[], y_aff=[], y_predaff=[])
         if not test_on_train:
-            test2 = Namespace(aucs=[], y_true=[], y_score=[], losses=[], rmsds=[], y_aff=[], y_predaff=[])
+            test2 = Namespace(aucs=[], y_true=[], y_score=[], losses=[], rmses=[], y_aff=[], y_predaff=[])
         else:
             test2 = train2
 
     #also keep track of best test and train aucs
     best_test_auc = 0
     best_train_auc = 0
-    best_test_rmsd = np.inf
+    best_test_rmse = np.inf
     best_train_interval = 0
 
     i_time_avg = 0
@@ -350,9 +352,9 @@ def train_and_test_model(args, files, outname):
             if result.auc is not None:
                 print "Test AUC: %f" % result.auc
                 test.aucs.append(result.auc)
-            if result.rmsd is not None:
-                print "Test RMSD: %f" % result.rmsd
-                test.rmsds.append(result.rmsd)
+            if result.rmse is not None:
+                print "Test RMSE: %f" % result.rmse
+                test.rmse.append(result.rmse)
 
             if args.prefix2:
                 #evaluate test set 2
@@ -377,9 +379,9 @@ def train_and_test_model(args, files, outname):
                 if result.auc is not None:
                     print "Test2 AUC: %f" % result.auc
                     test2.aucs.append(result.auc)
-                if result.rmsd is not None:
-                    print "Test2 RMSD: %f" % result.rmsd
-                    test2.rmsds.append(result.rmsd)
+                if result.rmse is not None:
+                    print "Test2 RMSE: %f" % result.rmse
+                    test2.rmses.append(result.rmse)
 
         #evaluate train set
         start = time.time()
@@ -405,9 +407,9 @@ def train_and_test_model(args, files, outname):
             train.aucs.append(result.auc)
             print "Train loss: %f" % result.loss
             train.losses.append(result.loss)
-        if result.rmsd is not None:
-            print "Train RMSD: %f" % result.rmsd
-            train.rmsds.append(result.rmsd)
+        if result.rmse is not None:
+            print "Train RMSE: %f" % result.rmse
+            train.rmses.append(result.rmse)
 
         if args.prefix2:
             #evaluate train set 2
@@ -434,26 +436,26 @@ def train_and_test_model(args, files, outname):
                 train2.aucs.append(result.auc)
                 print "Train2 loss: %f" % result.loss
                 train2.losses.append(result.loss)
-            if result.rmsd is not None:
-                print "Train2 RMSD: %f" % result.rmsd
-                train2.rmsds.append(result.rmsd)
+            if result.rmse is not None:
+                print "Train2 RMSE: %f" % result.rmse
+                train2.rmses.append(result.rmse)
 
         if training:
             if result.auc is not None:
                 test_auc = test.aucs[-1]
                 train_auc = train.aucs[-1]
                 train_loss = train.losses[-1]
-            if result.rmsd is not None:
-                test_rmsd = test.rmsds[-1]
-                train_rmsd = train.rmsds[-1]
+            if result.rmse is not None:
+                test_rmse = test.rmses[-1]
+                train_rmse = train.rmses[-1]
             if args.prefix2:
                 if result.auc:
                     test2_auc = test2.aucs[-1]
                     train2_auc = train2.aucs[-1]
                     train2_loss = train2.losses[-1]
-                if result.rmsd:
-                    test2_rmsd = test2.rmsds[-1]
-                    train2_rmsd = train2.rmsds[-1]
+                if result.rmse:
+                    test2_rmse = test2.rmses[-1]
+                    train2_rmse = train2.rmses[-1]
 
             #check for improvement
             if result.auc is not None:
@@ -474,9 +476,9 @@ def train_and_test_model(args, files, outname):
                     if lr < args.step_end:
                         break #end early
             #check for rmse improvement
-            if result.rmsd is not None:
-                if test_rmsd < best_test_rmsd:
-                    best_test_rmsd = test_rmsd
+            if result.rmse is not None:
+                if test_rmse < best_test_rmse:
+                    best_test_rmse = test_rmse
                     if args.keep_best:
                         solver.snapshot() #a bit too much - gigabytes of data                    
                     
@@ -485,13 +487,13 @@ def train_and_test_model(args, files, outname):
             if result.auc is not None:
                 row += [test_auc, train_auc, train_loss]
             row += [solver.get_base_lr()]
-            if result.rmsd is not None:
-                row += [test_rmsd, train_rmsd]
+            if result.rmse is not None:
+                row += [test_rmse, train_rmse]
             if args.prefix2:
                 if result.auc is not None:
                     row += [test2_auc, train2_auc, train2_loss]
-                if result.rmsd is not None:
-                    row += [test2_rmsd, train2_rmsd]
+                if result.rmse is not None:
+                    row += [test2_rmse, train2_rmse]
             out.write(' '.join('%.6f' % x for x in row) + '\n')
             out.flush()
 
@@ -630,13 +632,13 @@ if __name__ == '__main__':
         outprefix = '%s.%d' % (os.path.splitext(os.path.basename(args.model))[0],os.getpid())
 
     test_aucs, train_aucs = [], []
-    test_rmsds, train_rmsds = [], []
+    test_rmses, train_rmses = [], []
     test_y_true, train_y_true = [], []
     test_y_score, train_y_score = [], []
     test_y_aff, train_y_aff = [], []
     test_y_predaff, train_y_predaff = [], []
     test2_aucs, train2_aucs = [], []
-    test2_rmsds, train2_rmsds = [], []
+    test2_rmses, train2_rmses = [], []
     test2_y_true, train2_y_true = [], []
     test2_y_score, train2_y_score = [], []
     test2_y_aff, train2_y_aff = [], []
@@ -659,18 +661,18 @@ if __name__ == '__main__':
             write_results_file('%s.auc.finaltest' % outname, test.y_true, test.y_score, footer='AUC %f\n' % test.aucs[-1])
             write_results_file('%s.auc.finaltrain' % outname, train.y_true, train.y_score, footer='AUC %f\n' % train.aucs[-1])
 
-        if test.rmsds:
-            write_results_file('%s.rmsd.finaltest' % outname, test.y_aff, test.y_predaff, footer='RMSD %f\n' % test.rmsds[-1])
-            write_results_file('%s.rmsd.finaltrain' % outname, train.y_aff, train.y_predaff, footer='RMSD %f\n' % train.rmsds[-1])
+        if test.rmses:
+            write_results_file('%s.rmse.finaltest' % outname, test.y_aff, test.y_predaff, footer='RMSE %f\n' % test.rmses[-1])
+            write_results_file('%s.rmse.finaltrain' % outname, train.y_aff, train.y_predaff, footer='RMSE %f\n' % train.rmses[-1])
 
         if args.prefix2:
             if test2.aucs:
                 write_results_file('%s.auc.finaltest2' % outname, test2.y_true, test2.y_score, footer='AUC %f\n' % test2.aucs[-1])
-                write_results_file('%s.auc.finaltrain2' % outname, train2.y_true2, train2.y_score, footer='AUC %f\n' % train2.aucs[-1])
+                write_results_file('%s.auc.finaltrain2' % outname, train2.y_true, train2.y_score, footer='AUC %f\n' % train2.aucs[-1])
 
-            if test2.rmsds:
-                write_results_file('%s.rmsd.finaltest2' % outname, test2.y_aff, test2.y_predaff, footer='RMSD %f\n' % test2.rmsds[-1])
-                write_results_file('%s.rmsd.finaltrain2' % outname, train2.y_aff, train2.y_predaff, footer='RMSD %f\n' % train2.rmsds[-1])
+            if test2.rmses:
+                write_results_file('%s.rmse.finaltest2' % outname, test2.y_aff, test2.y_predaff, footer='RMSE %f\n' % test2.rmses[-1])
+                write_results_file('%s.rmse.finaltrain2' % outname, train2.y_aff, train2.y_predaff, footer='RMSE %f\n' % train2.rmses[-1])
 
         if i == 'all':
             continue
@@ -685,9 +687,9 @@ if __name__ == '__main__':
             train_y_true.extend(train.y_true)
             train_y_score.extend(train.y_score)
 
-        if test.rmsds:
-            test_rmsds.append(test.rmsds)
-            train_rmsds.append(train.rmsds)
+        if test.rmses:
+            test_rmses.append(test.rmses)
+            train_rmses.append(train.rmses)
             test_y_aff.extend(test.y_aff)
             test_y_predaff.extend(test.y_predaff)
             train_y_aff.extend(train.y_aff)
@@ -702,9 +704,9 @@ if __name__ == '__main__':
                 train2_y_true.extend(train2.y_true)
                 train2_y_score.extend(train2.y_score)
 
-            if test2.rmsds:
-                test2_rmsds.append(test2.rmsds)
-                train2_rmsds.append(train2.rmsds)
+            if test2.rmses:
+                test2_rmses.append(test2.rmses)
+                train2_rmses.append(train2.rmses)
                 test2_y_aff.extend(test2.y_aff)
                 test2_y_predaff.extend(test2.y_predaff)
                 train2_y_aff.extend(train2.y_aff)
@@ -717,8 +719,8 @@ if __name__ == '__main__':
             combine_fold_results(test_aucs, train_aucs, test_y_true, test_y_score, train_y_true, train_y_score,
                                  outprefix, args.test_interval, affinity=False, second_data_source=False)
 
-        if any(test_rmsds):
-            combine_fold_results(test_rmsds, train_rmsds, test_y_aff, test_y_predaff, train_y_aff, train_y_predaff,
+        if any(test_rmses):
+            combine_fold_results(test_rmses, train_rmses, test_y_aff, test_y_predaff, train_y_aff, train_y_predaff,
                                  outprefix, args.test_interval, affinity=True, second_data_source=False,
                                  filter_actives_test=test_y_true, filter_actives_train=train_y_true)
 
@@ -726,8 +728,8 @@ if __name__ == '__main__':
             combine_fold_results(test2_aucs, train2_aucs, test2_y_true, test2_y_score, train2_y_true, train2_y_score,
                                  outprefix, args.test_interval, affinity=False, second_data_source=True)
 
-        if any(test2_rmsds):
-            combine_fold_results(test2_rmsds, train2_rmsds, test2_y_aff, test2_y_predaff, train2_y_aff, train2_y_predaff,
+        if any(test2_rmses):
+            combine_fold_results(test2_rmses, train2_rmses, test2_y_aff, test2_y_predaff, train2_y_aff, train2_y_predaff,
                                  outprefix, args.test_interval, affinity=True, second_data_source=True,
                                  filter_actives_test=test2_y_true, filter_actives_train=train2_y_true)
 
