@@ -12,7 +12,7 @@ from caffe.proto.caffe_pb2 import NetParameter, SolverParameter
 import google.protobuf.text_format as prototxt
 import time
 import psutil
-from combine_fold_results import write_results_file, combine_fold_results, filter_actives
+from combine_fold_output import write_output_file, combine_fold_output, filter_actives
 
 
 '''Script for training a neural net model from gnina grid data.
@@ -628,32 +628,30 @@ def get_train_test_files(prefix, foldnums, allfolds, reduced, prefix2):
                 foldnums.add(int(match.group(4)))
     elif isinstance(foldnums, str):
         foldnums = [int(i) for i in foldnums.split(',') if i]
-    for i in foldnums:
-        files[i] = {}
-        files[i]['train'] = '%strain%d.types' % (prefix, i)
-        files[i]['test'] = '%stest%d.types' % (prefix, i)
-        if reduced:
-            files[i]['reduced_train'] = '%s_reducedtrain%d.types' % (prefix, i)
-            files[i]['reduced_test'] = '%s_reducedtest%d.types' % (prefix, i)
-        if prefix2:
-            files[i]['train2'] = '%strain%d.types' % (prefix2, i)
-            files[i]['test2'] = '%stest%d.types' % (prefix2, i)
-            if reduced:
-                files[i]['reduced_train2'] = '%s_reducedtrain%d.types' % (prefix2, i)
-                files[i]['reduced_test2'] = '%s_reducedtest%d.types' % (prefix2, i)
+    prefixes = [prefix]
+    data_nums = ['']
+    if prefix2:
+        prefixes.append(prefix2)
+        data_nums.append('2')
+    sizes = ['']
+    if reduced:
+        sizes.append('_reduced')
+    for fold in foldnums:
+        files[fold] = {}
+        for part in 'train', 'test':
+            for num, pfx in zip(data_nums, prefixes):
+                for size in sizes:
+                    data_file = '%s%s%s%d.types' % (pfx, size, part, fold)
+                    files[fold][part+num+size] = data_file
+                    check_file_exists(data_file)
     if allfolds:
-        i = 'all'
-        files[i] = {}
-        files[i]['train'] = files[i]['test'] = '%s.types' % prefix
-        if reduced:
-            files[i]['reduced_train'] = files[i]['reduced_test'] = '%s_reduced.types' % prefix
-        if prefix2:
-            files[i]['train2'] = files[i]['test2'] = '%s.types' % prefix2
-            if reduced:
-                files[i]['reduced_train2'] = files[i]['reduced_test2'] = '%s_reduced.types' % prefix2
-    for i in files:
-        for file in files[i].values():
-            check_file_exists(file)
+        files['all'] = {}
+        for part in 'train', 'test':
+            for num, pfx in zip(data_nums, prefixes):
+                for size in sizes:
+                    data_file = '%s%s.types' % (pfx, size)
+                    files['all'][part+num+size] = data_file
+                    check_file_exists(data_file)
     return files
 
 
@@ -705,10 +703,10 @@ if __name__ == '__main__':
 
     #train each pair
     numfolds = 0
-    for i in train_test_files:
+    for fold in train_test_files:
 
-        outname = '%s.%s' % (outprefix, i)
-        results = train_and_test_model(args, train_test_files[i], outname)
+        outname = '%s_%s' % (outprefix, fold)
+        results = train_and_test_model(args, train_test_files[fold], outname)
 
         if args.prefix2:
             test, train, test2, train2 = results
@@ -717,43 +715,61 @@ if __name__ == '__main__':
 
         #write out the final predictions for test and train sets
         if test.auc:
-            write_results_file('%s.auc.finaltest' % outname,
-                test.y_true, test.y_score, footer='auc = %f\n' % test.auc[-1])
-            write_results_file('%s.auc.finaltrain' % outname,
-                train.y_true, train.y_score, footer='auc = %f\n' % train.auc[-1])
+            output_file = '%s_test_score.final_output' % outname
+            write_output_file(output_file, test.y_true, test.y_score,
+                              footer='AUC %f' % test.auc[-1])
+
+            putput_file = '%s_train_score.final_output' % outname
+            write_output_file(output_file, train.y_true, train.y_score,
+                              footer='AUC %f' % train.auc[-1])
 
         if test.aff_rmse:
-            write_results_file('%s.aff_rmse.finaltest' % outname,
-                test.aff_true, test.aff_pred, footer='aff_rmse = %f\n' % test.aff_rmse[-1])
-            write_results_file('%s.aff_rmse.finaltrain' % outname,
-                train.aff_true, train.aff_pred, footer='aff_rmse = %f\n' % train.aff_rmse[-1])
+            output_file = '%s_test_aff.final_output' % outname
+            write_output_file(output_file, test.aff_true, test.aff_pred,
+                              footer='RMSE %f' % test.aff_rmse[-1])
+
+            output_file = '%s_train_aff.final_output' % outname
+            write_output_file(output_file, train.aff_true, train.aff_pred,
+                              footer='RMSE %f' % train.aff_rmse[-1])
 
         if test.rmsd_rmse:
-            write_results_file('%s.rmsd_rmse.finaltest' % outname,
-                test.rmsd_true, test.rmsd_pred, footer='rmsd_rmse = %f\n' % test.rmsd_rmse[-1])
-            write_results_file('%s.rmsd_rmse.finaltrain' % outname,
-                train.rmsd_true, train.rmsd_pred, footer='rmsd_rmse = %f\n' % train.rmsd_rmse[-1])
+            output_file = '%s_test_rmsd.final_output' % outname
+            write_output_file(output_file, test.rmsd_true, test.rmsd_pred,
+                              footer='RMSE %f' % test.rmsd_rmse[-1])
+
+            output_file = '%s_train_rmsd.final_output' % outname
+            write_output_file(output_file, train.rmsd_true, train.rmsd_pred,
+                              footer='RMSE %f' % train.rmsd_rmse[-1])
 
         if args.prefix2:
             if test2.auc:
-                write_results_file('%s.auc.finaltest2' % outname,
-                    test2.y_true, test2.y_score, footer='auc = %f\n' % test2.auc[-1])
-                write_results_file('%s.auc.finaltrain2' % outname,
-                    train2.y_true, train2.y_score, footer='auc = %f\n' % train2.auc[-1])
+                output_file = '%s_test2_score.final_output' % outname
+                write_output_file(output_file, test2.y_true, test2.y_score,
+                                  footer='AUC %f' % test2.auc[-1])
+
+                putput_file = '%s_train2_score.final_output' % outname
+                write_output_file(output_file, train2.y_true, train2.y_score,
+                                  footer='AUC %f' % train2.auc[-1])
 
             if test2.aff_rmse:
-                write_results_file('%s.aff_rmse.finaltest2' % outname,
-                    test2.aff_true, test2.aff_pred, footer='aff_rmse = %f\n' % test2.aff_rmse[-1])
-                write_results_file('%s.aff_rmse.finaltrain2' % outname,
-                    train2.aff_true, train2.aff_pred, footer='aff_rmse = %f\n' % train2.aff_rmse[-1])
+                output_file = '%s_test2_aff.final_output' % outname
+                write_output_file(output_file, test2.aff_true, test2.aff_pred,
+                                  footer='RMSE %f' % test2.aff_rmse[-1])
+
+                output_file = '%s_train2_aff.final_output' % outname
+                write_output_file(output_file, train2.aff_true, train2.aff_pred,
+                                  footer='RMSE %f' % train2.aff_rmse[-1])
 
             if test2.rmsd_rmse:
-                write_results_file('%s.rmsd_rmse.finaltest2' % outname,
-                    test2.rmsd_true, test2.rmsd_pred, footer='rmsd_rmse = %f\n' % test2.rmsd_rmse[-1])
-                write_results_file('%s.rmsd_rmse.finaltrain2' % outname,
-                    train2.rmsd_true, train2.rmsd_pred, footer='rmsd_rmse = %f\n' % train2.rmsd_rmse[-1])
+                output_file = '%s_test2_rmsd.final_output' % outname
+                write_output_file(output_file, test2.rmsd_true, test2.rmsd_pred,
+                                  footer='RMSE %f' % test2.rmsd_rmse[-1])
 
-        if i == 'all':
+                output_file = '%s_train2_rmsd.final_output' % outname
+                write_output_file(output_file, train2.rmsd_true, train2.rmsd_pred,
+                                  footer='RMSE %f' % train2.rmsd_rmse[-1])
+
+        if fold == 'all':
             continue
         numfolds += 1
 
@@ -811,20 +827,28 @@ if __name__ == '__main__':
     if numfolds > 1:
 
         if any(test_auc):
-            combine_fold_results(test_auc, train_auc, test_y_true, test_y_score, train_y_true, train_y_score,
-                                 outprefix, args.test_interval, affinity=False, second_data_source=False)
+            combine_fold_output(test_auc, train_auc, test_y_true, test_y_score, train_y_true, train_y_score,
+                                outprefix, args.test_interval, affinity=False, second_data_source=False)
 
         if any(test_aff_rmse):
-            combine_fold_results(test_aff_rmse, train_aff_rmse, test_aff_true, test_aff_pred, train_aff_true, train_aff_pred,
-                                 outprefix, args.test_interval, affinity=True, second_data_source=False,
-                                 filter_actives_test=test_y_true, filter_actives_train=train_y_true)
+            combine_fold_output(test_aff_rmse, train_aff_rmse, test_aff_true, test_aff_pred, train_aff_true, train_aff_pred,
+                                outprefix, args.test_interval, affinity=True, second_data_source=False,
+                                filter_actives_test=test_y_true, filter_actives_train=train_y_true)
+
+        if any(test_rmsd_rmse):
+            combine_fold_output(test_rmsd_rmse, train_rmsd_rmse, test_rmsd_true, test_rmsd_pred, train_rmsd_true, train_rmsd_pred,
+                                outprefix, args.test_interval, rmsd=True, second_data_source=False)
 
         if any(test2_auc):
-            combine_fold_results(test2_auc, train2_auc, test2_y_true, test2_y_score, train2_y_true, train2_y_score,
-                                 outprefix, args.test_interval, affinity=False, second_data_source=True)
+            combine_fold_output(test2_auc, train2_auc, test2_y_true, test2_y_score, train2_y_true, train2_y_score,
+                                outprefix, args.test_interval, affinity=False, second_data_source=True)
 
         if any(test2_aff_rmse):
-            combine_fold_results(test2_aff_rmse, train2_aff_rmse, test2_aff_true, test2_aff_pred, train2_aff_true, train2_aff_pred,
-                                 outprefix, args.test_interval, affinity=True, second_data_source=True,
-                                 filter_actives_test=test2_y_true, filter_actives_train=train2_y_true)
+            combine_fold_output(test2_aff_rmse, train2_aff_rmse, test2_aff_true, test2_aff_pred, train2_aff_true, train2_aff_pred,
+                                outprefix, args.test_interval, affinity=True, second_data_source=True,
+                                filter_actives_test=test2_y_true, filter_actives_train=train2_y_true)
+
+        if any(test2_aff_rmse):
+            combine_fold_output(test2_rmsd_rmse, train2_rmsd_rmse, test2_rmsd_true, test2_rmsd_pred, train2_rmsd_true, train2_rmsd_pred,
+                                outprefix, args.test_interval, rmsd=True, second_data_source=True)
 
