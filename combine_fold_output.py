@@ -8,11 +8,13 @@ import glob, re, argparse, sys, os
 import sklearn.metrics
 
 
-def read_output_file(file):
+def read_output_file(file, header=False):
     '''Read columns of float data from a file, ignoring # comments'''
     rows = []
     with open(file, 'r') as f:
-        for line in f:
+        for i, line in enumerate(f):
+            if header and i == 0:
+                continue
             line = line.split('#', 1)[0].strip()
             if line:
                 rows.append(map(float, line.split(' ')))
@@ -77,17 +79,17 @@ def check_file_exists(file):
         raise OSError('%s does not exist' % file)
 
 
-def get_fold_files(prefix, fold_nums, scoring, affinity, rmsd, two_data_sources):
+def get_fold_files(prefix, foldnums, scoring, affinity, rmsd, two_data_sources):
     files = {}
-    if fold_nums is None:
-        fold_nums = set()
-        pattern = r'%s\.(\d+)(out|_(train|test)2?_(score|aff|rmsd)\.final_output)$' % prefix
+    if foldnums is None:
+        foldnums = set()
+        pattern = r'%s\.(\d+)\.(training_output|final_(train|test)2?_(score|aff|rmsd))$' % prefix
         for file in glob.glob(prefix + '*'):
             match = re.match(pattern, file)
             if match:
-                fold_nums.add(int(match.group(1)))
-    elif isinstance(fold_nums, str):
-        fold_nums = [int(i) for i in foldnums.split(',') if i]
+                foldnums.add(int(match.group(1)))
+    elif isinstance(foldnums, str):
+        foldnums = [int(i) for i in foldnums.split(',') if i]
     outputs = []
     if scoring:
         outputs.append('score')
@@ -99,14 +101,14 @@ def get_fold_files(prefix, fold_nums, scoring, affinity, rmsd, two_data_sources)
         data_nums = ['', '2']
     else:
         data_nums = ['']
-    for fold in fold_nums:
+    for fold in foldnums:
         files[fold] = {}
-        files[fold]['out'] = '%s_fold%d.out'
+        files[fold]['out'] = '%s.%d.training_output' % (prefix, fold)
         for part in ['test', 'train']:
             for num in data_nums:
                 files[fold][part+num] = {}
                 for output in outputs:
-                    fold_file = '%s_fold%d_%s%s_%s.final_output' % (prefix, fold, part, num, output)
+                    fold_file = '%s.%d.final_%s%s_%s' % (prefix, fold, part, num, output)
                     files[fold][part+num][output] = fold_file
                     check_file_exists(fold_file)
     return files
@@ -133,10 +135,10 @@ def combine_fold_output(test_metrics, train_metrics, test_labels, test_preds, tr
 
     if affinity:
         output_name = 'aff'
-        metric_name = 'rmse'
+        metric_name = 'aff_rmse'
     elif rmsd:
         output_name = 'rmsd'
-        metric_name = 'rmse'
+        metric_name = 'rmsd_rmse'
     else:
         output_name = 'score'
         metric_name = 'auc'
@@ -151,14 +153,14 @@ def combine_fold_output(test_metrics, train_metrics, test_labels, test_preds, tr
     mean_train_metrics = np.mean(train_metrics, axis=0)
 
     #write test and train metrics (mean and for each fold)
-    metrics_file = '%s_test%s_%s.metrics' % (outprefix, num, metric_name)
+    metrics_file = '%s.test%s_%s' % (outprefix, num, metric_name)
     write_output_file(metrics_file, mean_test_metrics, *test_metrics)
 
-    metrics_file = '%s_train%s_%s.metrics' % (outprefix, num, metric_name)
+    metrics_file = '%s.train%s_%s' % (outprefix, num, metric_name)
     write_output_file(metrics_file, mean_train_metrics, *train_metrics)
 
     #training plot of mean test and train metric across folds
-    training_file = '%s_%s_training%s.pdf' % (outprefix, metric_name, num)
+    training_file = '%s.%s_training%s.pdf' % (outprefix, metric_name, num)
     training_plot(training_file, mean_train_metrics, mean_test_metrics)
 
     if affinity or rmsd:
@@ -171,10 +173,10 @@ def combine_fold_output(test_metrics, train_metrics, test_labels, test_preds, tr
         rmse = np.sqrt(sklearn.metrics.mean_squared_error(test_preds, test_labels))
         r2 = sklearn.metrics.r2_score(test_preds, test_labels)
 
-        final_output_file = '%s_test%s_%s.final_output' % (outprefix, num, output_name)
+        final_output_file = '%s.final_test%s_%s' % (outprefix, num, output_name)
         write_output_file(final_output_file, test_preds, test_labels, footer='RMSE,R^2 %f %f\n' % (rmse, r2))
 
-        corr_file = '%s_test%s_%s_corr.pdf' % (outprefix, num, output_name)
+        corr_file = '%s.test%s_%s_corr.pdf' % (outprefix, num, output_name)
         plot_correlation(corr_file, test_preds, test_labels, rmse, r2)
 
         if filter_actives_train:
@@ -184,10 +186,10 @@ def combine_fold_output(test_metrics, train_metrics, test_labels, test_preds, tr
         rmsd = np.sqrt(sklearn.metrics.mean_squared_error(train_preds, train_labels))
         r2 = sklearn.metrics.r2_score(train_preds, train_labels)
 
-        final_output_file = '%s_train%s_%s.final_output' % (outprefix, num, output_name)
+        final_output_file = '%s.final_train%s_%s' % (outprefix, num, output_name)
         write_output_file(final_output_file, train_preds, train_labels, footer='RMSE,R^2 %f %f\n' % (rmse, r2))
 
-        corr_file = '%s_train%s_%s_corr.pdf' % (outprefix, num, output_name)
+        corr_file = '%s.train%s_%s_corr.pdf' % (outprefix, num, output_name)
         plot_correlation(corr_file, train_preds, train_labels, rmse, r2)
 
     else: # binary classification
@@ -202,25 +204,25 @@ def combine_fold_output(test_metrics, train_metrics, test_labels, test_preds, tr
             fpr, tpr, _ = sklearn.metrics.roc_curve(test_labels, test_preds)
             auc = sklearn.metrics.roc_auc_score(test_labels, test_preds)
 
-            final_output_file = '%s_test%s_%s.final_output' % (outprefix, num, output_name)
+            final_output_file = '%s.final_test%s_%s' % (outprefix, num, output_name)
             write_output_file(final_output_file, test_labels, test_preds, footer='AUC %f\n' % auc)
 
-            roc_file = '%s_test%s_%s_roc.pdf' % (outprefix, metric_name, num)
+            roc_file = '%s.test%s_roc.pdf' % (outprefix, num)
             plot_roc_curve(roc_file, fpr, tpr, auc, txt)
 
         if len(np.unique(train_labels)) > 1:
 
             last_iters = 1000
-            avg_auc, max_auc, min_auc = last_iters_statistics(train_metrics, train_interval, last_iters)
+            avg_auc, max_auc, min_auc = last_iters_statistics(train_metrics, test_interval, last_iters)
             txt = 'For the last %s iterations:\nmean AUC=%.2f  max AUC=%.2f  min AUC=%.2f' % (last_iters, avg_auc, max_auc, min_auc)
 
             fpr, tpr, _ = sklearn.metrics.roc_curve(train_labels, train_preds)
             auc = sklearn.metrics.roc_auc_score(train_labels, train_preds)
 
-            final_output_file = '%s_train%s_%s.final_output' % (outprefix, num, output_name)
+            final_output_file = '%s.final_train%s_%s' % (outprefix, num, output_name)
             write_output_file(final_output_file, train_labels, train_preds, footer='AUC %f\n' % auc)
 
-            roc_file = '%s_train%s_%s_roc.pdf' % (outprefix, metric_name, num)
+            roc_file = '%s.train%s_roc.pdf' % (outprefix, num)
             plot_roc_curve(roc_file, fpr, tpr, auc, txt)
 
 
@@ -239,6 +241,10 @@ def parse_args(argv=None):
 
 if __name__ == '__main__':
     args = parse_args()
+
+    if not (args.scoring or args.affinity or args.rmsd):
+        print 'error: must look for --scoring, --affinity, or --rmsd output files'
+        sys.exit(1)
 
     try:
         fold_files = get_fold_files(args.outprefix, args.foldnums, args.scoring, args.affinity, args.rmsd, args.two_data_sources)
@@ -343,7 +349,7 @@ if __name__ == '__main__':
                 train2_rmsd_true.extend(rmsd_true)
                 train2_rmsd_pred.extend(rmsd_pred)
 
-        metrics = read_output_file(fold_files[i]['out'])
+        metrics = read_output_file(fold_files[i]['out'], header=True)
         col = 0 #ignore loss for now
         if args.scoring:
             test_auc.append(metrics[col])
@@ -385,28 +391,28 @@ if __name__ == '__main__':
 
     if args.scoring:
         combine_fold_output(test_auc, train_auc, test_y_true, test_y_score, train_y_true, train_y_score,
-                            outprefix, args.test_interval, affinity=False, second_data_source=False)
+                            args.outprefix, args.test_interval, affinity=False, second_data_source=False)
 
     if args.affinity:
         combine_fold_output(test_aff_rmse, train_aff_rmse, test_aff_true, test_aff_pred, train_aff_true, train_aff_pred,
-                            outprefix, args.test_interval, affinity=True, second_data_source=False,
+                            args.outprefix, args.test_interval, affinity=True, second_data_source=False,
                             filter_actives_test=test_y_true, filter_actives_train=train_y_true)
 
     if args.rmsd:
         combine_fold_output(test_rmsd_rmse, train_rmsd_rmse, test_rmsd_true, test_rmsd_pred, train_rmsd_true, train_rmsd_pred,
-                            outprefix, args.test_interval, rmsd=True, second_data_source=False)
+                            args.outprefix, args.test_interval, rmsd=True, second_data_source=False)
 
     if args.two_data_sources:
         if args.scoring:
             combine_fold_output(test2_auc, train2_auc, test2_y_true, test2_y_score, train2_y_true, train2_y_score,
-                                outprefix, args.test_interval, affinity=False, second_data_source=True)
+                                args.outprefix, args.test_interval, affinity=False, second_data_source=True)
 
         if args.affinity:
             combine_fold_output(test2_aff_rmse, train2_aff_rmse, test2_aff_true, test2_aff_pred, train2_aff_true, train2_aff_pred,
-                                outprefix, args.test_interval, affinity=True, second_data_source=True,
+                                args.outprefix, args.test_interval, affinity=True, second_data_source=True,
                                 filter_actives_test=test2_y_true, filter_actives_train=train2_y_true)
 
         if args.rmsd:
             combine_fold_output(test2_rmsd_rmse, train2_rmsd_rmse, test2_rmsd_true, test2_rmsd_pred, train2_rmsd_true, train2_rmsd_pred,
-                                outprefix, args.test_interval, rmsd=True, second_data_source=True)
+                                args.outprefix, args.test_interval, rmsd=True, second_data_source=True)
 

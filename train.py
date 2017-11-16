@@ -211,8 +211,9 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
         aff_pred_pos = aff_pred[aff_true >= 0]
         #if there are labels, remove decoys
         if y_true_blob:
-            aff_pred_active = filter_actives(aff_pred_pos, y_true)
-            aff_true_active = filter_actives(aff_true_pos, y_true)
+            y_true_pos = y_true[aff_true >= 0]
+            aff_pred_active = filter_actives(aff_pred_pos, y_true_pos)
+            aff_true_active = filter_actives(aff_true_pos, y_true_pos)
             aff_rmse = np.sqrt(sklearn.metrics.mean_squared_error(aff_pred_active, aff_true_active))
         else:
             aff_rmse = np.sqrt(sklearn.metrics.mean_squared_error(aff_pred_pos, aff_true_pos))
@@ -413,7 +414,7 @@ def train_and_test_model(args, files, outname):
             mode = 'a'
         else:
             mode = 'w'
-        outfile = '%s.out' % outname
+        outfile = '%s.training_output' % outname
         out = open(outfile, mode, 0) #unbuffered
 
     #store test evaluation metrics, test labels and most recent predictions in namespace objects
@@ -705,7 +706,7 @@ if __name__ == '__main__':
     numfolds = 0
     for fold in train_test_files:
 
-        outname = '%s_%s' % (outprefix, fold)
+        outname = '%s.%s' % (outprefix, fold)
         results = train_and_test_model(args, train_test_files[fold], outname)
 
         if args.prefix2:
@@ -715,57 +716,57 @@ if __name__ == '__main__':
 
         #write out the final predictions for test and train sets
         if test.auc:
-            output_file = '%s_test_score.final_output' % outname
+            output_file = '%s.final_test_score' % outname
             write_output_file(output_file, test.y_true, test.y_score,
                               footer='AUC %f' % test.auc[-1])
 
-            putput_file = '%s_train_score.final_output' % outname
+            output_file = '%s.final_train_score' % outname
             write_output_file(output_file, train.y_true, train.y_score,
                               footer='AUC %f' % train.auc[-1])
 
         if test.aff_rmse:
-            output_file = '%s_test_aff.final_output' % outname
+            output_file = '%s.final_test_aff' % outname
             write_output_file(output_file, test.aff_true, test.aff_pred,
                               footer='RMSE %f' % test.aff_rmse[-1])
 
-            output_file = '%s_train_aff.final_output' % outname
+            output_file = '%s.final_train_aff' % outname
             write_output_file(output_file, train.aff_true, train.aff_pred,
                               footer='RMSE %f' % train.aff_rmse[-1])
 
         if test.rmsd_rmse:
-            output_file = '%s_test_rmsd.final_output' % outname
+            output_file = '%s.final_test_rmsd' % outname
             write_output_file(output_file, test.rmsd_true, test.rmsd_pred,
                               footer='RMSE %f' % test.rmsd_rmse[-1])
 
-            output_file = '%s_train_rmsd.final_output' % outname
+            output_file = '%s.final_train_rmsd' % outname
             write_output_file(output_file, train.rmsd_true, train.rmsd_pred,
                               footer='RMSE %f' % train.rmsd_rmse[-1])
 
         if args.prefix2:
             if test2.auc:
-                output_file = '%s_test2_score.final_output' % outname
+                output_file = '%s.final_test2_score' % outname
                 write_output_file(output_file, test2.y_true, test2.y_score,
                                   footer='AUC %f' % test2.auc[-1])
 
-                putput_file = '%s_train2_score.final_output' % outname
+                output_file = '%s.final_train2_score' % outname
                 write_output_file(output_file, train2.y_true, train2.y_score,
                                   footer='AUC %f' % train2.auc[-1])
 
             if test2.aff_rmse:
-                output_file = '%s_test2_aff.final_output' % outname
+                output_file = '%s.final_test2_aff' % outname
                 write_output_file(output_file, test2.aff_true, test2.aff_pred,
                                   footer='RMSE %f' % test2.aff_rmse[-1])
 
-                output_file = '%s_train2_aff.final_output' % outname
+                output_file = '%s.final_train2_aff' % outname
                 write_output_file(output_file, train2.aff_true, train2.aff_pred,
                                   footer='RMSE %f' % train2.aff_rmse[-1])
 
             if test2.rmsd_rmse:
-                output_file = '%s_test2_rmsd.final_output' % outname
+                output_file = '%s.final_test2_rmsd' % outname
                 write_output_file(output_file, test2.rmsd_true, test2.rmsd_pred,
                                   footer='RMSE %f' % test2.rmsd_rmse[-1])
 
-                output_file = '%s_train2_rmsd.final_output' % outname
+                output_file = '%s.final_train2_rmsd' % outname
                 write_output_file(output_file, train2.rmsd_true, train2.rmsd_pred,
                                   footer='RMSE %f' % train2.rmsd_rmse[-1])
 
