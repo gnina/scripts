@@ -350,7 +350,7 @@ def train_and_test_model(args, files, outname):
     test_roots = [args.data_root] #which data_root to use
     if args.reduced:
         test_models += ['trainreducedtest.%d.prototxt' % pid]
-        test_files += [files['reduced_test']]
+        test_files += [files['test_reduced']]
         test_roots += [args.data_root]
     if args.prefix2:
         test_models += ['traintest2.%d.prototxt' % pid]
@@ -358,7 +358,7 @@ def train_and_test_model(args, files, outname):
         test_roots += [args.data_root2]
         if args.reduced:
             test_models += ['trainreducedtest2.%d.prototxt' % pid]
-            test_files += [files['reduced_test2']]
+            test_files += [files['test2_reduced']]
             test_roots += [args.data_root2]
     if not test_on_train:
         test_models += ['traintrain.%d.prototxt' % pid]
@@ -366,7 +366,7 @@ def train_and_test_model(args, files, outname):
         test_roots += [args.data_root]
         if args.reduced:
             test_models += ['trainreducedtrain.%d.prototxt' % pid]
-            test_files += [files['reduced_train']]
+            test_files += [files['train_reduced']]
             test_roots += [args.data_root]
         if args.prefix2:
             test_models += ['traintrain2.%d.prototxt' % pid]
@@ -374,7 +374,7 @@ def train_and_test_model(args, files, outname):
             test_roots += [args.data_root2]
             if args.reduced:
                 test_models += ['trainreducedtrain2.%d.prototxt' % pid]
-                test_files += [files['reduced_train2']]
+                test_files += [files['train2_reduced']]
                 test_roots += [args.data_root2]
 
     for test_model, test_file, test_root in zip(test_models, test_files, test_roots):
@@ -453,7 +453,7 @@ def train_and_test_model(args, files, outname):
             #evaluate test set
             start = time.time()
             if args.reduced and not last_test:
-                key = 'reduced_test'
+                key = 'test_reduced'
             else:
                 key = 'test'
             test_net, n_tests, offset = test_nets[key]
@@ -466,7 +466,7 @@ def train_and_test_model(args, files, outname):
                 #evaluate test set 2
                 start = time.time()
                 if args.reduced and not last_test:
-                    key = 'reduced_test2'
+                    key = 'test2_reduced'
                 else:
                     key = 'test2'
                 test_net, n_tests, offset = test_nets[key]
@@ -478,7 +478,7 @@ def train_and_test_model(args, files, outname):
         #evaluate train set
         start = time.time()
         if args.reduced and not last_test:
-            key = 'reduced_train'
+            key = 'train_reduced'
         else:
             key = 'train'
         test_net, n_tests, offset = test_nets[key]
@@ -491,7 +491,7 @@ def train_and_test_model(args, files, outname):
             #evaluate train set 2
             start = time.time()
             if args.reduced and not last_test:
-                key = 'reduced_train2'
+                key = 'train2_reduced'
             else:
                 key = 'train2'
             test_net, n_tests, offset = test_nets[key]
