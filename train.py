@@ -488,7 +488,7 @@ def train_and_test_model(args, files, outname):
                         best_train_interval = i #reset
                         step_reduce_cnt += 1
                         
-                    if step_reduce_cnt > args.step_endcnt:
+                    if step_reduce_cnt > args.step_end_cnt:
                         break
                     if lr < args.step_end:
                         break #end early
