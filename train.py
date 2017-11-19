@@ -514,6 +514,13 @@ def train_and_test_model(args, files, outname):
             out.write(' '.join('%.6f' % x for x in row) + '\n')
             out.flush()
 
+            #check for a stuck network (same prediction for everything)
+            if len(result.y_scores) > 1 and len(np.unique(result.y_scores)) == 1:
+                print "Identical scores in test, bailing early"
+                break
+            if len(result.y_predaff) > 1 and len(np.unique(result.y_predaff)) == 1:
+                print "Identical affinities in test, bailing early"
+                break
         #track avg time per loop
         i_time = time.time()-i_start
         i_time_avg = (i*i_time_avg + i_time)/(i+1)
