@@ -184,11 +184,11 @@ for testprefix in ['all','crystal','bestonly']:
             inum = int(m.group(1))
             if inum < 25000 and inum > best25:
                 best25 = inum
-            elif inum < 50000 and inum > best50:
+            if inum < 50000 and inum > best50:
                 best50 = inum
-            elif inum < 100000 and inum > best100:
+            if inum < 100000 and inum > best100:
                 best100 = inum
-            elif inum < 250000 and inum > best250:
+            if inum < 250000 and inum > best250:
                 best250 = inum                
         #evalute this fold
         testfile = '../types/%s_0.5_0_test%d.types' % (testprefix,fold)
@@ -206,6 +206,7 @@ for testprefix in ['all','crystal','bestonly']:
     for n in testresults.keys():
         if len(testresults[n]) != len(testresults[last]) or len(testresults[last]) == 0:
             print "Missing data with",n
+        if len(testresults[n]) == 0:
             continue
         if testprefix == 'all':
             if len(testresults[n][0]) == 6:
