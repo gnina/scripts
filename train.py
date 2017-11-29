@@ -14,6 +14,7 @@ import time
 import psutil
 from combine_fold_results import write_results_file, combine_fold_results, filter_actives
 
+
 '''Script for training a neural net model from gnina grid data.
 A model template is provided along with training and test sets of the form
 <prefix>[train|test][num].types
@@ -89,6 +90,7 @@ def write_solver_file(solver_file, train_model, test_models, type, base_lr, mome
     param.random_seed = random_seed
     param.max_iter = max_iter
     param.snapshot_prefix = snapshot_prefix
+    print "WRITING",solver_file
     with open(solver_file,'w') as f:
         f.write(str(param))
 
@@ -144,6 +146,8 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
 
             if 'predaff' in res:
                 y_predaffs[x].append(float(res['predaff'][i]))
+                if x == 0:
+                    print res['predaff'][i]
 
             if 'loss' in res:
                 losses.append(float(res['loss']))
@@ -261,6 +265,7 @@ def train_and_test_model(args, files, outname):
 
     #write solver prototxt
     solverf = 'solver.%d.prototxt' % pid
+    print "SOLVERF",solverf
     write_solver_file(solverf, test_models[0], test_models, args.solver, args.base_lr, args.momentum, args.weight_decay,
                       args.lr_policy, args.gamma, args.power, args.seed, iterations+args.cont, outname)
 
@@ -309,10 +314,14 @@ def train_and_test_model(args, files, outname):
 
     #also keep track of best test and train aucs
     best_test_auc = 0
-    best_train_auc = 0
+    best_train_loss = np.inf #loss is a bit more sensitive
     best_test_rmsd = np.inf
+    best_train_rmsd = np.inf
     best_train_interval = 0
-
+    
+    train_rmsd = np.inf
+    test_rmsd = np.inf
+    step_reduce_cnt = 0
     i_time_avg = 0
     for i in xrange(iterations/test_interval):
         last_test = i == iterations/test_interval-1
@@ -331,6 +340,8 @@ def train_and_test_model(args, files, outname):
                 key = 'reduced_test'
             else:
                 key = 'test'
+                if args.reduced:
+                    del test_nets['reduced_test']  #free up memory
             test_net, n_tests, offset = test_nets[key]
             result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
             test_nets[key] = test_net, n_tests, offset
@@ -358,6 +369,8 @@ def train_and_test_model(args, files, outname):
                     key = 'reduced_test2'
                 else:
                     key = 'test2'
+                    if args.reduced:
+                        del test_nets['reduced_test']  #free up memory
                 test_net, n_tests, offset = test_nets[key]
                 result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
                 test_nets[key] = test_net, n_tests, offset
@@ -384,6 +397,9 @@ def train_and_test_model(args, files, outname):
             key = 'reduced_train'
         else:
             key = 'train'
+            if args.reduced:
+                print "DELETING TRAIN"
+                del test_nets['reduced_train']  #free up memory            
         test_net, n_tests, offset = test_nets[key]
         result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
         test_nets[key] = test_net, n_tests, offset
@@ -458,16 +474,22 @@ def train_and_test_model(args, files, outname):
                     best_test_auc = test_auc
                     if args.keep_best:
                         solver.snapshot() #a bit too much - gigabytes of data
-                if train_auc > best_train_auc:
-                    best_train_auc = train_auc
+                if train_loss < best_train_loss:
+                    best_train_loss = train_loss
                     best_train_interval = i
+                if train_rmsd < best_train_rmsd:
+                    best_train_rmsd = train_rmsd
+                    best_train_interval = i #note updated for both pose and aff
                 if args.dynamic:
                     lr = solver.get_base_lr()
                     if (i-best_train_interval) > args.step_when: #reduce learning rate
                         lr *= args.step_reduce
                         solver.set_base_lr(lr)
                         best_train_interval = i #reset
-                        best_train_auc = train_auc #the value too, so we can consider the recovery
+                        step_reduce_cnt += 1
+                        
+                    if step_reduce_cnt > args.step_end_cnt:
+                        break
                     if lr < args.step_end:
                         break #end early
             #check for rmse improvement
@@ -509,8 +531,10 @@ def train_and_test_model(args, files, outname):
     del solver #free mem
 
     if not args.keep:
+        print "REMOVING",solverf
         os.remove(solverf)
         for test_model in test_models:
+            print "REMOVING",test_model
             os.remove(test_model)
 
     if args.prefix2:
@@ -540,8 +564,9 @@ def parse_args(argv=None):
     parser.add_argument('--dynamic',action='store_true',default=False,help='Attempt to adjust the base_lr in response to training progress')
     parser.add_argument('--solver',type=str,help="Solver type. Default is SGD",default='SGD')
     parser.add_argument('--lr_policy',type=str,help="Learning policy to use. Default is inv.",default='inv')
-    parser.add_argument('--step_reduce',type=float,help="Reduce the learning rate by this factor with dynamic stepping, default 0.5",default='0.5')
+    parser.add_argument('--step_reduce',type=float,help="Reduce the learning rate by this factor with dynamic stepping, default 0.1",default='0.1')
     parser.add_argument('--step_end',type=float,help='Terminate training if learning rate gets below this amount',default=0)
+    parser.add_argument('--step_end_cnt',type=float,help='Terminate training after this many lr reductions',default=3)
     parser.add_argument('--step_when',type=int,help="Perform a dynamic step (reduce base_lr) when training has not improved after this many test iterations, default 10",default=10)
     parser.add_argument('--base_lr',type=float,help='Initial learning rate, default 0.01',default=0.01)
     parser.add_argument('--momentum',type=float,help="Momentum parameters, default 0.9",default=0.9)
