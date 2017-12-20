@@ -173,6 +173,7 @@ def analyze_results(results, outname, uniquify=None):
 name = sys.argv[1]
 
 allresults = []
+last = None
 #for each test dataset
 for testprefix in ['all','crystal','bestonly']:
     #find the relevant models for each fold
@@ -208,7 +209,7 @@ for testprefix in ['all','crystal','bestonly']:
             last = '250k'
         
     for n in testresults.keys():
-        if len(testresults[n]) != len(testresults[last]) or len(testresults[last]) == 0:
+        if last == None or len(testresults[n]) != len(testresults[last]) or len(testresults[last]) == 0:
             print "Missing data with",n
         if len(testresults[n]) == 0:
             continue

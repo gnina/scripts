@@ -515,7 +515,7 @@ def train_and_test_model(args, files, outname):
             out.flush()
 
             #check for a stuck network (same prediction for everything)
-            if len(result.y_scores) > 1 and len(np.unique(result.y_scores)) == 1:
+            if len(result.y_score) > 1 and len(np.unique(result.y_score)) == 1:
                 print "Identical scores in test, bailing early"
                 break
             if len(result.y_predaff) > 1 and len(np.unique(result.y_predaff)) == 1:
