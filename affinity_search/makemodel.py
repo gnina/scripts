@@ -35,7 +35,7 @@ parser.add_argument('--solver',type=str,help="Solver type",default='SGD',choices
 parser.add_argument('--balanced',type=bool,help="Balance training data",default=1,choices=(0,1))
 parser.add_argument('--stratify_receptor',type=bool,help="Stratify receptor",default=1,choices=(0,1))
 parser.add_argument('--stratify_affinity',type=bool,help="Stratify affinity, min=2,max=10",default=0,choices=(0,1))
-parser.add_argument('--stratify_affinity_step',type=float,help="Stratify affinity step",default=0,choices=(1,2,4))
+parser.add_argument('--stratify_affinity_step',type=float,help="Stratify affinity step",default=1,choices=(1,2,4))
 parser.add_argument('--resolution',type=float,help="Grid resolution",default=0.5,choices=(0.25,0.5,1.0))
 
 # loss parameters
@@ -63,7 +63,7 @@ def add_conv_args(n,defaultwidth):
     parser.add_argument('--conv%d_norm'%n,type=str,help="Normalization for layer %d"%n,default='none',choices=('BatchNorm','LRN','none'))
     parser.add_argument('--conv%d_size'%n,type=int,help="Convolutional kernel size for layer %d"%n,default=3,choices=(1,3,5,7))
     parser.add_argument('--conv%d_stride'%n,type=int,help="Convolutional stride for layer %d"%n,default=1,choices=(1,2,3,4))
-    parser.add_argument('--conv%d_width'%n,type=int,help="Convolutional output width for layer %d"%n,default=defaultwidth,choices=(0,1,2,4,8,16,32,64,128,256))
+    parser.add_argument('--conv%d_width'%n,type=int,help="Convolutional output width for layer %d"%n,default=defaultwidth,choices=(0,1,2,4,8,16,32,64,128,256,512,1024))
     parser.add_argument('--conv%d_init'%n,type=str,help="Weight initialization for layer %d"%n,default='xavier',choices=('gaussian','positive_unitball','uniform','xavier','msra','radial','radial.5'))
 
 
