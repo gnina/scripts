@@ -35,7 +35,7 @@ parser.add_argument('--solver',type=str,help="Solver type",default='SGD',choices
 parser.add_argument('--balanced',type=bool,help="Balance training data",default=1,choices=(0,1))
 parser.add_argument('--stratify_receptor',type=bool,help="Stratify receptor",default=1,choices=(0,1))
 parser.add_argument('--stratify_affinity',type=bool,help="Stratify affinity, min=2,max=10",default=0,choices=(0,1))
-parser.add_argument('--stratify_affinity_step',type=float,help="Stratify affinity step",default=0,choices=(1,2,4))
+parser.add_argument('--stratify_affinity_step',type=float,help="Stratify affinity step",default=1,choices=(1,2,4))
 parser.add_argument('--resolution',type=float,help="Grid resolution",default=0.5,choices=(0.25,0.5,1.0))
 
 # loss parameters
@@ -63,7 +63,7 @@ def add_conv_args(n,defaultwidth):
     parser.add_argument('--conv%d_norm'%n,type=str,help="Normalization for layer %d"%n,default='none',choices=('BatchNorm','LRN','none'))
     parser.add_argument('--conv%d_size'%n,type=int,help="Convolutional kernel size for layer %d"%n,default=3,choices=(1,3,5,7))
     parser.add_argument('--conv%d_stride'%n,type=int,help="Convolutional stride for layer %d"%n,default=1,choices=(1,2,3,4))
-    parser.add_argument('--conv%d_width'%n,type=int,help="Convolutional output width for layer %d"%n,default=defaultwidth,choices=(0,1,2,4,8,16,32,64,128,256))
+    parser.add_argument('--conv%d_width'%n,type=int,help="Convolutional output width for layer %d"%n,default=defaultwidth,choices=(0,1,2,4,8,16,32,64,128,256,512,1024))
     parser.add_argument('--conv%d_init'%n,type=str,help="Weight initialization for layer %d"%n,default='xavier',choices=('gaussian','positive_unitball','uniform','xavier','msra','radial','radial.5'))
 
 
@@ -75,11 +75,15 @@ add_conv_args(5,0)
 
 #fully connected layer
 parser.add_argument('--fc_affinity_hidden',type=int,help='Hidden nodes in affinity fully connected layer; 0 for single layer',default=0,choices=(0,32,64,128,256,512,1024,2048,4096))
+parser.add_argument('--fc_affinity_func',type=str,help="Activation function in for first affinity hidden layer",default='ReLU',choices=('ReLU','leaky','ELU','Sigmoid','TanH'))
 parser.add_argument('--fc_affinity_hidden2',type=int,help='Second set of hidden nodes in affinity fully connected layer; 0 for single layer',default=0,choices=(0,32,64,128,256,512,1024,2048,4096))
+parser.add_argument('--fc_affinity_func2',type=str,help="Activation function in for second affinity hidden layer",default='ReLU',choices=('ReLU','leaky','ELU','Sigmoid','TanH'))
 parser.add_argument('--fc_affinity_init',type=str,help="Weight initialization for affinity fc",default='xavier',choices=('gaussian','positive_unitball','uniform','xavier','msra','radial','radial.5'))
 
 parser.add_argument('--fc_pose_hidden',type=int,help='Hidden nodes in pose fully connected layer; 0 for single layer',default=0,choices=(0,32,64,128,256,512,1024,2048,4096))
+parser.add_argument('--fc_pose_func',type=str,help="Activation function in for first pose hidden layer",default='ReLU',choices=('ReLU','leaky','ELU','Sigmoid','TanH'))
 parser.add_argument('--fc_pose_hidden2',type=int,help='Second set of hidden nodes in pose fully connected layer; 0 for single layer',default=0,choices=(0,32,64,128,256,512,1024,2048,4096))
+parser.add_argument('--fc_pose_func2',type=str,help="Activation function in for second pose hidden layer",default='ReLU',choices=('ReLU','leaky','ELU','Sigmoid','TanH'))
 parser.add_argument('--fc_pose_init',type=str,help="Weight initialization for pose fc",default='xavier',choices=('gaussian','positive_unitball','uniform','xavier','msra','radial','radial.5'))
 
 
@@ -106,6 +110,88 @@ def getdefaults():
 def boolstr(val):
     '''return proto boolean string'''
     return 'true' if val else 'false'
+    
+    
+poollayer = '''
+layer {{
+  name: "unit{i}_pool"
+  type: "Pooling"
+  bottom: "{lastlayer}"
+  top: "unit{i}_pool"
+  pooling_param {{
+    pool: MAX
+    kernel_size: {size}
+    stride: {size}
+  }}
+}}'''
+
+convolutionlayer = '''
+layer {{
+  name: "{0}"
+  type: "Convolution"
+  bottom: "{1}"
+  top: "{0}"
+  convolution_param {{
+    num_output: {2}
+    pad: {3}
+    kernel_size: {4}
+    stride: {5}
+    weight_filler {{
+      type: "xavier"
+      symmetric_fraction: 1.0      
+    }}
+  }}
+}}'''
+
+normlayer = '''
+layer {{
+  name: "unit{1}_norm"
+  type: "{2}"
+  bottom: "{0}"
+  top: "{0}"
+}}
+layer {{
+ name: "unit{1}_scale"
+ type: "Scale"
+ bottom: "{0}"
+ top: "{0}"
+ scale_param {{
+  bias_term: true
+ }}
+}}
+'''
+    
+def funclayer(inputname, layername, func):
+    '''return activation unit layer'''
+    extra = ''
+    if func == 'leaky':
+        func = 'ReLU'
+        extra = 'relu_param{ negative_slope: 0.01}'
+    return '''
+layer {{
+  name: "{1}"
+  type: "{2}"
+  bottom: "{0}"
+  top: "{0}"
+  {3}
+}}
+'''.format(inputname, layername, func,extra)
+
+innerproductlayer = '''
+layer {{
+  name: "{1}"
+  type: "InnerProduct"
+  bottom: "{0}"
+  top: "{1}"
+  inner_product_param {{
+    num_output: {3}
+    weight_filler {{
+      type: "{2}"
+    }}
+  }}
+}}
+'''
+
 
 def create_model(args):
     '''Generate the model defined by args; first line (comment) contains solver/train.py arguments'''
@@ -172,18 +258,7 @@ layer {
     for i in xrange(1,6):
         poolsize = vargs['pool%d_size'%i]
         if poolsize > 0:
-            m += '''
-layer {{
-  name: "unit{i}_pool"
-  type: "Pooling"
-  bottom: "{lastlayer}"
-  top: "unit{i}_pool"
-  pooling_param {{
-    pool: MAX
-    kernel_size: {size}
-    stride: {size}
-  }}
-}}'''.format(i=i,lastlayer=lastlayer,size=poolsize)
+            m += poollayer.format(i=i,lastlayer=lastlayer,size=poolsize)
             lastlayer = 'unit{0}_pool'.format(i)
             
         convwidth = vargs['conv%d_width'%i]
@@ -201,55 +276,11 @@ layer {{
             norm = vargs['conv%d_norm'%i]
             init = vargs['conv%d_init'%i]
             pad = int(ksize/2)
-            m += '''
-layer {{
-  name: "{0}"
-  type: "Convolution"
-  bottom: "{1}"
-  top: "{0}"
-  convolution_param {{
-    num_output: {2}
-    pad: {3}
-    kernel_size: {4}
-    stride: {5}
-    weight_filler {{
-      type: "xavier"
-      symmetric_fraction: 1.0      
-    }}
-  }}
-}}'''.format(convlayer,lastlayer, convwidth, pad, ksize,stride)
+            m += convolutionlayer.format(convlayer,lastlayer, convwidth, pad, ksize,stride)
             if norm != 'none':
-                m += '''
-layer {{
-  name: "unit{1}_norm"
-  type: "{2}"
-  bottom: "{0}"
-  top: "{0}"
-}}
-layer {{
- name: "unit{1}_scale"
- type: "Scale"
- bottom: "{0}"
- top: "{0}"
- scale_param {{
-  bias_term: true
- }}
-}}
-'''.format(convlayer, i, norm)
-
-            extra = ''
-            if func == 'leaky':
-                func = 'ReLU'
-                extra = 'relu_param{ negative_slope: 0.01}'
-            m += '''
-layer {{
-  name: "unit{1}_func"
-  type: "{2}"
-  bottom: "{0}"
-  top: "{0}"
-  {3}
-}}
-'''.format(convlayer, i, func,extra)
+                m += normlayer.format(convlayer, i, norm)
+            
+            m += funclayer(convlayer, 'unit%d_func'%i, func)
             lastlayer = convlayer
         
         
@@ -271,27 +302,16 @@ layer {{
         
     fcinfo = [] #tuples of name,numoutput
     if args.fc_pose_hidden > 0:
-        fcinfo.append(('pose_fc', args.fc_pose_hidden))
+        fcinfo.append(('pose_fc', args.fc_pose_hidden, args.fc_pose_func))
         if args.fc_pose_hidden2 > 0:
-            fcinfo.append('pose_fc2', args.fc_pose_hidden2)
-    fcinfo.append(('pose_output',2))
+            fcinfo.append(('pose_fc2', args.fc_pose_hidden2, args.fc_pose_func2))
+    fcinfo.append(('pose_output',2, None))
             
     lastlayer = 'split'
-    for (name,num) in fcinfo:        
-        m += '''
-layer {{
-  name: "{1}"
-  type: "InnerProduct"
-  bottom: "{0}"
-  top: "{1}"
-  inner_product_param {{
-    num_output: {3}
-    weight_filler {{
-      type: "{2}"
-    }}
-  }}
-}}
-'''.format(lastlayer, name, args.fc_pose_init, num)
+    for (name,num,func) in fcinfo:        
+        m += innerproductlayer.format(lastlayer, name, args.fc_pose_init, num)
+        if func:
+            m += funclayer(name,name+'_func',func)
         lastlayer = name
         
     # affinity
@@ -302,30 +322,17 @@ layer {{
         
     fcinfo = [] #tuples of name,numoutput
     if args.fc_affinity_hidden > 0:
-        fcinfo.append(('affinity_fc', args.fc_affinity_hidden))
+        fcinfo.append(('affinity_fc', args.fc_affinity_hidden, args.fc_affinity_func))
         if args.fc_affinity_hidden2 > 0:
-            fcinfo.append(('affinity_fc2', args.fc_affinity_hidden2))
-    fcinfo.append(('affinity_output',1))
+            fcinfo.append(('affinity_fc2', args.fc_affinity_hidden2, args.fc_affinity_func2))
+    fcinfo.append(('affinity_output',1,None))
             
     lastlayer = 'split'
-    for (name,num) in fcinfo:        
-        m += '''
-layer {{
-  name: "{1}"
-  type: "InnerProduct"
-  bottom: "{0}"
-  top: "{1}"
-  inner_product_param {{
-    num_output: {3}
-    weight_filler {{
-      type: "{2}"
-    }}
-  }}
-}}
-'''.format(lastlayer, name, args.fc_affinity_init, num)
+    for (name,num,func) in fcinfo:        
+        m += innerproductlayer.format(lastlayer, name, args.fc_affinity_init, num)
         lastlayer = name        
-            
-
+        if func:
+            m += funclayer(name,name+'_func',func)
     
     #loss
     #pose

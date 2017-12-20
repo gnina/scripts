@@ -146,9 +146,6 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
 
             if 'predaff' in res:
                 y_predaffs[x].append(float(res['predaff'][i]))
-                if x == 0:
-                    print res['predaff'][i]
-
             if 'loss' in res:
                 losses.append(float(res['loss']))
             i += 1
@@ -265,7 +262,6 @@ def train_and_test_model(args, files, outname):
 
     #write solver prototxt
     solverf = 'solver.%d.prototxt' % pid
-    print "SOLVERF",solverf
     write_solver_file(solverf, test_models[0], test_models, args.solver, args.base_lr, args.momentum, args.weight_decay,
                       args.lr_policy, args.gamma, args.power, args.seed, iterations+args.cont, outname)
 
@@ -296,6 +292,17 @@ def train_and_test_model(args, files, outname):
             mode = 'w'
         outfile = '%s.out' % outname
         out = open(outfile, mode, 0) #unbuffered
+
+    def freemem():
+        '''Free intermediate blobs from all networks.  These will be reallocated as needed.'''
+        net = solver.net
+        if net.clearblobs:
+            #solver will need values in output blobs
+            for (bname, blob) in net.blobs.iteritems():
+                if bname not in net.outputs:
+                    blob.clear()
+            for k in test_nets.iterkeys():
+                test_nets[k][0].clearblobs()
 
     #return evaluation results:
     #  auc, loss, and rmsd from each test
@@ -340,9 +347,8 @@ def train_and_test_model(args, files, outname):
                 key = 'reduced_test'
             else:
                 key = 'test'
-                if args.reduced:
-                    del test_nets['reduced_test']  #free up memory
             test_net, n_tests, offset = test_nets[key]
+            freemem()
             result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
             test_nets[key] = test_net, n_tests, offset
             print "Eval test time: %f" % (time.time()-start)
@@ -369,9 +375,8 @@ def train_and_test_model(args, files, outname):
                     key = 'reduced_test2'
                 else:
                     key = 'test2'
-                    if args.reduced:
-                        del test_nets['reduced_test']  #free up memory
                 test_net, n_tests, offset = test_nets[key]
+                freemem()
                 result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
                 test_nets[key] = test_net, n_tests, offset
                 print "Eval test2 time: %f" % (time.time()-start)
@@ -397,10 +402,8 @@ def train_and_test_model(args, files, outname):
             key = 'reduced_train'
         else:
             key = 'train'
-            if args.reduced:
-                print "DELETING TRAIN"
-                del test_nets['reduced_train']  #free up memory            
         test_net, n_tests, offset = test_nets[key]
+        freemem()
         result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
         test_nets[key] = test_net, n_tests, offset
         print "Eval train time: %f" % (time.time()-start)
@@ -430,6 +433,7 @@ def train_and_test_model(args, files, outname):
             else:
                 key = 'train2'
             test_net, n_tests, offset = test_nets[key]
+            freemem()
             result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
             test_nets[key] = test_net, n_tests, offset
             print "Eval train2 time: %f" % (time.time()-start)
@@ -530,12 +534,12 @@ def train_and_test_model(args, files, outname):
         print "Loop time: %f (%s left)" % (i_time, time_str)
 
         mem = psutil.Process(os.getpid()).memory_info().rss
+        freemem()
         print "Memory usage: %.3fgb (%d)" % (mem/1073741824., mem)
 
     if training:
         out.close()
         solver.snapshot()
-    del solver #free mem
 
     if not args.keep:
         print "REMOVING",solverf

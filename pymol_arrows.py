@@ -4,19 +4,29 @@ import os
 import argparse
 
 
-def write_pymol_arrows(pymol_file, atoms, radius, color, scale=1.0):
+def write_pymol_arrows(base, atoms, scale, color, radius):
+    pymol_file = base + '_arrows.pymol'
     lines = []
     lines.append('run cgo_arrow.py')
-    for atom in atoms:
+    arrow_objs = []
+    for i, atom in enumerate(atoms):
+        arrow_obj = base + '_arrow_' + str(i)
+        arrow_objs.append(arrow_obj)
         elem, xi, yi, zi, dx, dy, dz = atom
-        xf, yf, zf = xi+scale*dx, yi+scale*dy, zi+scale*dz
-        line = 'cgo_arrow [{}, {}, {}], [{}, {}, {}]' \
-               .format(xi, yi, zi, xf, yf, zf)
+        c = 1.725*radius
+        xf = xi + scale*dx + c
+        yf = yi + scale*dy + c
+        zf = zi + scale*dz + c
+        line = 'cgo_arrow [{}, {}, {}], [{}, {}, {}]'.format(xi, yi, zi, xf, yf, zf)
         if radius:
             line += ', radius={}'.format(radius)
         if color:
             line += ', color={}'.format(color)
+        line += ', name={}'.format(arrow_obj)
         lines.append(line)
+    arrow_group = base + '_arrows'
+    line = 'group {}, {}'.format(arrow_group, ' '.join(arrow_objs))
+    lines.append(line)
     with open(pymol_file, 'w') as f:
         f.write('\n'.join(lines))
 
@@ -71,27 +81,26 @@ def write_pdb_file(pdb_file, atoms, dosum):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Convert a .xyz file containing \
-        atom coordinates and gradient components to a .pdb file where the b-factor \
-        is the gradient magnitude')
+    parser = argparse.ArgumentParser(description='Output a pymol script that creates \
+        arrows from an .xyz file containing atom coordinates and gradient components, \
+        can also create a .pdb file where the b-factor is the gradient magnitude')
     parser.add_argument('xyz_file')
+    parser.add_argument('-s', '--scale', type=float, default=1.0)
+    parser.add_argument('-c', '--color', type=str, default='black green')
+    parser.add_argument('-r', '--radius', type=float, default=0.2)
+    parser.add_argument('-p', '--pdb_file', action='store_true', default=False,
+        help='Output a .pdb file where the b-factor is gradient magnitude')
     parser.add_argument('--sum', action='store_true', default=False,
         help='Sum gradient components instead of taking magnitude')
-    parser.add_argument('-p', '--pymol_arrows', action='store_true', default=False,
-        help='Output a pymol script for gradient arrows')
-    parser.add_argument('-s', '--arrow_scale', type=float, default=1.0)
-    parser.add_argument('-c', '--arrow_color', default=None)
-    parser.add_argument('-r', '--arrow_radius', default=None)
     return parser.parse_args()
 
 
 if __name__ == '__main__':
     args = parse_args()
     atoms = read_xyz_file(args.xyz_file)
-    pdb_file = args.xyz_file.replace('.xyz', '.pdb')
-    write_pdb_file(pdb_file, atoms, args.sum)
-    if args.pymol_arrows:
-        pymol_file = args.xyz_file.replace('.xyz', '.pymol')
-        write_pymol_arrows(pymol_file, atoms, args.arrow_radius,
-            args.arrow_color, args.arrow_scale)
+    base_name = args.xyz_file.replace('.xyz', '')
+    write_pymol_arrows(base_name, atoms, args.scale, args.color, args.radius)
+    if args.pdb_file:
+        pdb_file = base_name + '.pdb'
+        write_pdb_file(pdb_file, atoms, args.sum)
 
