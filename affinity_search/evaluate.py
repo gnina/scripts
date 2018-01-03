@@ -45,6 +45,10 @@ def evaluate_fold(testfile, caffemodel):
             m = re.search(r'(affinity.*)_\d+.model',modelname)
             if m:
                 modelname = m.group(1)+".model"
+	if not os.path.exists(modelname):
+	    m = re.search(r'(affinity.*_relu)_.*\.model',modelname)
+	    if m:
+		modelname = m.group(1)+".model"
         if not os.path.exists(modelname):
            print modelname,"does not exist"
         
@@ -169,10 +173,11 @@ def analyze_results(results, outname, uniquify=None):
 name = sys.argv[1]
 
 allresults = []
+last = None
 #for each test dataset
 for testprefix in ['all','crystal','bestonly']:
     #find the relevant models for each fold
-    testresults = {'best25': [], 'best50': [], 'best100': [], '100k': [] }
+    testresults = {'best25': [], 'best50': [], 'best100': [], '100k': [], '250k': [], 'best250': [] }
     for fold in [0,1,2]:
         best25 = 0
         best50 = 0
@@ -204,7 +209,7 @@ for testprefix in ['all','crystal','bestonly']:
             last = '250k'
         
     for n in testresults.keys():
-        if len(testresults[n]) != len(testresults[last]) or len(testresults[last]) == 0:
+        if last == None or len(testresults[n]) != len(testresults[last]) or len(testresults[last]) == 0:
             print "Missing data with",n
         if len(testresults[n]) == 0:
             continue
