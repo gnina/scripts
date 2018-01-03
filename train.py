@@ -336,6 +336,7 @@ def train_and_test_model(args, files, outname):
         i_start = start = time.time()
         if training:
             #train
+            print "Taking step",test_interval
             solver.step(test_interval)
             print "Iteration %d" % (args.cont + (i+1)*test_interval)
             print "Train time: %f" % (time.time()-start)

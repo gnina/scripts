@@ -3,6 +3,14 @@
  * train.py - Takes a model template and train/test file(s)
  * predict.py - Takes a model, learned weights, and an input file and outputs probabilities of binding
 
+## Dependencies
+
+```
+sudo pip install matplotlib scipy sklearn scikit-image protobuf psutil numpy seaborn
+export PYTHONPATH=/usr/local/python:$PYTHONPATH
+
+```
+
 ## Training
 ```
 usage: train.py [-h] -m MODEL -p PREFIX [-d DATA_ROOT] [-n FOLDNUMS] [-a]

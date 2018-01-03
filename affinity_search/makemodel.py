@@ -21,7 +21,7 @@ class Range():
     
 parser = argparse.ArgumentParser(description='Create model from parameters.')
 #solver hyper parameters
-parser.add_argument('--base_lr_exp',type=float,help='Initial learning rate exponent, for log10 scaling',default=-1,choices=Range(-10,0),metavar='lr')
+parser.add_argument('--base_lr_exp',type=float,help='Initial learning rate exponent, for log10 scaling',default=-2,choices=Range(-10,0),metavar='lr')
 parser.add_argument('--momentum',type=float,help="Momentum parameters, default 0.9",default=0.9,choices=Range(0,1),metavar='m')
 parser.add_argument('--weight_decay_exp',type=float,help="Weight decay exponent (for log10 scaling)",default=-3,choices=Range(-10,0),metavar='w')
 parser.add_argument('--solver',type=str,help="Solver type",default='SGD',choices=('SGD','Adam'))
@@ -36,7 +36,7 @@ parser.add_argument('--balanced',type=bool,help="Balance training data",default=
 parser.add_argument('--stratify_receptor',type=bool,help="Stratify receptor",default=1,choices=(0,1))
 parser.add_argument('--stratify_affinity',type=bool,help="Stratify affinity, min=2,max=10",default=0,choices=(0,1))
 parser.add_argument('--stratify_affinity_step',type=float,help="Stratify affinity step",default=1,choices=(1,2,4))
-parser.add_argument('--resolution',type=float,help="Grid resolution",default=0.5,choices=(0.25,0.5,1.0))
+parser.add_argument('--resolution',type=float,help="Grid resolution",default=0.5,choices=(0.5,1.0)) #need smal
 
 # loss parameters
 parser.add_argument('--loss_gap',type=float,help="Affinity loss gap",default=0,choices=Range(0,5),metavar='g')
@@ -78,13 +78,13 @@ parser.add_argument('--fc_affinity_hidden',type=int,help='Hidden nodes in affini
 parser.add_argument('--fc_affinity_func',type=str,help="Activation function in for first affinity hidden layer",default='ReLU',choices=('ReLU','leaky','ELU','Sigmoid','TanH'))
 parser.add_argument('--fc_affinity_hidden2',type=int,help='Second set of hidden nodes in affinity fully connected layer; 0 for single layer',default=0,choices=(0,32,64,128,256,512,1024,2048,4096))
 parser.add_argument('--fc_affinity_func2',type=str,help="Activation function in for second affinity hidden layer",default='ReLU',choices=('ReLU','leaky','ELU','Sigmoid','TanH'))
-parser.add_argument('--fc_affinity_init',type=str,help="Weight initialization for affinity fc",default='xavier',choices=('gaussian','positive_unitball','uniform','xavier','msra','radial','radial.5'))
+parser.add_argument('--fc_affinity_init',type=str,help="Weight initialization for affinity fc",default='xavier',choices=('gaussian','positive_unitball','uniform','xavier','msra'))
 
 parser.add_argument('--fc_pose_hidden',type=int,help='Hidden nodes in pose fully connected layer; 0 for single layer',default=0,choices=(0,32,64,128,256,512,1024,2048,4096))
 parser.add_argument('--fc_pose_func',type=str,help="Activation function in for first pose hidden layer",default='ReLU',choices=('ReLU','leaky','ELU','Sigmoid','TanH'))
 parser.add_argument('--fc_pose_hidden2',type=int,help='Second set of hidden nodes in pose fully connected layer; 0 for single layer',default=0,choices=(0,32,64,128,256,512,1024,2048,4096))
 parser.add_argument('--fc_pose_func2',type=str,help="Activation function in for second pose hidden layer",default='ReLU',choices=('ReLU','leaky','ELU','Sigmoid','TanH'))
-parser.add_argument('--fc_pose_init',type=str,help="Weight initialization for pose fc",default='xavier',choices=('gaussian','positive_unitball','uniform','xavier','msra','radial','radial.5'))
+parser.add_argument('--fc_pose_init',type=str,help="Weight initialization for pose fc",default='xavier',choices=('gaussian','positive_unitball','uniform','xavier','msra'))
 
 
 nonparms = parser.add_argument_group('non-parameter options')
@@ -211,14 +211,14 @@ layer {
         source: "TESTFILE"
         batch_size: 50
         dimension: 23.5
-        resolution: 0.5
+        resolution: %f
         shuffle: false
         balanced: false
         has_affinity: true
         root_folder: "DATA_ROOT"
     }
   }
-  '''
+  ''' % args.resolution
   
   #train input,
     m += '''
@@ -368,6 +368,7 @@ layer {
   bottom: "affinity"
   top: "rmsd"
   affinity_loss_param {{
+    scale: 0.1
     gap: {0}
     pseudohuber: {1}
     delta: {2}
