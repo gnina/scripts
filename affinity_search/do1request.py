@@ -25,6 +25,8 @@ args = parser.parse_args()
 def get_script_path():
     return os.path.dirname(os.path.realpath(sys.argv[0]))
     
+sys.path.append(get_script_path())
+
 def getcursor():
     '''create a connection and return a cursor;
     doing this guards against dropped connections'''
