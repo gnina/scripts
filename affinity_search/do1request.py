@@ -69,6 +69,7 @@ except subprocess.CalledProcessError as e:
     cursor = getcursor()
     cursor.execute('UPDATE params SET id = "ERROR", msg = %s WHERE serial = %s',(str(pid),config['serial']))
     print "Error"
+    print e.output
     sys.exit(0)
     
 

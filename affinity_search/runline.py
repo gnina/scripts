@@ -67,7 +67,7 @@ weight_decay = 10**params.weight_decay_exp
 solver = params.solver
 
 #setup training
-prefix = '../data/all_0.5_%d_'%args.split
+prefix = '../data/refined/all_0.5_%d_'%args.split
 trainargs = train.parse_args(['--seed',str(args.seed),'--prefix',prefix,'--data_root',
     args.data_root,'-t','1000','-i','100000','-m','model.model',
     '--reduced','-o',d,'--momentum',str(momentum),'--weight_decay',str(weight_decay),
