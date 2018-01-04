@@ -15,7 +15,7 @@ from MySQLdb.cursors import DictCursor
 
 parser = argparse.ArgumentParser(description='Run a configuration as part of a search')
 parser.add_argument('--data_root',type=str,help='Location of gninatypes directory',default='')
-parser.add_argument('--prefix',type=str,help='gninatypes prefix',required=True)
+parser.add_argument('--prefix',type=str,help='gninatypes prefix, needs to be absolute',required=True)
 parser.add_argument('--host',type=str,help='Database host',required=True)
 parser.add_argument('-p','--password',type=str,help='Database password',required=True)
 parser.add_argument('--db',type=str,help='Database name',required=True)
