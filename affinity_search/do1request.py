@@ -22,6 +22,9 @@ parser.add_argument('--db',type=str,help='Database name',required=True)
 
 args = parser.parse_args()
 
+def get_script_path():
+    return os.path.dirname(os.path.realpath(sys.argv[0]))
+    
 def getcursor():
     '''create a connection and return a cursor;
     doing this guards against dropped connections'''
@@ -58,8 +61,8 @@ values = ['0','0']
 for (name,val) in sorted(opts.items()):
     values.append(str(config[name]))
     
-cmdline = './runline.py --prefix %s --data_root "%s" --seed %d --split %d --line "%s"' % \
-        (args.prefix,args.data_root,config['seed'],config['split'], ' '.join(values))
+cmdline = '%s/runline.py --prefix %s --data_root "%s" --seed %d --split %d --line "%s"' % \
+        (get_script_path(), args.prefix,args.data_root,config['seed'],config['split'], ' '.join(values))
 print cmdline
 
 #call runline to insulate ourselves from catestrophic failure (caffe)
