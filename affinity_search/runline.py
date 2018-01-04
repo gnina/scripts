@@ -25,7 +25,7 @@ parser.add_argument('--line',type=str,help='Complete line',required=True)
 parser.add_argument('--seed',type=int,help='Random seed',default=0)
 parser.add_argument('--split',type=int,help='Which predefined split to use',default=0)
 parser.add_argument('--data_root',type=str,help='Location of gninatypes directory',default='')
-
+parser.add_argument('--prefix',type=str,help='Prefix, not including split',default='../data/refined/all_0.5')
 args = parser.parse_args()
 
 linevals = args.line.split()[2:]
