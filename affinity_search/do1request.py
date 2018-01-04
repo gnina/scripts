@@ -47,6 +47,7 @@ configs = None  #map from name to value
 #are there any requested configurations?  if so select one
 cursor.execute('SELECT * FROM params WHERE id = "REQUESTED"')
 rows = cursor.fetchall()
+config = None
 for row in rows:
     # need to atomically update id
     ret = cursor.execute('UPDATE params SET id = "INPROGRESS" WHERE serial = %s',[row['serial']])
