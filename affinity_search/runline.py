@@ -5,7 +5,10 @@ construct the corresponding model, run the model with cross validation,
 and print the results; dies with error if parameters are invalid'''
 
 import sys
-sys.path.append('..') #train
+def get_script_path():
+    return os.path.dirname(os.path.realpath(sys.argv[0]))
+    
+sys.path.append(get_script_path()+'/..') #train
 import re,argparse, tempfile, os,glob
 import makemodel
 import socket
