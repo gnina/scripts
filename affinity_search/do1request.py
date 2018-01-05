@@ -97,6 +97,6 @@ config['msg'] = 'Sucess'
 
 serial = config['serial']
 del config['serial']
-sql = 'UPDATE params SET {} WHERE serial = %s'.format(', '.join('{}=%s'.format(k) for k in config),serial)
+sql = 'UPDATE params SET {} WHERE serial = {}'.format(', '.join('{}=%s'.format(k) for k in config),serial)
 cursor = getcursor()
 cursor.execute(sql, config.values())
