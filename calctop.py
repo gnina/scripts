@@ -1,4 +1,5 @@
-from Bio.PDB.PDBParser import PDBParser
+#!/usr/bin/env python
+
 import numpy as np
 import os, sys
 import os.path
@@ -89,12 +90,13 @@ def find_top_ligand(results, topnum):
     for r in results:
         rec = r[2]
         if rec in targets:
-            targets[rec].append((r[5], r[4])) #posescore and label
+            #negate the label so that ties are always broken unfavorably
+            targets[rec].append((r[5], -r[4])) #posescore and label
             if r[5] == None:
                 print ("Error: Posescore does not exist for "+r[2])
                 exit()
         else:
-            targets[rec] = [(r[5], r[4])]      
+            targets[rec] = [(r[5], -r[4])]      
     num_targets=len(targets)
 
     for t in targets:
@@ -116,7 +118,7 @@ if __name__ == '__main__':
     parser.add_argument('-o','--output',type=str,required=True,help='Output filename')
     parser.add_argument('-f','--folds',type=int,default=3,help='Number of folds')
     parser.add_argument('-i','--iterations',type=int,default=0,help='Iterations in caffemodel filename')
-    parser.add_argument('-t','--top',type=int,default=0,help='Number of top ligands to look at')
+    parser.add_argument('-t','--top',type=int,default=10,help='Number of top ligands to look at')
     parser.add_argument('-d','--data_root',type=str,required=False,help="Root folder for relative paths in train/test files",default='')
     
     args = parser.parse_args()
@@ -136,15 +138,26 @@ if __name__ == '__main__':
 
     results=[]
     for f in range(args.folds):
-        caffemodel=(args.caffemodel+'.'+str(f)+'_iter_'+str(iterations)+'.caffemodel')
+        
+        iterations = args.iterations
+        if not iterations:
+            #find highest _for this fold_
+            highest = 0
+            for name in glob.glob('%s.%d_iter*.caffemodel'%(args.caffemodel,f)):
+                inum = int(re.findall(r'\d+', name)[-1])
+                if inum > highest:
+                    highest = inum
+            iterations = highest
+            
+        caffemodel='%s.%d_iter_%d.caffemodel' % (args.caffemodel, f, iterations)
         if (os.path.isfile(caffemodel) == False):
-            print ('Error: Caffemodel file does not exist. Check --caffemodel, --iterations, and --folds arguments.')
+            print ('Error: Caffemodel %s does not exist. Check --caffemodel, --iterations, and --folds arguments.'%caffemodel)
         testfile = (args.prefix + "train" + str(f) + ".types")
         results += evaluate_fold(testfile, caffemodel, modelname, args.data_root)
     
-    for i in range(1, 11):
+    for i in range(1, args.top+1):
         top = find_top_ligand(results,i)
-        file=open(output, "a")
-        file.write("Percent of targets that contain the correct pose in the top "+i+": "+str(top)+"%\n")
+        file=open(output, "w")
+        file.write("Percent of targets that contain the correct pose in the top %d: %f\n"%(i,top))
         file.close()
      
