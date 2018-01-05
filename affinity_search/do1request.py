@@ -72,19 +72,21 @@ print cmdline
 #call runline to insulate ourselves from catestrophic failure (caffe)
 try:
     output = subprocess.check_output(cmdline,shell=True,stderr=subprocess.STDOUT)
-except subprocess.CalledProcessError as e:
+    d, R, rmse, auc, top = output.split('\n')[-1].split()
+except Exception as e:
     pid = os.getpid()
     out = open('output.%s.%d'%(host,pid),'w')
-    out.write(e.output)
+    if isinstance(e, subprocess.CalledProcessError):
+        output = e.output
+    out.write(output)
     cursor = getcursor()
     cursor.execute('UPDATE params SET id = "ERROR", msg = %s WHERE serial = %s',(str(pid),config['serial']))
     print "Error"
-    print e.output
+    print output
     sys.exit(0)  #we tried
     
 
 #if successful, store in database
-d, R, rmse, auc, top = output.split('\n')[-1].split()
 
 config['rmse'] = float(rmse)
 config['R'] = float(R)
