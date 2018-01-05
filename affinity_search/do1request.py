@@ -72,7 +72,7 @@ print cmdline
 #call runline to insulate ourselves from catestrophic failure (caffe)
 try:
     output = subprocess.check_output(cmdline,shell=True,stderr=subprocess.STDOUT)
-    d, R, rmse, auc, top = output.split('\n')[-1].split()
+    d, R, rmse, auc, top = output.rstrip().split('\n')[-1].split()
 except Exception as e:
     pid = os.getpid()
     out = open('output.%s.%d'%(host,pid),'w')
