@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-'''Given a results.dat file, put the contents into google sql as
+'''Given a results.dat file and password for db, put the contents into google sql as
 configurations that are being requested.  Specify three of each.'''
 
 import sys, re, MySQLdb
@@ -19,7 +19,7 @@ for (name,val) in sorted(opts.items()):
 data.columns = colnames
 data = data.drop(['P1','P2'],axis=1)
 
-conn = MySQLdb.connect (host = "35.196.158.205",user = "opter",passwd='optimize',db="opt1")
+conn = MySQLdb.connect (host = "35.196.158.205",user = "opter",passwd=sys.argv[2],db="opt1")
 cursor = conn.cursor()
 
 

@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
-'''Given a results.csv file, put the contents into google sql'''
+'''Given a results.csv file and password for db, put the contents into google sql'''
 
 import sys, re, MySQLdb
 import pandas as pd
         
-conn = MySQLdb.connect (host = "35.196.158.205",user = "opter",passwd='optimize',db="opt1")
+conn = MySQLdb.connect (host = "35.196.158.205",user = "opter",passwd=sys.argv[2],db="opt1")
 cursor = conn.cursor()
 
 data = pd.read_csv(sys.argv[1])
