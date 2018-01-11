@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 from __future__ import print_function
 import sys
 import os
@@ -14,9 +16,9 @@ def write_pymol_arrows(base, atoms, scale, color, radius):
         arrow_objs.append(arrow_obj)
         elem, xi, yi, zi, dx, dy, dz = atom
         c = 1.725*radius
-        xf = xi + scale*dx + c
-        yf = yi + scale*dy + c
-        zf = zi + scale*dz + c
+        xf = xi + -scale*dx + c
+        yf = yi + -scale*dy + c
+        zf = zi + -scale*dz + c
         line = 'cgo_arrow [{}, {}, {}], [{}, {}, {}]'.format(xi, yi, zi, xf, yf, zf)
         if radius:
             line += ', radius={}'.format(radius)

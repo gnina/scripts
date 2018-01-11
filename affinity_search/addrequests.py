@@ -26,8 +26,8 @@ parser = argparse.ArgumentParser(description='Generate more configurations if ne
 parser.add_argument('--host',type=str,help='Database host',required=True)
 parser.add_argument('-p','--password',type=str,help='Database password',required=True)
 parser.add_argument('--db',type=str,help='Database name',default='opt1')
-parser.add_argument('--pending_threshold',type=int,default=8,help='Number of pending jobs that triggers an update')
-parser.add_argument('-n','--num_configs',type=int,default=8,help='Number of configs to generate - will add 6X as many jobs') 
+parser.add_argument('--pending_threshold',type=int,default=12,help='Number of pending jobs that triggers an update')
+parser.add_argument('-n','--num_configs',type=int,default=4,help='Number of configs to generate - will add 6X as many jobs') 
 parser.add_argument('-s','--spearmint',type=str,help='Location of spearmint-lite.py',required=True)
 
 args = parser.parse_args()
@@ -87,11 +87,13 @@ for metric in ['top','R']:
     # run spearmint-light, set the seed to the number of unique configurations
     subprocess.call(['python',args.spearmint, '--method=GPEIOptChooser', '--grid-size=20000', 
             'gnina-spearmint', '--n=%d'%args.num_configs, '--grid-seed=%d' % gseed])
-
+    print ['python',args.spearmint, '--method=GPEIOptChooser', '--grid-size=20000',
+                        'gnina-spearmint', '--n=%d'%args.num_configs, '--grid-seed=%d' % gseed]
     #get the generated lines from the file
     lines = open('gnina-spearmint/results.dat').readlines()
     newlines = lines[len(rows):]
-    assert(len(newlines) == args.num_configs)
+    print len(newlines),args.num_configs
+    assert(len(newlines) > 0)
     print newlines
     #add to database as REQUESTED jobs
     addrows('gnina-spearmint/results.dat',args.host,args.db,args.password,start=len(rows))
