@@ -155,9 +155,9 @@ if __name__ == '__main__':
         testfile = (args.prefix + "train" + str(f) + ".types")
         results += evaluate_fold(testfile, caffemodel, modelname, args.data_root)
     
+    file=open(output, "w")
     for i in range(1, args.top+1):
         top = find_top_ligand(results,i)
-        file=open(output, "w")
         file.write("Percent of targets that contain the correct pose in the top %d: %f\n"%(i,top))
-        file.close()
+    file.close()
      
