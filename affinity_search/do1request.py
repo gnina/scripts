@@ -25,6 +25,12 @@ args = parser.parse_args()
 def get_script_path():
     return os.path.dirname(os.path.realpath(sys.argv[0]))
     
+def rm(inprogressname):
+    try:
+        os.remove(inprogressname)
+    except OSError:
+        pass
+        
 sys.path.append(get_script_path())
 sys.path.append(get_script_path()+'/..') #train
 
@@ -44,17 +50,28 @@ host = socket.gethostname()
 # determine a configuration to run
 configs = None  #map from name to value
 
+# check for an in progress file
+inprogressname = '%s-INPGROGRESS' % host
+if os.path.isfile(inprogressname):
+    config = open(inprogressname).read().rstrip().split()
+    #only retry once - remove the file
+    rm(inprogressname)
+else:
 #are there any requested configurations?  if so select one
-cursor.execute('SELECT * FROM params WHERE id = "REQUESTED"')
-rows = cursor.fetchall()
-config = None
-for row in rows:
-    # need to atomically update id
-    ret = cursor.execute('UPDATE params SET id = "INPROGRESS" WHERE serial = %s',[row['serial']])
-    if ret: # success!
-        #set config
-        config = row
-        break
+    cursor.execute('SELECT * FROM params WHERE id = "REQUESTED"')
+    rows = cursor.fetchall()
+    config = None
+    for row in rows:
+        # need to atomically update id
+        ret = cursor.execute('UPDATE params SET id = "INPROGRESS" WHERE serial = %s',[row['serial']])
+        if ret: # success!
+            #set config
+            config = row
+            break
+            
+    if config: #write out what we're doing
+        progout = open(inprogressname,'w')
+        progout.write(' '.join(config))
 
 if not config:
     print "Nothing requested"
@@ -83,6 +100,7 @@ except Exception as e:
     cursor.execute('UPDATE params SET id = "ERROR", msg = %s WHERE serial = %s',(str(pid),config['serial']))
     print "Error"
     print output
+    rm(inprogressname)    
     sys.exit(0)  #we tried
     
 
@@ -100,3 +118,6 @@ del config['serial']
 sql = 'UPDATE params SET {} WHERE serial = {}'.format(', '.join('{}=%s'.format(k) for k in config),serial)
 cursor = getcursor()
 cursor.execute(sql, config.values())
+
+rm(inprogressname)
+
