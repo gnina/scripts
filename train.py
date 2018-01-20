@@ -68,7 +68,7 @@ def write_model_file(model_file, template_file, train_file, test_file, root_fold
 
 
 def write_solver_file(solver_file, train_model, test_models, type, base_lr, momentum, weight_decay,
-                      lr_policy, gamma, power, random_seed, max_iter, snapshot_prefix):
+                      lr_policy, gamma, power, random_seed, max_iter, clip_gradients, snapshot_prefix):
     '''Writes a solver prototxt file with parameters set to the
     corresponding argument values. In particular, the train_net
     parameter is set to train_model, and a test_net parameter is
@@ -89,6 +89,7 @@ def write_solver_file(solver_file, train_model, test_models, type, base_lr, mome
     param.display = 0 #don't print solver iterations
     param.random_seed = random_seed
     param.max_iter = max_iter
+    param.clip_gradients = clip_gradients
     param.snapshot_prefix = snapshot_prefix
     print "WRITING",solver_file
     with open(solver_file,'w') as f:
@@ -263,7 +264,7 @@ def train_and_test_model(args, files, outname):
     #write solver prototxt
     solverf = 'solver.%d.prototxt' % pid
     write_solver_file(solverf, test_models[0], test_models, args.solver, args.base_lr, args.momentum, args.weight_decay,
-                      args.lr_policy, args.gamma, args.power, args.seed, iterations+args.cont, outname)
+                      args.lr_policy, args.gamma, args.power, args.seed, iterations+args.cont, args.clip_gradients, outname)
 
     #set up solver in caffe
     if args.gpu >= 0:
@@ -590,6 +591,7 @@ def parse_args(argv=None):
     parser.add_argument('-d2','--data_root2',type=str,required=False,help="Root folder for relative paths in second train/test files for combined training",default='')
     parser.add_argument('--data_ratio',type=float,required=False,help="Ratio to combine training data from 2 sources",default=None)
     parser.add_argument('--test_only',action='store_true',default=False,help="Don't train, just evaluate test nets once")
+    parser.add_argument('--clip_gradients',type=float,default=0.0,help="Use clip gradients")
     return parser.parse_args(argv)
 
 
