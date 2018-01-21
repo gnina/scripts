@@ -89,7 +89,8 @@ def write_solver_file(solver_file, train_model, test_models, type, base_lr, mome
     param.display = 0 #don't print solver iterations
     param.random_seed = random_seed
     param.max_iter = max_iter
-    param.clip_gradients = clip_gradients
+    if clip_gradients > 0:
+        param.clip_gradients = clip_gradients
     param.snapshot_prefix = snapshot_prefix
     print "WRITING",solver_file
     with open(solver_file,'w') as f:
