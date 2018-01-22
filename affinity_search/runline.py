@@ -41,6 +41,10 @@ if len(linevals) != len(opts):
 params = dict()
 for (i,(name,vals)) in enumerate(sorted(opts.items())):
     v = linevals[i]
+    if v == 'False':
+        v = 0
+    if v == 'True':
+        v = 1
     if type(vals) == tuple:
         if type(vals[0]) == int:
             v = int(v)
