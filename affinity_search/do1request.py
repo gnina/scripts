@@ -72,6 +72,7 @@ else:
     if config: #write out what we're doing
         progout = open(inprogressname,'w')
         progout.write(' '.join(config))
+        progout.close()
 
 if not config:
     print "Nothing requested"
