@@ -71,6 +71,8 @@ else:
             
     if config: #write out what we're doing
         progout = open(inprogressname,'w')
+        if 'time' in config:
+            del config['time']
         progout.write(json.dumps(config))
         progout.close()
 
