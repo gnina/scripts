@@ -10,7 +10,7 @@ import sys, re, MySQLdb, argparse, socket
 import pandas as pd
 import numpy as np
 import makemodel
-import subprocess, os
+import subprocess, os, json
 from MySQLdb.cursors import DictCursor
 
 parser = argparse.ArgumentParser(description='Run a configuration as part of a search')
