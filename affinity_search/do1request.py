@@ -51,9 +51,9 @@ host = socket.gethostname()
 configs = None  #map from name to value
 
 # check for an in progress file
-inprogressname = '%s-INPGROGRESS' % host
+inprogressname = '%s-INPROGRESS' % host
 if os.path.isfile(inprogressname):
-    config = open(inprogressname).read().rstrip().split()
+    config = json.load(open(inprogressname))
     #only retry once - remove the file
     rm(inprogressname)
 else:
@@ -71,7 +71,7 @@ else:
             
     if config: #write out what we're doing
         progout = open(inprogressname,'w')
-        progout.write(' '.join(config))
+        progout.write(json.dumps(config))
         progout.close()
 
 if not config:

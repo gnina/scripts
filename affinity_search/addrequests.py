@@ -3,7 +3,9 @@
 '''Check the sql database to see if the number of pending jobs is below
 a threshold.  If so, download the table and run spearmint twice, once for
 top and once for R, each time generating N*3 new jobs.  For each of the
-N configurations there are 3 variants with different splits and seeds.'''
+N configurations there are 3 variants with different splits and seeds.
+
+'''
 
 import sys, re, MySQLdb, argparse, os, json, subprocess
 import pandas as pd
