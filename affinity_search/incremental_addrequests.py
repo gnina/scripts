@@ -148,7 +148,7 @@ for (i,row) in data.iterrows():
         uniqconfigs.add(tuple(config))
         Rtop = row['R']*row['top']
         if np.isfinite(Rtop):
-            resf.write('%f 0 '%-Rtop)
+            resf.write('%f 0 '% -Rtop)
         else:
             resf.write('P P ')
         #outrow is in opt order, but with defaults removed
@@ -158,9 +158,10 @@ resf.close()
         
 gseed = len(uniqconfigs) #not clear this actually makes sense in our context..
 # run spearmint-light, set the seed to the number of unique configurations
-subprocess.call(['python',args.spearmint, '--method=GPEIOptChooser', '--grid-size=20000', 
-        'gnina-spearmint-incremental', '--n=%d'%args.num_configs, '--grid-seed=%d' % gseed])
-
+args = ['python',args.spearmint, '--method=GPEIOptChooser', '--grid-size=20000', 
+        'gnina-spearmint-incremental', '--n=%d'%args.num_configs, '--grid-seed=%d' % gseed]
+subprocess.call(args)
+print ' '.join(args)
 #get the generated lines from the file
 lines = open('gnina-spearmint-incremental/results.dat').readlines()
 newlines = np.unique(lines[validrows:])

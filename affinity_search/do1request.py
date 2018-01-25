@@ -6,7 +6,7 @@
 
 #https://hyperopt-186617.appspot.com
 
-import sys, re, MySQLdb, argparse, socket
+import sys, re, MySQLdb, argparse, socket, tempfile
 import pandas as pd
 import numpy as np
 import makemodel
@@ -70,11 +70,14 @@ else:
             break
             
     if config: #write out what we're doing
+        d = tempfile.mkdtemp(prefix=socket.gethostname() +'-',dir='.')
+        config['msg'] = d
         progout = open(inprogressname,'w')
         if 'time' in config:
             del config['time']
         progout.write(json.dumps(config))
         progout.close()
+
 
 if not config:
     print "Nothing requested"
@@ -85,8 +88,8 @@ values = ['0','0']
 for (name,val) in sorted(opts.items()):
     values.append(str(config[name]))
     
-cmdline = '%s/runline.py --prefix %s --data_root "%s" --seed %d --split %d --line "%s"' % \
-        (get_script_path(), args.prefix,args.data_root,config['seed'],config['split'], ' '.join(values))
+cmdline = '%s/runline.py --prefix %s --data_root "%s" --seed %d --split %d --dir %s --line "%s"' % \
+        (get_script_path(), args.prefix,args.data_root,config['seed'],config['split'], config['dir'], ' '.join(values))
 print cmdline
 
 #call runline to insulate ourselves from catestrophic failure (caffe)
@@ -114,7 +117,7 @@ config['R'] = float(R)
 config['top'] = float(top)
 config['auc'] = float(auc)
 config['id'] = d
-config['msg'] = 'Sucess'
+config['msg'] = 'SUCCESS'
 
 serial = config['serial']
 del config['serial']

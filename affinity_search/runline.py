@@ -29,6 +29,7 @@ parser.add_argument('--seed',type=int,help='Random seed',default=0)
 parser.add_argument('--split',type=int,help='Which predefined split to use',default=0)
 parser.add_argument('--data_root',type=str,help='Location of gninatypes directory',default='')
 parser.add_argument('--prefix',type=str,help='Prefix, not including split',default='../data/refined/all_0.5_')
+parser.add_argument('--dir',type=str,help='Directory to use')
 args = parser.parse_args()
 
 linevals = args.line.split()[2:]
@@ -60,7 +61,15 @@ params = Bunch(params)
 model = makemodel.create_model(params)
 
 host = socket.gethostname() 
-d = tempfile.mkdtemp(prefix=host+'-',dir='.')
+
+if args.dir:
+    d = args.dir
+    try:
+        os.makedirs(d)
+    except OSError:
+        pass
+else:
+    d = tempfile.mkdtemp(prefix=host+'-',dir='.')
 
 os.chdir(d)
 mfile = open('model.model','w')
@@ -76,7 +85,7 @@ solver = params.solver
 #setup training
 prefix = '%s%d_'% (args.prefix,args.split)
 trainargs = train.parse_args(['--seed',str(args.seed),'--prefix',prefix,'--data_root',
-    args.data_root,'-t','1000','-i','100000','-m','model.model',
+    args.data_root,'-t','1000','-i','100000','-m','model.model','--checkpoint',
     '--reduced','-o',d,'--momentum',str(momentum),'--weight_decay',str(weight_decay),
     '--base_lr',str(base_lr),'--solver',solver])
 
@@ -146,9 +155,13 @@ for i in train_test_files:
             cmodel = fname
     topresults += calctop.evaluate_fold(train_test_files[i]['test'], cmodel, 'model.model',args.data_root)
     
-
-R = scipy.stats.pearsonr(test_y_aff, test_y_predaff)[0]
-rmse = np.sqrt(sklearn.metrics.mean_squared_error(test_y_aff, test_y_predaff))
+#don't consider bad poses for affinity
+test_y_aff = np.array(test_y_aff)
+test_y_predaff = np.array(test_y_predaff)
+exp = test_y_aff[test_y_aff > 0]
+pred = test_y_predaff[test_y_aff > 0]
+R = scipy.stats.pearsonr(exp, pred)[0]
+rmse = np.sqrt(sklearn.metrics.mean_squared_error(exp,pred))
 auc = sklearn.metrics.roc_auc_score(test_y_true, test_y_score)
 top = calctop.find_top_ligand(topresults,1)/100.0
 

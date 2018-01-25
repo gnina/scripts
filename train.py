@@ -3,6 +3,7 @@
 import numpy as np
 import matplotlib
 from numpy import dtype
+from scipy.stats._continuous_distns import foldcauchy
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import glob, re, sklearn, collections, argparse, sys, os
@@ -198,15 +199,16 @@ def count_lines(file):
     return sum(1 for line in open(file, 'r'))
 
 
-def train_and_test_model(args, files, outname):
+def train_and_test_model(args, files, outname, cont=0):
     '''Train caffe model for iterations steps using provided model template
     and training file(s), and every test_interval iterations evaluate each
     of the train and test files. Return AUC (and RMSD, if affinity model)
     for every test iteration, and also the labels and predictions for the
-    final test iteration.'''
+    final test iteration. If cont > 0, assumes the presence of a saved 
+    caffemodel at that iteration.'''
     template = args.model
     test_interval = args.test_interval
-    iterations = args.iterations
+    iterations = args.iterations-cont
     training = not args.test_only
 
     if args.test_only:
@@ -265,16 +267,16 @@ def train_and_test_model(args, files, outname):
     #write solver prototxt
     solverf = 'solver.%d.prototxt' % pid
     write_solver_file(solverf, test_models[0], test_models, args.solver, args.base_lr, args.momentum, args.weight_decay,
-                      args.lr_policy, args.gamma, args.power, args.seed, iterations+args.cont, args.clip_gradients, outname)
+                      args.lr_policy, args.gamma, args.power, args.seed, iterations+cont, args.clip_gradients, outname)
 
     #set up solver in caffe
     if args.gpu >= 0:
         caffe.set_device(args.gpu)
     caffe.set_mode_gpu()
     solver = caffe.get_solver(solverf)
-    if args.cont:
-        modelname = '%s_iter_%d.caffemodel' % (outname, args.cont)
-        solvername = '%s_iter_%d.solverstate' % (outname, args.cont)
+    if cont:
+        modelname = '%s_iter_%d.caffemodel' % (outname, cont)
+        solvername = '%s_iter_%d.solverstate' % (outname, cont)
         check_file_exists(solvername)
         solver.restore(solvername)
         solver.testall() #link testnets to train net
@@ -288,7 +290,7 @@ def train_and_test_model(args, files, outname):
         test_nets[key] = solver.test_nets[idx], count_lines(test_file), 0
 
     if training: #outfile is training progress, don't write if we're not training
-        if args.cont: #TODO changes in test_interval not reflected in outfile
+        if cont: #TODO changes in test_interval not reflected in outfile
             mode = 'a'
         else:
             mode = 'w'
@@ -336,11 +338,11 @@ def train_and_test_model(args, files, outname):
         last_test = i == iterations/test_interval-1
 
         i_start = start = time.time()
+        keepsnap = False
         if training:
             #train
-            print "Taking step",test_interval
             solver.step(test_interval)
-            print "Iteration %d" % (args.cont + (i+1)*test_interval)
+            print "Iteration %d" % (cont + (i+1)*test_interval)
             print "Train time: %f" % (time.time()-start)
 
         if not test_on_train:
@@ -480,6 +482,7 @@ def train_and_test_model(args, files, outname):
                 if test_auc > best_test_auc:
                     best_test_auc = test_auc
                     if args.keep_best:
+                        keepsnap = True
                         solver.snapshot() #a bit too much - gigabytes of data
                 if train_loss < best_train_loss:
                     best_train_loss = train_loss
@@ -504,6 +507,7 @@ def train_and_test_model(args, files, outname):
                 if test_rmsd < best_test_rmsd:
                     best_test_rmsd = test_rmsd
                     if args.keep_best:
+                        keepsnap = True
                         solver.snapshot() #a bit too much - gigabytes of data                    
                     
             #write out evaluation results
@@ -539,6 +543,23 @@ def train_and_test_model(args, files, outname):
         mem = psutil.Process(os.getpid()).memory_info().rss
         freemem()
         print "Memory usage: %.3fgb (%d)" % (mem/1073741824., mem)
+        
+        if args.checkpoint:
+            snapname = solver.snapshot()
+            checkname = '%s.CHECKPOINT'%outname
+            try:
+                if os.path.exists(checkname):
+                    (dontremove, prevsnap) = open(checkname).read().rstrip().split()
+                    if not int(dontremove):
+                        os.remove(prevsnap)
+                        prevsnap = prevsnap.replace('caffemodel','solverstate')
+                        os.remove(prevsnap)
+            except:
+                pass
+            checkout = open(checkname,'w')
+            checkout.write('%d %s'%(keepsnap,snapname))
+            checkout.close()
+        
 
     if training:
         out.close()
@@ -556,8 +577,8 @@ def train_and_test_model(args, files, outname):
     else:
         return test, train
 
-
 def parse_args(argv=None):
+    '''Return argument namespace and commandline'''
     parser = argparse.ArgumentParser(description='Train neural net on .types data.')
     parser.add_argument('-m','--model',type=str,required=True,help="Model template. Must use TRAINFILE and TESTFILE")
     parser.add_argument('-p','--prefix',type=str,required=True,help="Prefix for training/test files: <prefix>[train|test][num].types")
@@ -573,6 +594,7 @@ def parse_args(argv=None):
     parser.add_argument('-k','--keep',action='store_true',default=False,help="Don't delete prototxt files")
     parser.add_argument('-r', '--reduced', action='store_true',default=False,help="Use a reduced file for model evaluation if exists(<prefix>[_reducedtrain|_reducedtest][num].types)")
     parser.add_argument('--avg_rotations', action='store_true',default=False, help="Use the average of the testfile's 24 rotations in its evaluation results")
+    parser.add_argument('--checkpoint', action='store_true',default=False,help="Enable automatic checkpointing")
     #parser.add_argument('-v,--verbose',action='store_true',default=False,help='Verbose output')
     parser.add_argument('--keep_best',action='store_true',default=False,help='Store snapshots everytime test AUC improves')
     parser.add_argument('--dynamic',action='store_true',default=False,help='Attempt to adjust the base_lr in response to training progress')
@@ -593,7 +615,15 @@ def parse_args(argv=None):
     parser.add_argument('--data_ratio',type=float,required=False,help="Ratio to combine training data from 2 sources",default=None)
     parser.add_argument('--test_only',action='store_true',default=False,help="Don't train, just evaluate test nets once")
     parser.add_argument('--clip_gradients',type=float,default=0.0,help="Use clip gradients")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    
+    argdict = vars(args)
+    line = ''
+    for (name,val) in argdict.items():
+        if val != parser.get_default(name):
+            line += ' --%s=%s' %(name,val)
+
+    return (args,line)
 
 
 def check_file_exists(file):
@@ -645,7 +675,7 @@ def get_train_test_files(prefix, foldnums, allfolds, reduced, prefix2):
 
 
 if __name__ == '__main__':
-    args = parse_args()
+    (args,cmdline) = parse_args()
 
     #identify all train/test pairs
     try:
@@ -665,6 +695,7 @@ if __name__ == '__main__':
     outprefix = args.outprefix
     if outprefix == '':
         outprefix = '%s.%d' % (os.path.splitext(os.path.basename(args.model))[0],os.getpid())
+        args.outprefix = outprefix
 
     test_aucs, train_aucs = [], []
     test_rmsds, train_rmsds = [], []
@@ -679,12 +710,43 @@ if __name__ == '__main__':
     test2_y_aff, train2_y_aff = [], []
     test2_y_predaff, train2_y_predaff = [], []
 
+    checkfold = -1
+    if args.checkpoint:
+        #check for existence of checkpoint
+        cmdcheckname = '%s.cmdline.CHECKPOINT'%outprefix
+        if os.path.exists(cmdcheckname):
+            #validate this is the same
+            #figure out where we were
+            oldline = open(cmdcheckname).read()
+            if oldline != cmdline:
+                print oldline
+                print "Previous commandline from checkpoint does not match current.  Cannot restore checkpoint."
+                sys.exit(1)
+        
+        outcheck = open(cmdcheckname,'w')
+        outcheck.write(cmdline)
+        outcheck.close()        
+        
     #train each pair
     numfolds = 0
     for i in train_test_files:
 
-        outname = '%s.%s' % (outprefix, i)
-        results = train_and_test_model(args, train_test_files[i], outname)
+        outname = '%s.%s' % (outprefix, i)        
+        cont = args.cont
+        if args.checkpoint: #is there a checkpiont for this fold
+            checkname = '%s.CHECKPOINT'%outname
+            if os.path.exists(checkname):
+                (dontremove, prevsnap) = open(checkname).read().rstrip().split()
+                m = re.search(r'%s_iter_(\d+)\.caffemodel'%outname,prevsnap)
+                if m:
+                    cont = int(m.group(1))
+                    if cont >= args.iterations:
+                        continue  #finished this fold
+                else:
+                    print "Error parsing",checkname
+                    sys.exit(1)
+                
+        results = train_and_test_model(args, train_test_files[i], outname, cont)
 
         if args.prefix2:
             test, train, test2, train2 = results
