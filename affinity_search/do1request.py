@@ -42,6 +42,20 @@ def getcursor():
     cursor = conn.cursor(DictCursor)
     return cursor
 
+def getgpuid():
+    '''return unique id of gpu 0'''
+    gpuid = '0000'
+    try:
+        output = subprocess.check_output('nvidia-smi',shell=True,stderr=subprocess.STDOUT)
+        m = re.search(r'00000:(\S\S:\S\S.\S) ',output)
+        if m:
+            gpuid = m.group(1)
+    except Exception as e:
+        print e
+        print "Error accessing gpu"
+        sys.exit(1)
+    return gpuid
+
 opts = makemodel.getoptions()
 cursor = getcursor()
 
@@ -51,9 +65,12 @@ host = socket.gethostname()
 configs = None  #map from name to value
 
 # check for an in progress file
-inprogressname = '%s-INPROGRESS' % host
+inprogressname = '%s-%s-INPROGRESS' % (host,getgpuid())
+print inprogressname
+sys.exit()
 if os.path.isfile(inprogressname):
     config = json.load(open(inprogressname))
+    d = config['msg']    
     #only retry once - remove the file
     print "Retrying with config: %s" % json.dumps(config)
     rm(inprogressname)
@@ -107,6 +124,9 @@ except Exception as e:
     cursor.execute('UPDATE params SET id = "ERROR", msg = %s WHERE serial = %s',(str(pid),config['serial']))
     print "Error"
     print output
+    if re.search(r'out of memory',output) and host.startswith('gnina'):
+        #host migration restarts don't seem to bring the gpu up in agood state
+        os.system("sudo reboot")
     rm(inprogressname)    
     sys.exit(0)  #we tried
     
