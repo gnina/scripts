@@ -60,6 +60,8 @@ predaffs = []
 scores = []
 labels = []
 for line in predictions:
+    if line.startswith('#'):
+        continue
     vals = line.split()
     score = float(vals[0])
     predaff = float(vals[1])
