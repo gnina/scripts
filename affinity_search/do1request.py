@@ -55,6 +55,7 @@ inprogressname = '%s-INPROGRESS' % host
 if os.path.isfile(inprogressname):
     config = json.load(open(inprogressname))
     #only retry once - remove the file
+    print "Retrying with config: %s" % json.dumps(config)
     rm(inprogressname)
 else:
 #are there any requested configurations?  if so select one
@@ -89,7 +90,7 @@ for (name,val) in sorted(opts.items()):
     values.append(str(config[name]))
     
 cmdline = '%s/runline.py --prefix %s --data_root "%s" --seed %d --split %d --dir %s --line "%s"' % \
-        (get_script_path(), args.prefix,args.data_root,config['seed'],config['split'], config['dir'], ' '.join(values))
+        (get_script_path(), args.prefix,args.data_root,config['seed'],config['split'], config['msg'], ' '.join(values))
 print cmdline
 
 #call runline to insulate ourselves from catestrophic failure (caffe)
