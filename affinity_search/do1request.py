@@ -67,7 +67,7 @@ configs = None  #map from name to value
 # check for an in progress file
 inprogressname = '%s-%s-INPROGRESS' % (host,getgpuid())
 print inprogressname
-sys.exit()
+
 if os.path.isfile(inprogressname):
     config = json.load(open(inprogressname))
     d = config['msg']    
