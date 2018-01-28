@@ -51,6 +51,7 @@ def getgpuid():
         if m:
             gpuid = m.group(1)
     except Exception as e:
+        print e.output
         print e
         print "Error accessing gpu"
         sys.exit(1)
