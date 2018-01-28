@@ -46,6 +46,6 @@ for row in rows:
         continue
     
     print d, R, rmse, auc, top
-    sql = 'UPDATE params SET R={},rmse={} WHERE serial = {}'.format(R,rmse,row['serial'])
+    sql = 'UPDATE params SET R={},rmse={},msg="SUCCESS" WHERE serial = {}'.format(R,rmse,row['serial'])
     cursor = getcursor()
     cursor.execute(sql)
