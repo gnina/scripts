@@ -37,8 +37,8 @@ for row in rows:
         
     print row['id']
 
-    cmdline = './reval.py --prefix %s --data_root "%s" --split %d --dir %s' % \
-            (args.prefix,args.data_root,row['split'], row['id'])
+    cmdline = '%s --prefix %s --data_root "%s" --split %d --dir %s' % \
+            (args.reval, args.prefix,args.data_root,row['split'], row['id'])
     print cmdline
     
     #call runline to insulate ourselves from catestrophic failure (caffe)
