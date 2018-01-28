@@ -22,38 +22,37 @@ def getcursor():
     cursor = conn.cursor(DictCursor)
     return cursor
 
-while True:
-    cursor = getcursor()
-    cursor.execute('SELECT * FROM params WHERE msg = "Sucess"')
-    rows = cursor.fetchall()
-    if len(rows) == 0:
-        break
-    for row in rows:
-        if not os.path.isdir(row['id']):
-            continue
+cursor = getcursor()
+cursor.execute('SELECT * FROM params WHERE msg = "Sucess"')
+rows = cursor.fetchall()
+if len(rows) == 0:
+    break
+for row in rows:
+    if not os.path.isdir(row['id']):
+        continue
+    
+    # need to atomically update msg
+    ret = cursor.execute('UPDATE params SET msg = "Pending" WHERE serial = %s AND msg = "Sucess"',[row['serial']])
+    if not ret: # try next
+        continue
         
-        # need to atomically update msg
-        ret = cursor.execute('UPDATE params SET msg = "Pending" WHERE serial = %s AND msg = "Sucess"',[row['serial']])
-        if not ret: # try next
-            continue
-            
-        print row['id']
+    print row['id']
 
-        cmdline = './reval.py --prefix %s --data_root "%s" --split %d --dir %s' % \
-                (args.prefix,args.data_root,row['split'], row['id'])
-        print cmdline
-        
-        #call runline to insulate ourselves from catestrophic failure (caffe)
-        try:
-            output = subprocess.check_output(cmdline,shell=True,stderr=subprocess.STDOUT)
-            d, R, rmse, auc, top = output.rstrip().split('\n')[-1].split()
-        except Exception as e:
-            print e.output
-            print e
-            print "Problem with",row['id']
-            continue
-        
-        print d, R, rmse, auc, top
-        sql = 'UPDATE params SET R={},rmse={},msg="SUCCESS" WHERE serial = {}'.format(R,rmse,row['serial'])
-        cursor = getcursor()
-        cursor.execute(sql)
+    cmdline = './reval.py --prefix %s --data_root "%s" --split %d --dir %s' % \
+            (args.prefix,args.data_root,row['split'], row['id'])
+    print cmdline
+    
+    #call runline to insulate ourselves from catestrophic failure (caffe)
+    try:
+        output = subprocess.check_output(cmdline,shell=True,stderr=subprocess.STDOUT)
+        d, R, rmse, auc, top = output.rstrip().split('\n')[-1].split()
+    except Exception as e:
+        print e.output
+        print e
+        print "Problem with",row['id']
+        continue
+    
+    print d, R, rmse, auc, top
+    sql = 'UPDATE params SET R={},rmse={},msg="SUCCESS" WHERE serial = {}'.format(R,rmse,row['serial'])
+    cursor = getcursor()
+    cursor.execute(sql)
