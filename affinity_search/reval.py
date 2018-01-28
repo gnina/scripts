@@ -50,9 +50,8 @@ for fold in models:
     (caffefile, iter) = models[fold]
     testfile = prefix+'test%d.types'%fold
     pargs = predict.parse_args(['-m','model.model','-w',caffefile,'-d',args.data_root,'-i',testfile])
-    predictions += predict.predict(pargs)
+    predictions += predict.predict(pargs)[0]
     topresults += calctop.evaluate_fold(testfile,caffefile,'model.model',args.data_root)
-
 
 #parse prediction lines 
 expaffs = []

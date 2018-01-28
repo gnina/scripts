@@ -3,7 +3,7 @@
 '''Grab all the "Sucess" examples from the database, look if any of the directories exist.
 If they do, reval them and update the database'''
 
-import sys, re, MySQLdb, os, argparse
+import sys, re, MySQLdb, os, argparse, subprocess
 from MySQLdb.cursors import DictCursor
 
 
@@ -40,6 +40,7 @@ for row in rows:
         output = subprocess.check_output(cmdline,shell=True,stderr=subprocess.STDOUT)
         d, R, rmse, auc, top = output.rstrip().split('\n')[-1].split()
     except Exception as e:
+        print e
         print "Problem with",row['id']
         continue
     
