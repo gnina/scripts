@@ -25,8 +25,7 @@ def getcursor():
 cursor = getcursor()
 cursor.execute('SELECT * FROM params WHERE msg = "Sucess"')
 rows = cursor.fetchall()
-if len(rows) == 0:
-    break
+
 for row in rows:
     if not os.path.isdir(row['id']):
         continue
