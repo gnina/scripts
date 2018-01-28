@@ -44,7 +44,7 @@ for caffefile in glob.glob('*.caffemodel'):
         
 
 #for each fold, collect the predictions
-predictions = [] #a list of strings
+predictions = [] #a list of tuples
 topresults = []
 for fold in models:
     (caffefile, iter) = models[fold]
@@ -59,14 +59,12 @@ expaffs = []
 predaffs = []
 scores = []
 labels = []
-for line in predictions:
-    if line.startswith('#'):
-        continue
-    vals = line.split()
-    score = float(vals[0])
-    predaff = float(vals[1])
-    label = float(vals[2])
-    aff = float(vals[3])
+for p in predictions:
+    score = p[0]
+    predaff = p[1]
+    vals = p[2].split()
+    label = float(vals[0])
+    aff = float(vals[1])
     scores.append(score)
     labels.append(label)
     if aff > 0:
