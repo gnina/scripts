@@ -36,7 +36,7 @@ Refer to provided pbs script for a complete template.
 
 ```
 export PATH=/usr/bin:$PATH
-export LD_LIBRARY_PATH=/net/pulsar/home/koes/dkoes/local/lib:/usr/lib64:/usr/lib/x86_64-linux-gnu:/usr/local/cuda-8.0/lib64
+export LD_LIBRARY_PATH=/net/pulsar/home/koes/dkoes/local/lib:/usr/lib64:/usr/lib/x86_64-linux-gnu:/usr/local/cuda-9.0/lib64
 export PYTHONPATH=/net/pulsar/home/koes/dkoes/local/python:$PYTHONPATH
 ```
 
