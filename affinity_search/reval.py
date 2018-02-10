@@ -51,7 +51,7 @@ for fold in models:
     testfile = prefix+'test%d.types'%fold
     pargs = predict.parse_args(['-m','model.model','-w',caffefile,'-d',args.data_root,'-i',testfile])
     predictions += predict.predict(pargs)
-    topresults += calctop.evaluate_fold(testfile,caffefile,'model.model',args.data_root)
+#    topresults += calctop.evaluate_fold(testfile,caffefile,'model.model',args.data_root)
 
 
 #parse prediction lines 
@@ -77,7 +77,7 @@ for line in predictions:
 R = scipy.stats.pearsonr(expaffs, predaffs)[0]
 rmse = np.sqrt(sklearn.metrics.mean_squared_error(expaffs,predaffs))
 auc = sklearn.metrics.roc_auc_score(labels, scores)
-top = calctop.find_top_ligand(topresults,1)/100.0
+top = 0 #calctop.find_top_ligand(topresults,1)/100.0
 
 print args.dir, R, rmse, auc, top
 

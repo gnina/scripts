@@ -24,7 +24,7 @@ parser.add_argument('--db',type=str,help='Database name',default='opt1')
 args = parser.parse_args()
 
 cursor = getcursor()
-cursor.execute('SELECT serial,top,R FROM params WHERE top IS NOT NULL')
+cursor.execute('SELECT serial,top,R FROM params WHERE rmse IS NOT NULL')
 rows = cursor.fetchall()
 for row in rows:
     print '%d %f %f' % row

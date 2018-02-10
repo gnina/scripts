@@ -46,7 +46,7 @@ parser.add_argument('--host',type=str,help='Database host',required=True)
 parser.add_argument('-p','--password',type=str,help='Database password',required=True)
 parser.add_argument('--db',type=str,help='Database name',default='opt1')
 parser.add_argument('--pending_threshold',type=int,default=12,help='Number of pending jobs that triggers an update')
-parser.add_argument('-n','--num_configs',type=int,default=4,help='Number of configs to generate - will add 3X as many jobs') 
+parser.add_argument('-n','--num_configs',type=int,default=1,help='Number of configs to generate - will add 3X as many jobs') 
 parser.add_argument('-s','--spearmint',type=str,help='Location of spearmint-lite.py',required=True)
 parser.add_argument('--model_threshold',type=int,default=32,help='Number of unique models to evaluate at a level before giving up and going to the next level')
 parser.add_argument('--priority',type=file,help='priority order of parameters',required=True)
@@ -63,7 +63,9 @@ cursor.execute('SELECT COUNT(*) FROM params WHERE id = "REQUESTED"')
 rows = cursor.fetchone()
 pending = rows.values()[0]
 
-print "Pending jobs:",pending
+#print "Pending jobs:",pending
+sys.stdout.write('%d '%pending)
+sys.stdout.flush()
 
 #if more than pending_threshold, quit
 if pending > args.pending_threshold:
@@ -80,7 +82,14 @@ params = args.priority.read().rstrip().split()
 cursor.execute('SELECT * FROM params')
 rows = cursor.fetchall()
 data = pd.DataFrame(list(rows))
+#make errors zero - appropriate if error is due to parameters
+data.loc[data.id == 'ERROR','R'] = 0
+data.loc[data.id == 'ERROR','rmse'] = 0
+data.loc[data.id == 'ERROR','top'] = 0
+data.loc[data.id == 'ERROR','auc'] = 0
+
 nonan = data.dropna('index')
+
 grouped = nonan.groupby(params)
 metrics = grouped.mean()[['R','top']]
 metrics = metrics[grouped.size() >= args.mingroup]
@@ -88,6 +97,7 @@ metrics['Rtop'] = metrics.R * metrics.top
 defaultparams = metrics['Rtop'].idxmax()  #this is in priority order
 bestRtop = metrics['Rtop'].max()
 
+print "Best",bestRtop
 #figure out what param we are on
 if os.path.exists(args.info):
     #info file has what iteration we are on and the previous best when we moved to that iteration
@@ -107,6 +117,10 @@ if bestRtop > prevbest:
     info = open(args.info,'a')
     info.write('%d %f\n',(level,bestRtop))
     info.close()
+    try:  #remove pickle file since number of parameters has changed
+        os.remove('gnina-spearmint-incremental/chooser.GPEIOptChooser.pkl')
+    except:
+        pass
     
 #create config.json without defaulted parameters
 config = makejson()
@@ -145,7 +159,7 @@ for (i,row) in data.iterrows():
             outrow.append(val) 
     else:  #execute if we didn't break        
         validrows += 1
-        uniqconfigs.add(tuple(config))
+        uniqconfigs.add(tuple(outrow))
         Rtop = row['R']*row['top']
         if np.isfinite(Rtop):
             resf.write('%f 0 '% -Rtop)
@@ -157,11 +171,27 @@ for (i,row) in data.iterrows():
 resf.close()
         
 gseed = len(uniqconfigs) #not clear this actually makes sense in our context..
+print "Uniq configs:",gseed
+
+#a very generous threshold - multiply by level rather than keep track of number of uniq models in this level
+threshold = (level+1)*args.model_threshold
+if gseed > threshold:
+    #promote level, although this will not effect this invocation
+    level += 1
+    info = open(args.info,'a')
+    info.write('%d %f\n'%(level,bestRtop))
+    info.close()
+    try:
+        os.remove('gnina-spearmint-incremental/chooser.GPEIOptChooser.pkl')
+    except:
+        pass    
+    
 # run spearmint-light, set the seed to the number of unique configurations
-args = ['python',args.spearmint, '--method=GPEIOptChooser', '--grid-size=20000', 
+spearargs = ['python',args.spearmint, '--method=GPEIOptChooser', '--grid-size=20000', 
         'gnina-spearmint-incremental', '--n=%d'%args.num_configs, '--grid-seed=%d' % gseed]
-subprocess.call(args)
-print ' '.join(args)
+print ' '.join(spearargs)
+
+subprocess.call(spearargs)
 #get the generated lines from the file
 lines = open('gnina-spearmint-incremental/results.dat').readlines()
 newlines = np.unique(lines[validrows:])
@@ -183,5 +213,5 @@ for line in newlines:
     out.write('\n')
 out.close()
 #add to database as REQUESTED jobs
-#addrows('gnina-spearmint-incremental/newrows.dat',args.host,args.db,args.password)
+addrows('gnina-spearmint-incremental/newrows.dat',args.host,args.db,args.password)
 

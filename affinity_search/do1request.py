@@ -27,8 +27,10 @@ def get_script_path():
     
 def rm(inprogressname):
     try:
+        print "Removing",inprogressname
         os.remove(inprogressname)
     except OSError:
+        print "Error removing",inprogressname
         pass
         
 sys.path.append(get_script_path())
@@ -126,6 +128,7 @@ except Exception as e:
     print output
     if re.search(r'out of memory',output) and host.startswith('gnina'):
         #host migration restarts don't seem to bring the gpu up in agood state
+        print "REBOOTING"
         os.system("sudo reboot")
     rm(inprogressname)    
     sys.exit(0)  #we tried
