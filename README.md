@@ -56,8 +56,8 @@ optional arguments:
   --keep_best           Store snapshots everytime test AUC improves
   --dynamic             Attempt to adjust the base_lr in response to training
                         progress
-  --cyclic				Vary base_lr between fixed values based on test 
-						iteration
+  --cyclic		Vary base_lr between fixed values based on test 
+			iteration
   --solver SOLVER       Solver type. Default is SGD
   --lr_policy LR_POLICY
                         Learning policy to use. Default is inv.
