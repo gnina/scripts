@@ -16,7 +16,7 @@ export PYTHONPATH=/usr/local/python:$PYTHONPATH
 usage: train.py [-h] -m MODEL -p PREFIX [-d DATA_ROOT] [-n FOLDNUMS] [-a]
                 [-i ITERATIONS] [-s SEED] [-t TEST_INTERVAL] [-o OUTPREFIX]
                 [-g GPU] [-c CONT] [-k] [-r] [--avg_rotations] [--keep_best]
-                [--dynamic] [--solver SOLVER] [--lr_policy LR_POLICY]
+                [--dynamic] [--cyclic] [--solver SOLVER] [--lr_policy LR_POLICY]
                 [--step_reduce STEP_REDUCE] [--step_end STEP_END]
                 [--step_when STEP_WHEN] [--base_lr BASE_LR]
                 [--momentum MOMENTUM] [--weight_decay WEIGHT_DECAY]
@@ -56,6 +56,8 @@ optional arguments:
   --keep_best           Store snapshots everytime test AUC improves
   --dynamic             Attempt to adjust the base_lr in response to training
                         progress
+  --cyclic		Vary base_lr between fixed values based on test 
+			iteration
   --solver SOLVER       Solver type. Default is SGD
   --lr_policy LR_POLICY
                         Learning policy to use. Default is inv.
