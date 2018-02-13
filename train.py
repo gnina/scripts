@@ -503,7 +503,8 @@ def train_and_test_model(args, files, outname, cont=0):
                     if lr < args.step_end:
                         break #end early
                 elif args.cyclic:
-                    lrs = [.015, .01, .0075, .005, .001]
+                    base_lr = solver.get_base_lr()
+                    lrs = [base_lr*1.5, base_lr*1.25, base_lr, base_lr*0.75, base_lr*0.5]
                     indexes = [0, 1, 2, 3, 4, 3, 2, 1]
                     lr = lrs[indexes[i%len(indexes)]]
                     solver.set_base_lr(lr)
