@@ -334,6 +334,7 @@ def train_and_test_model(args, files, outname, cont=0):
     test_rmsd = np.inf
     step_reduce_cnt = 0
     i_time_avg = 0
+    original_lr = solver.get_base_lr()
     for i in xrange(iterations/test_interval):
         last_test = i == iterations/test_interval-1
 
@@ -503,8 +504,7 @@ def train_and_test_model(args, files, outname, cont=0):
                     if lr < args.step_end:
                         break #end early
                 elif args.cyclic:
-                    base_lr = solver.get_base_lr()
-                    lrs = [base_lr*1.5, base_lr*1.25, base_lr, base_lr*0.75, base_lr*0.5]
+                    lrs = [original_lr*1.5, original_lr*1.25, original_lr, original_lr*0.75, original_lr*0.5]
                     indexes = [0, 1, 2, 3, 4, 3, 2, 1]
                     lr = lrs[indexes[i%len(indexes)]]
                     solver.set_base_lr(lr)
