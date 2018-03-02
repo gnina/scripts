@@ -53,6 +53,7 @@ def getgpuid():
         if m:
             gpuid = m.group(1)
     except Exception as e:
+        print e.output
         print e
         print "Error accessing gpu"
         sys.exit(1)
@@ -83,7 +84,7 @@ else:
     config = None
     for row in rows:
         # need to atomically update id
-        ret = cursor.execute('UPDATE params SET id = "INPROGRESS" WHERE serial = %s',[row['serial']])
+        ret = cursor.execute('UPDATE params SET id = "INPROGRESS" WHERE serial = %s AND id = "REQUESTED"',[row['serial']])
         if ret: # success!
             #set config
             config = row

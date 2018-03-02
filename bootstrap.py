@@ -55,7 +55,7 @@ if __name__ == '__main__':
 				testset = ts.replace('[NUMBER]',num)
 			args.input = testset
 			args.weights = caffemodel
-			predictions.extend(predict.predict(args))
+			predictions.extend(predict.predict_lines(args))
 	elif args.notcalc_predictions != '':
 		for line in open(args.notcalc_predictions).readlines():
 			predictions.append(line)

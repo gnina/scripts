@@ -334,6 +334,7 @@ def train_and_test_model(args, files, outname, cont=0):
     test_rmsd = np.inf
     step_reduce_cnt = 0
     i_time_avg = 0
+    original_lr = solver.get_base_lr()
     for i in xrange(iterations/test_interval):
         last_test = i == iterations/test_interval-1
 
@@ -502,6 +503,11 @@ def train_and_test_model(args, files, outname, cont=0):
                         break
                     if lr < args.step_end:
                         break #end early
+                elif args.cyclic:
+                    lrs = [original_lr*1.5, original_lr*1.25, original_lr, original_lr*0.75, original_lr*0.5]
+                    indexes = [0, 1, 2, 3, 4, 3, 2, 1]
+                    lr = lrs[indexes[i%len(indexes)]]
+                    solver.set_base_lr(lr)
             #check for rmse improvement
             if result.rmsd is not None:
                 if test_rmsd < best_test_rmsd:
@@ -598,6 +604,7 @@ def parse_args(argv=None):
     #parser.add_argument('-v,--verbose',action='store_true',default=False,help='Verbose output')
     parser.add_argument('--keep_best',action='store_true',default=False,help='Store snapshots everytime test AUC improves')
     parser.add_argument('--dynamic',action='store_true',default=False,help='Attempt to adjust the base_lr in response to training progress')
+    parser.add_argument('--cyclic',action='store_true',default=False,help='Vary base_lr in range of values: 0.015 to 0.001')
     parser.add_argument('--solver',type=str,help="Solver type. Default is SGD",default='SGD')
     parser.add_argument('--lr_policy',type=str,help="Learning policy to use. Default is inv.",default='inv')
     parser.add_argument('--step_reduce',type=float,help="Reduce the learning rate by this factor with dynamic stepping, default 0.1",default='0.1')

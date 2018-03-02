@@ -26,6 +26,7 @@ def write_model_file(model_file, template_file, test_file, root_folder):
 
 
 def predict(args):
+    '''Return yscore and/or y_predaff with rest of input line for each example'''
     if args.gpu >= 0:
         caffe.set_device(args.gpu)
     caffe.set_mode_gpu()
@@ -55,11 +56,11 @@ def predict(args):
                 sys.exit(-1)
 
     if rmsd != None and auc != None:
-        output_lines = ['%f %f %s' % t for t in zip(y_score, y_predaff, lines)]
+        output_lines = [t for t in zip(y_score, y_predaff, lines)]
     elif rmsd != None:
-        output_lines = ['%f %s' % t for t in zip(y_predaff, lines)]
+        output_lines = [t for t in zip(y_predaff, lines)]
     elif auc != None:
-        output_lines = ['%f %s' % t for t in zip(y_score, lines)]
+        output_lines = [t for t in zip(y_score, lines)]
                         
 
     if args.max_score or args.max_affinity:
@@ -82,15 +83,25 @@ def predict(args):
             y_predaff = [float(line.split()[affpredindex]) for line in output_lines]
             rmsd = np.sqrt(sklearn.metrics.mean_squared_error(np.abs(y_affinity),y_predaff))
         
-    if rmsd != None:
-        output_lines.append("# RMSD %.5f\n" % rmsd)
-    if auc != None:
-        output_lines.append("# AUC %.5f\n" % auc)
-        
     if not args.keep:
         os.remove(test_model)
-    return output_lines
+    return output_lines,auc,rmsd
 
+def predict_lines(args):
+    '''Return previous format of a list of strings corresponding to the output lines of a prediction file'''
+    predictions = predict(args)
+    lines = []
+    for line in predictions[0]:
+        l = ''
+        for val in line[:-1]:
+            l += '%f '%val
+        l += '%s\n' % line[-1]
+        lines.append(l)
+    if predictions[1] != None:
+        lines.append('# AUC %f\n'%predictions[1])
+    if predictions[2] != None:
+        lines.append('# rmsd %f\n'%predictions[2])
+    return lines
 
 def get_ligand_key(rec_path, pose_path):
     # no good naming convention, so just use the receptor name
@@ -163,11 +174,12 @@ if __name__ == '__main__':
     if args.seed != None:
         caffe.set_random_seed(args.seed)
     if not args.notcalc_predictions:
-        predictions = predict(args)
+        predictions = predict_lines(args)
     else:
         with open(args.notcalc_predictions, 'r') as f:
             predictions = f.readlines()
         if args.max_score or args.max_affinity:
             predictions = maxLigandScore(predictions, args.max_affinity)
+            
     out.writelines(predictions)
 
