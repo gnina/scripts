@@ -150,7 +150,7 @@ def combine_fold_results(test_metrics, train_metrics, test_labels, test_preds, t
 
         #correlation plots for last test iteration
         rmsd = np.sqrt(sklearn.metrics.mean_squared_error(test_preds, test_labels))
-        r2 = scipy.stats.pearsonr(test_preds, test_labels)[0]
+        r2 = scipy.stats.pearsonr(test_preds, test_labels)[0]**2
         write_results_file('%s.rmsd.finaltest%s' % (outprefix, two), test_preds, test_labels, footer='RMSD,R %f %f\n' % (rmsd, r2))
         plot_correlation('%s_corr_test%s.pdf' % (outprefix, two), test_preds, test_labels, rmsd, r2)
 
@@ -159,7 +159,7 @@ def combine_fold_results(test_metrics, train_metrics, test_labels, test_preds, t
             train_labels = filter_actives(train_labels, filter_actives_train)
 
         rmsd = np.sqrt(sklearn.metrics.mean_squared_error(train_preds, train_labels))
-        r2 = scipy.stats.pearsonr(train_preds, train_labels)[0]
+        r2 = scipy.stats.pearsonr(train_preds, train_labels)[0]**2
         write_results_file('%s.rmsd.finaltrain%s' % (outprefix, two), train_preds, train_labels, footer='RMSD,R %f %f\n' % (rmsd, r2))
         plot_correlation('%s_corr_train%s.pdf' % (outprefix, two), train_preds, train_labels, rmsd, r2)
 

@@ -48,7 +48,7 @@ parser.add_argument('--db',type=str,help='Database name',default='opt1')
 parser.add_argument('--pending_threshold',type=int,default=12,help='Number of pending jobs that triggers an update')
 parser.add_argument('-n','--num_configs',type=int,default=1,help='Number of configs to generate - will add 3X as many jobs') 
 parser.add_argument('-s','--spearmint',type=str,help='Location of spearmint-lite.py',required=True)
-parser.add_argument('--model_threshold',type=int,default=32,help='Number of unique models to evaluate at a level before giving up and going to the next level')
+parser.add_argument('--model_threshold',type=int,default=64,help='Number of unique models to evaluate at a level before giving up and going to the next level')
 parser.add_argument('--priority',type=file,help='priority order of parameters',required=True)
 parser.add_argument('--info',type=str,help='incremental information file',default='INCREMENTAL.info')
 parser.add_argument('--mingroup',type=int,help='required number of evaluations of a model for it to count',default=3)
@@ -140,6 +140,7 @@ cout.close()
 
 resf = open('gnina-spearmint-incremental/results.dat','w')
 uniqconfigs = set()
+evalconfigs = set()
 validrows = 0
 for (i,row) in data.iterrows():
     outrow = []
@@ -163,6 +164,7 @@ for (i,row) in data.iterrows():
         Rtop = row['R']*row['top']
         if np.isfinite(Rtop):
             resf.write('%f 0 '% -Rtop)
+            evalconfigs.add(tuple(outrow))
         else:
             resf.write('P P ')
         #outrow is in opt order, but with defaults removed
@@ -172,10 +174,11 @@ resf.close()
         
 gseed = len(uniqconfigs) #not clear this actually makes sense in our context..
 print "Uniq configs:",gseed
+print "Evaled configs:",len(evalconfigs)
 
 #a very generous threshold - multiply by level rather than keep track of number of uniq models in this level
 threshold = (level+1)*args.model_threshold
-if gseed > threshold:
+if len(evalconfigs) > threshold:
     #promote level, although this will not effect this invocation
     level += 1
     info = open(args.info,'a')
