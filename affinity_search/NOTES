@@ -280,3 +280,11 @@ cp ../iteration2/affinity_g1_p0_h0.model .
 cp ../iteration3/affinity_batch_relu.model .
 cp ../iteration6/affinity_0.250_conv4_pool1_grouped0_func1_swap0.model .
 #cmds only vary seed
+
+
+#iteration 7 - want to train a more continuous model, try elu/lrn/no pool/32-32-32 with 3/5/7 conv kernels of stride 2
+
+for w in 32 64; do for sz in 3 5 7; do ../makemodel.py  --pool1_size 0 --pool2_size 0 --pool3_size 0 --conv1_func ELU --conv1_norm LRN --conv1_size $sz --conv1_stride 2 --conv1_width $w  --conv2_func ELU --conv2_norm LRN --conv2_size $sz --conv2_stride 2 --conv2_width $w  --conv3_func ELU --conv3_norm LRN --conv3_size $sz --conv3_stride 2 --conv3_width $w > affinity_${sz}_${w}.model; done; done
+
+for i in *.model; do echo train.py -m $i -p ../types/all_0.5_0_ --keep_best -t 1000 -i 100000 --reduced -d ../.. -o all_${i%.model}; done
+

@@ -71,6 +71,7 @@ sys.stdout.flush()
 if pending > args.pending_threshold:
     sys.exit(0)
 
+sys.exit(0)
 #create gnina-spearmint directory if it doesn't exist already
 if not os.path.exists('gnina-spearmint-incremental'):
     os.makedirs('gnina-spearmint-incremental')
@@ -103,6 +104,7 @@ if os.path.exists(args.info):
     #info file has what iteration we are on and the previous best when we moved to that iteration
     (level, prevbest) = open(args.info).readlines()[-1].split()
     level = int(level)
+    prevbest = float(prevbest)
 else:
     #very first time we've run
     level = 0
@@ -112,10 +114,10 @@ else:
     info.close()
 
 #check to see if we should promote level
-if bestRtop > prevbest:
+if bestRtop > prevbest*1.01:
     level += 1
     info = open(args.info,'a')
-    info.write('%d %f\n',(level,bestRtop))
+    info.write('%d %f\n' % (level,bestRtop))
     info.close()
     try:  #remove pickle file since number of parameters has changed
         os.remove('gnina-spearmint-incremental/chooser.GPEIOptChooser.pkl')
