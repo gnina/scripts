@@ -49,15 +49,17 @@ def evaluate_fold(testfile, caffemodel):
 	    m = re.search(r'(affinity.*_relu)_.*\.model',modelname)
 	    if m:
 		modelname = m.group(1)+".model"
+	if not os.path.exists(modelname):
+	    m = re.search(r'(affinity.*)_dynamic.*\.model',modelname)
+	    if m:
+		modelname = m.group(1)+".model"
         if not os.path.exists(modelname):
            print modelname,"does not exist"
-        
     caffe.set_mode_gpu()
     test_model = 'predict.%d.prototxt' % os.getpid()
-    train.write_model_file(test_model, modelname, testfile, testfile, '')
+    train.write_model_file(test_model, modelname, testfile, testfile, '../..')
     test_net = caffe.Net(test_model, caffemodel, caffe.TEST)
     lines = open(testfile).readlines()
-
     res = None
     i = 0 #index in batch
     correct = 0
