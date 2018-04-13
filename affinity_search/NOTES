@@ -281,6 +281,8 @@ cp ../iteration3/affinity_batch_relu.model .
 cp ../iteration6/affinity_0.250_conv4_pool1_grouped0_func1_swap0.model .
 #cmds only vary seed
 
+#check3
+different training protocols = dynamic fixed seems better
 
 #iteration 7 - want to train a more continuous model, try elu/lrn/no pool/32-32-32 with 3/5/7 conv kernels of stride 2
 
@@ -288,3 +290,12 @@ for w in 32 64; do for sz in 3 5 7; do ../makemodel.py  --pool1_size 0 --pool2_s
 
 for i in *.model; do echo train.py -m $i -p ../types/all_0.5_0_ --keep_best -t 1000 -i 100000 --reduced -d ../.. -o all_${i%.model}; done
 
+
+#check4
+test single changes towards more continuous affinity_batch_relu model
+affinity_batch_elu - replace ReLu with ELU
+affinity_batch_relu_ave - replace max with ave pooling
+affinity_batch_relu_conv5 - replace initial max with strided conv
+affinity_batch_relu_conv5g - replace initial max with strided grouped conv
+
+for m in *.model; do for i in {0..4}; do  echo train.py -m $m -p ../types/all_0.5_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 100000 --reduced -o ${m%.model}_$i --seed $i --dynamic --lr_policy fixed --step_when 5; done; done > cmds

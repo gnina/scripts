@@ -1,6 +1,6 @@
 #!/usr/bin/env python 
 
-'''Take a prefix, run predictions, and generate evaluations for crystal, bestonly, 
+'''Take a prefix and model name run predictions, and generate evaluations for crystal, bestonly, 
 and all test sets (take max affinity; if pose score is available also consider
 max pose score).
 Generates graphs and overall CV results.  Takes the prefix and (for now) assumes trial 0.
@@ -21,40 +21,15 @@ import sklearn.metrics
 import scipy.stats
 
 
-def evaluate_fold(testfile, caffemodel):
+def evaluate_fold(testfile, caffemodel, modelname):
     '''Evaluate the passed model and the specified test set.
-    Assumes the .model file is named a certain way.
     Returns tuple:
     (correct, prediction, receptor, ligand, label (optional), posescore (optional))
     label and posescore are only provided is trained on pose data
     '''
-    #figure out model name
-    m = re.search(r'_(affinity.*)\.\d_iter_\d+.caffemodel',caffemodel)
-    if not m:
-        print "Couldn't parse:",caffemodel
-    modelname = m.group(1)+".model"
     if not os.path.exists(modelname):
-        m = re.search(r'_(affinity.*)_lr\S+\.\d_iter_\d+.caffemodel',caffemodel)
-        if m:
-           modelname = m.group(1)+".model"
-        if not os.path.exists(modelname):
-           m = re.search(r'_(affinity.*)_(Adam|SGD).*\.\d_iter_\d+.caffemodel',caffemodel)
-           if m:
-              modelname = m.group(1)+".model"
-        if not os.path.exists(modelname): #try stripping off random seed
-            m = re.search(r'(affinity.*)_\d+.model',modelname)
-            if m:
-                modelname = m.group(1)+".model"
-	if not os.path.exists(modelname):
-	    m = re.search(r'(affinity.*_relu)_.*\.model',modelname)
-	    if m:
-		modelname = m.group(1)+".model"
-	if not os.path.exists(modelname):
-	    m = re.search(r'(affinity.*)_dynamic.*\.model',modelname)
-	    if m:
-		modelname = m.group(1)+".model"
-        if not os.path.exists(modelname):
-           print modelname,"does not exist"
+       print modelname,"does not exist"
+        
     caffe.set_mode_gpu()
     test_model = 'predict.%d.prototxt' % os.getpid()
     train.write_model_file(test_model, modelname, testfile, testfile, '../..')
@@ -171,8 +146,13 @@ def analyze_results(results, outname, uniquify=None):
         return (rmse, R, S)
     
 
-
+if len(sys.argv) != 4:
+    print "Need prefix, modelname, and output name"
+    sys.exit(1)
+    
 name = sys.argv[1]
+modelname = sys.argv[2]
+out = open(sys.argv[3],'w')
 
 allresults = []
 last = None
@@ -199,15 +179,15 @@ for testprefix in ['all','crystal','bestonly']:
                 best250 = inum                
         #evalute this fold
         testfile = '../types/%s_0.5_0_test%d.types' % (testprefix,fold)
-        if best25 > 0: testresults['best25'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best25))
-        if best50 > 0: testresults['best50'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best50))
-        if best100 > 0: testresults['best100'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best100))
+        if best25 > 0: testresults['best25'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best25), modelname)
+        if best50 > 0: testresults['best50'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best50), modelname)
+        if best100 > 0: testresults['best100'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best100), modelname)
         if os.path.exists('%s.%d_iter_%d.caffemodel' % (name,fold,100000)): #100k
-            testresults['100k'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,100000))
+            testresults['100k'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,100000), modelname)
             last = '100k'
         if os.path.exists('%s.%d_iter_%d.caffemodel' % (name,fold,250000)): #possibility that the 100k model was output even if went to 250k
-            if best250 > 0: testresults['best250'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best250))
-            testresults['250k'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,250000))
+            if best250 > 0: testresults['best250'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best250), modelname)
+            testresults['250k'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,250000), modelname)
             last = '250k'
         
     for n in testresults.keys():
@@ -222,10 +202,5 @@ for testprefix in ['all','crystal','bestonly']:
         else:    
             allresults.append( (testprefix, n) + analyze_results(testresults[n], testprefix+'_'+name+'_'+n) )
      
-if len(sys.argv) > 2:
-    out = open(sys.argv[2],'w')
-else:
-    out = sys.stdout
-
 for a in allresults:
     out.write(' '.join(map(str,a))+'\n')
