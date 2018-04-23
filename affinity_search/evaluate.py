@@ -9,7 +9,7 @@ Will evaluate 100k model and best model prior to 100k, 50k and 25k
 
 import numpy as np
 import os, sys
-os.environ["GLOG_minloglevel"] = "10"
+#os.environ["GLOG_minloglevel"] = "10"
 sys.path.append("/home/dkoes/git/gninascripts/")
 sys.path.append("/net/pulsar/home/koes/dkoes/git/gninascripts/")
 
@@ -157,7 +157,7 @@ out = open(sys.argv[3],'w')
 allresults = []
 last = None
 #for each test dataset
-for testprefix in ['all','crystal','bestonly']:
+for testprefix in ['all','crystal','bestonly','affpdb']:
     #find the relevant models for each fold
     testresults = {'best25': [], 'best50': [], 'best100': [], '100k': [], '250k': [], 'best250': [] }
     for fold in [0,1,2]:
@@ -182,6 +182,8 @@ for testprefix in ['all','crystal','bestonly']:
         if best25 > 0: testresults['best25'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best25), modelname)
         if best50 > 0: testresults['best50'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best50), modelname)
         if best100 > 0: testresults['best100'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best100), modelname)
+        if best250 > 0: testresults['best250'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best250), modelname)
+
         if os.path.exists('%s.%d_iter_%d.caffemodel' % (name,fold,100000)): #100k
             testresults['100k'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,100000), modelname)
             last = '100k'
@@ -195,10 +197,10 @@ for testprefix in ['all','crystal','bestonly']:
             print "Missing data with",n
         if len(testresults[n]) == 0:
             continue
-        if testprefix == 'all':
+        if testprefix == 'all' or testprefix == 'affpdb':
             if len(testresults[n][0]) == 6:
-                allresults.append( ('all_pose', n) + analyze_results(testresults[n],'all_pose_'+name+'_'+n,'pose'))
-            allresults.append( ('all_affinity', n) + analyze_results(testresults[n],'all_affinity_'+name+'_'+n,'affinity'))
+                allresults.append( ('%s_pose'%testprefix, n) + analyze_results(testresults[n],('%s_pose_'%testprefix)+name+'_'+n,'pose'))
+            allresults.append( ('%s_affinity'%testprefix, n) + analyze_results(testresults[n],('%s_affinity_'%testprefix)+name+'_'+n,'affinity'))
         else:    
             allresults.append( (testprefix, n) + analyze_results(testresults[n], testprefix+'_'+name+'_'+n) )
      
