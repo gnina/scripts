@@ -581,6 +581,8 @@ def train_and_test_model(args, files, outname, cont=0):
                     row += [test2_auc, train2_auc, train2_loss]
                 if result.rmsd is not None:
                     row += [test2_rmsd, train2_rmsd]
+            if result.rmsd_rmse is not None:
+                row += [test_rmsd_rmse, train_rmsd_rmse]
             out.write(' '.join('%.6f' % x for x in row) + '\n')
             out.flush()
 
@@ -666,7 +668,7 @@ def parse_args(argv=None):
     parser.add_argument('--step_reduce',type=float,help="Reduce the learning rate by this factor with dynamic stepping, default 0.1",default='0.1')
     parser.add_argument('--step_end',type=float,help='Terminate training if learning rate gets below this amount',default=0)
     parser.add_argument('--step_end_cnt',type=float,help='Terminate training after this many lr reductions',default=3)
-    parser.add_argument('--step_when',type=int,help="Perform a dynamic step (reduce base_lr) when training has not improved after this many test iterations, default 10",default=10)
+    parser.add_argument('--step_when',type=int,help="Perform a dynamic step (reduce base_lr) when training has not improved after this many test iterations, default 5",default=5)
     parser.add_argument('--base_lr',type=float,help='Initial learning rate, default 0.01',default=0.01)
     parser.add_argument('--momentum',type=float,help="Momentum parameters, default 0.9",default=0.9)
     parser.add_argument('--weight_decay',type=float,help="Weight decay, default 0.001",default=0.001)
@@ -677,7 +679,7 @@ def parse_args(argv=None):
     parser.add_argument('-d2','--data_root2',type=str,required=False,help="Root folder for relative paths in second train/test files for combined training",default='')
     parser.add_argument('--data_ratio',type=float,required=False,help="Ratio to combine training data from 2 sources",default=None)
     parser.add_argument('--test_only',action='store_true',default=False,help="Don't train, just evaluate test nets once")
-    parser.add_argument('--clip_gradients',type=float,default=0.0,help="Use clip gradients")
+    parser.add_argument('--clip_gradients',type=float,default=10.0,help="Clip gradients threshold (default 10)")
     args = parser.parse_args(argv)
     
     argdict = vars(args)

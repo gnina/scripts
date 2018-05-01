@@ -59,6 +59,7 @@ def add_conv_args(n,defaultwidth):
     '''
     
     parser.add_argument('--pool%d_size'%n,type=int,help="Pooling size for layer %d"%n,default=2 if defaultwidth > 0 else 0,choices=(0,2,4,8))
+    parser.add_argument('--pool%d_type'%n,type=str,help="Pooling type for layer %d"%n,default='MAX',choices=('MAX','AVE'))
     parser.add_argument('--conv%d_func'%n,type=str,help="Activation function in layer %d"%n,default='ReLU',choices=('ReLU','leaky','ELU','Sigmoid','TanH'))
     parser.add_argument('--conv%d_norm'%n,type=str,help="Normalization for layer %d"%n,default='none',choices=('BatchNorm','LRN','none'))
     parser.add_argument('--conv%d_size'%n,type=int,help="Convolutional kernel size for layer %d"%n,default=3,choices=(1,3,5,7))
@@ -119,7 +120,7 @@ layer {{
   bottom: "{lastlayer}"
   top: "unit{i}_pool"
   pooling_param {{
-    pool: MAX
+    pool: {pooltype}
     kernel_size: {size}
     stride: {size}
   }}
@@ -257,8 +258,9 @@ layer {
     vargs = vars(args)
     for i in xrange(1,6):
         poolsize = vargs['pool%d_size'%i]
+        pooltype = vargs['pool%d_type'%i]
         if poolsize > 0:
-            m += poollayer.format(i=i,lastlayer=lastlayer,size=poolsize)
+            m += poollayer.format(i=i,lastlayer=lastlayer,size=poolsize,pooltype=pooltype)
             lastlayer = 'unit{0}_pool'.format(i)
             
         convwidth = vargs['conv%d_width'%i]

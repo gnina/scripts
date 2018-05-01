@@ -179,6 +179,7 @@ for testprefix in ['all','crystal','bestonly','affpdb']:
                 best250 = inum                
         #evalute this fold
         testfile = '../types/%s_0.5_0_test%d.types' % (testprefix,fold)
+        #todo, avoid redundant repetitions
         if best25 > 0: testresults['best25'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best25), modelname)
         if best50 > 0: testresults['best50'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best50), modelname)
         if best100 > 0: testresults['best100'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best100), modelname)
