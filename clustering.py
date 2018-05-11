@@ -10,7 +10,12 @@ from functools import partial
 import scipy.cluster.hierarchy
 import numpy as np
 import sys, argparse, bisect, re, os, fnmatch
-import cPickle
+import cPickle, collections
+from rdkit.Chem import AllChem as Chem
+from rdkit.Chem import AllChem
+from rdkit.DataStructs import FingerprintSimilarity as fs
+from rdkit.Chem.Fingerprints import FingerprintMols
+import rdkit
 
 ''' Some amino acids have nonstandard residue names: 
 http://ambermd.org/tutorials/advanced/tutorial1_adv/
@@ -94,7 +99,7 @@ def calcClusterGroups(dists, target_names, t):
     return [set(target_names[i] for i in g) for g in groups]
 
 
-def createFolds(cluster_groups, numfolds, args):
+def createFolds(cluster_groups, numfolds, target_lines):
     '''split target clusters into numfolds folds with balanced num poses per fold'''
     folds = [[] for _ in range(numfolds)]
     fold_numposes = [0]*numfolds
@@ -102,14 +107,8 @@ def createFolds(cluster_groups, numfolds, args):
     foldmap = {}
     for i, group in enumerate(cluster_groups):
         #count num poses per group
-        for target in group:
-            path = os.path.join(args.data_root, target, args.posedir)
-            try:
-                numposes = len(fnmatch.filter(os.listdir(path), '*.gninatypes'))
-            except OSError: 
-                print('warning: {} gninatype files not found at {}'.format(target, path))
-                continue
-            group_numposes[i] += numposes
+        for target in group:            
+            group_numposes[i] += len(target_lines[target])
     for _ in cluster_groups:
         #iteratively assign group with most poses to fold with fewest poses
         maxgroup = group_numposes.index(np.max(group_numposes))
@@ -133,27 +132,23 @@ def index(a, x):
     else: return -1
 
 
-def crossvalidatefiles(folds, outname, numfolds, args):
+def crossvalidatefiles(folds, outname, numfolds, target_lines,reduce):
     #create test/train files
-    trainfiles = [open('{}train{}.types'.format(outname, i), 'w') for i in range(numfolds)]
-    testfiles = [open('{}test{}.types'.format(outname, i), 'w') for i in range(numfolds)]
+    trainfiles = [(open('{}train{}.types'.format(outname, i), 'w'),open('{}reducedtrain{}.types'.format(outname, i), 'w')) for i in range(numfolds)]
+    testfiles = [(open('{}test{}.types'.format(outname, i), 'w'),open('{}reducedtest{}.types'.format(outname, i), 'w')) for i in range(numfolds)]
     target_set = set(sum(folds, []))
-    with open(args.input, 'r') as file:
-        lines = file.readlines()
-    for line in lines:
-        for word in re.findall(r'[\w]+', line):
-            if word in target_set:
-                target = word
-                break
+    
+    for target in target_lines.iterkeys():
         for i in range(numfolds):
             if target in folds[i]:
-                fold = i
-                break
-        for i in range(numfolds):
-            if i == fold:
-                testfiles[i].write(line)
+                out = testfiles[i]
             else:
-                trainfiles[i].write(line)
+                out = trainfiles[i]
+            for line in target_lines[target]:
+                out[0].write(line)
+                if np.random.random() < reduce:
+                    out[1].write(line)
+            
 
 
 def loadFolds(inname, target_names, numfolds):
@@ -164,7 +159,7 @@ def loadFolds(inname, target_names, numfolds):
     foldmap = {}
     target_set = set(target_names)
     for i in range(numfolds):
-        for line in testfiles[i].readlines():
+        for line in testfiles[i]:
             for word in re.findall(r'[\w]+', line):
                 if word in target_set:
                     target = word
@@ -175,7 +170,7 @@ def loadFolds(inname, target_names, numfolds):
                 else:
                     assert target not in folds[j]
             foldmap[target] = i
-        for line in trainfiles[i].readlines():
+        for line in trainfiles[i]:
             for word in re.findall(r'[\w]+', line):
                 if word in target_set:
                     target = word
@@ -211,7 +206,21 @@ def checkFolds(dists, target_names, threshold, foldmap):
               .format(closest[0], closest[1], 100*(1-min_dist)))
     return ok
 
-
+def linesFromInput(infile):
+    '''return dictionary mapping target name to all lines of types file
+    Gets target name by looking for (\S+)/'''
+    ret = collections.defaultdict(list)
+    for line in open(infile):
+        m = re.search('\s(\S+)/',line)
+        if m:
+            targ = m.group(1)
+            ret[targ].append(line)
+        else:
+            print ("Could not identify target from line:\n%s"%line)
+            sys.exit(1)
+    return ret
+        
+        
 def readPDBfiles(pdbfiles,ncpus=cpu_count()):
     pdb_parser = PDBParser(PERMISSIVE=1, QUIET=1)
     with open(pdbfiles, 'r') as file:
@@ -240,37 +249,65 @@ def loadTarget(pdb_parser, line):
     except IOError:
         print('warning: {} does not exist'.format(target_pdb))
 
+def computeLigandSimilarity(target_names, fname):
+    '''Read target (first col) and ligand (third col) from fname. 
+    Return ligand similarity matrix indexed according to target_names'''
+    fingerprints = dict()
+    for line in open(fname):
+        vals = line.split()
+        targ = vals[0]
+        ligfile = vals[2]
+        smi = open(ligfile).readline().split()[0]
+        mol = AllChem.MolFromSmiles(smi)
+        if mol == None:
+            mol = AllChem.MolFromSmiles(smi,sanitize=False)
+        fp = FingerprintMols.FingerprintMol(mol)
+        fingerprints[targ] = fp
+    n = len(target_names)
+    sims = np.zeros((n,n))
+    for i in xrange(n):
+        for j in xrange(i+1):
+            fpi = fingerprints[target_names[i]]
+            fpj = fingerprints[target_names[j]]
+            sim = fs(fpi,fpj)
+            sims[i,j] = sims[j,i] = sim
+    return sims
+        
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='create train/test sets for cross-validation separating by sequence similarity of protein targets')
     parser.add_argument('--pdbfiles',type=str,help="file with target names and paths to pbdfiles of targets (separated by space)")
     parser.add_argument('--cpickle',type=str,help="cpickle file for precomputed distance matrix")
-    parser.add_argument('-i','--input',type=str,help="input .types file to create folds from")
+    parser.add_argument('-i','--input',type=str,help="input .types file to create folds from, it is assumed receptors in pdb named directories")
     parser.add_argument('-o','--output',type=str,default='',help='output name for clustered folds')
     parser.add_argument('-c','--check',type=str,help='input name for folds to check for similarity')
     parser.add_argument('-n', '--number',type=int,default=3,help="number of folds to create/check. default=3")
-    parser.add_argument('-s','--similarity',type=float,default=0.8,help='what percentage similarity to cluster by. default=0.8')
+    parser.add_argument('-s','--similarity',type=float,default=0.5,help='what percentage similarity to cluster by. default=0.8')
+    parser.add_argument('-l','--ligand_similarity',type=float,default=0.7,help='similarity threshold for ligands')
     parser.add_argument('-d','--data_root',type=str,default='/home/dkoes/PDBbind/general-set-with-refined/',help="path to target dirs")
     parser.add_argument('--posedir',required=False,default='',help='subdir of target dirs where ligand poses are located')
     parser.add_argument('--randomize',required=False,type=int,default=None,help='randomize inputs to get a different split, number is random seed')
     parser.add_argument('-v','--verbose',action='store_true',default=False,help='verbose output')
+    parser.add_argument('--reduce',type=float,default=0.05,help="Fraction to sample by for reduced files")
     args = parser.parse_args()
 
     threshold = 1 - args.similarity #similarity and distance are complementary
 
     if args.cpickle:
         with open(args.cpickle, 'r') as file:
-            (distanceMatrix, target_names) = cPickle.load(file)
+            (distanceMatrix, target_names,ligandsim) = cPickle.load(file)
     elif args.pdbfiles:
         if args.verbose: print("reading pdbs...")
         target_names, targets = readPDBfiles(args.pdbfiles)
         if args.verbose: print("calculating distance matrix...")
         distanceMatrix = calcDistanceMatrix(targets)
-        cPickle.dump((distanceMatrix, target_names), open(args.input.replace('.types','.pickle'),'w'),-1)
+        ligandsim = computeLigandSimilarity(target_names, args.pdbfiles) #returns similarity matrix indexed according to target_names
+        cPickle.dump((distanceMatrix, target_names, ligandsim), open(args.pdbfiles+'.pickle','w'),-1)
     else:
         exit('error: need --cpickle or --pdbfiles to compute target distance matrix')
     if args.verbose: print('Number of targets: {}'.format(len(target_names)))
 
+        
     if args.randomize != None:
         np.random.seed(args.randomize)
         n = len(target_names)
@@ -280,18 +317,19 @@ if __name__ == '__main__':
         distanceMatrix = distanceMatrix[:,indices]
         
     if args.input:
+        target_lines = linesFromInput(args.input)
         cluster_groups = calcClusterGroups(distanceMatrix, target_names, threshold)
         if args.verbose: print('{} clusters created'.format(len(cluster_groups)))
         if args.verbose:
             for i, g in enumerate(cluster_groups):
                 print('Cluster {}: {}'.format(i, ' '.join(str(t) for t in g)))
 
-        folds, foldmap = createFolds(cluster_groups, args.number, args)
+        folds, foldmap = createFolds(cluster_groups, args.number, target_lines)
         for i, fold in enumerate(folds):
             print('{} targets in fold {}'.format(len(fold), i))
 
         if args.verbose: print('Making .types files')
-        crossvalidatefiles(folds, args.output, args.number, args)
+        crossvalidatefiles(folds, args.output, args.number, target_lines, args.reduce)
 
     if args.check:
         folds, foldmap = loadFolds(args.check, target_names, args.number)

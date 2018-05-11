@@ -656,7 +656,7 @@ def parse_args(argv=None):
     parser.add_argument('-g','--gpu',type=int,help='Specify GPU to run on',default=-1)
     parser.add_argument('-c','--cont',type=int,help='Continue a previous simulation from the provided iteration (snapshot must exist)',default=0)
     parser.add_argument('-k','--keep',action='store_true',default=False,help="Don't delete prototxt files")
-    parser.add_argument('-r', '--reduced', action='store_true',default=False,help="Use a reduced file for model evaluation if exists(<prefix>[_reducedtrain|_reducedtest][num].types)")
+    parser.add_argument('-r', '--reduced', action='store_true',default=False,help="Use a reduced file for model evaluation if exists(<prefix>[reducedtrain|reducedtest][num].types)")
     parser.add_argument('--avg_rotations', action='store_true',default=False, help="Use the average of the testfile's 24 rotations in its evaluation results")
     parser.add_argument('--checkpoint', action='store_true',default=False,help="Enable automatic checkpointing")
     #parser.add_argument('-v,--verbose',action='store_true',default=False,help='Verbose output')
@@ -703,7 +703,7 @@ def get_train_test_files(prefix, foldnums, allfolds, reduced, prefix2):
         glob_files = glob.glob(prefix + '*')
         if prefix2:
             glob_files += glob.glob(prefix2 + '*')
-        pattern = r'(%s|%s)(_reduced)?(train|test)(\d+)\.types$' % (prefix, prefix2)
+        pattern = r'(%s|%s)(reduced)?(train|test)(\d+)\.types$' % (prefix, prefix2)
         for file in glob_files:
             match = re.match(pattern, file)
             if match:
@@ -715,24 +715,24 @@ def get_train_test_files(prefix, foldnums, allfolds, reduced, prefix2):
         files[i]['train'] = '%strain%d.types' % (prefix, i)
         files[i]['test'] = '%stest%d.types' % (prefix, i)
         if reduced:
-            files[i]['reduced_train'] = '%s_reducedtrain%d.types' % (prefix, i)
-            files[i]['reduced_test'] = '%s_reducedtest%d.types' % (prefix, i)
+            files[i]['reduced_train'] = '%sreducedtrain%d.types' % (prefix, i)
+            files[i]['reduced_test'] = '%sreducedtest%d.types' % (prefix, i)
         if prefix2:
             files[i]['train2'] = '%strain%d.types' % (prefix2, i)
             files[i]['test2'] = '%stest%d.types' % (prefix2, i)
             if reduced:
-                files[i]['reduced_train2'] = '%s_reducedtrain%d.types' % (prefix2, i)
-                files[i]['reduced_test2'] = '%s_reducedtest%d.types' % (prefix2, i)
+                files[i]['reduced_train2'] = '%sreducedtrain%d.types' % (prefix2, i)
+                files[i]['reduced_test2'] = '%sreducedtest%d.types' % (prefix2, i)
     if allfolds:
         i = 'all'
         files[i] = {}
         files[i]['train'] = files[i]['test'] = '%s.types' % prefix
         if reduced:
-            files[i]['reduced_train'] = files[i]['reduced_test'] = '%s_reduced.types' % prefix
+            files[i]['reduced_train'] = files[i]['reduced_test'] = '%sreduced.types' % prefix
         if prefix2:
             files[i]['train2'] = files[i]['test2'] = '%s.types' % prefix2
             if reduced:
-                files[i]['reduced_train2'] = files[i]['reduced_test2'] = '%s_reduced.types' % prefix2
+                files[i]['reduced_train2'] = files[i]['reduced_test2'] = '%sreduced.types' % prefix2
     for i in files:
         for file in files[i].values():
             check_file_exists(file)

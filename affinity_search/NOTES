@@ -35,7 +35,7 @@ cat pdbbind.train cnnmin.types cnnmin2.types > affinity_search/all.types
 
 #Create new train/test sets:
 
-~/git/gninascripts/compute_seqs.py --pdbfiles pdbinfo --out pdb.seqs
+~/git/gninascripts/compute_seqs.py --q pdbinfo --out pdb.seqs
 # distribute the row computation
 ~/git/gninascripts/compute_row.py --pdbseqs pdb.seqs -r 0 --out seqdist/row.0
 ~/git/gninascripts/combine_rows.py seqrow.*
@@ -357,6 +357,7 @@ as expected, train on train gets worse
 surprisingly, in some cases converge to the _exact same values_!!?
 clip_gradients by itself generally improves performance and reduces variance
 
+
 #iteration9
 The goal of this iteration is to figure out if we can get away with a stride 4 convolution
 in the first layer instead of pooling.
@@ -381,7 +382,101 @@ done
 done
 cp ../iteration8/affinity_batch_relu_ave.model .  #rerun baseline
 
-#modify training to include clip gradients and larger weight_decay OR NOT????
 
-for m in *.model; do for i in {0..4}; do  echo train.py -m $m -p ../types/all_wc6_0.5_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_$i --seed $i --dynamic --lr_policy fixed --step_when 5 --clip_gradients 10 --weight_decay 0.005; done; done > cmds
+#default is now step_when 5 and clip_gradients 10
+for m in *.model; do for i in {0..4}; do  echo train.py -m $m -d ../.. -p ../types/all_wc6_0.5_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_$i --seed $i --dynamic --lr_policy fixed ; done; done > cmds
 
+
+bate_relu_ave  does much better at pose selectio (significantly so), with less variance
+definite trend that models with more parameters do better at pose selection
+less clear trend with affinity prediciton - nothing significantly (p < 0.001) better, 
+but almost all the new models would probably be better if they could drop the worse point
+seed 0 is always worse with the new models??  are the other splits not as conservative??
+
+looking only at the worse performer (seed 0 presumably), the best affinity prediciton models are (R > 0.57)
+5_32_64_1
+batch_relue_ave
+5_32_32_0
+5_16_64_0
+5_32_32_1
+5_16_32_0
+
+
+the best models by top are the 7 kernels, or 5_64, but the are 62-64% vs batch_relue_ave's 71.7%
+5_32_32_1  is the best (61.8%) of the good affinity models
+seems like striding by 4 hurts pose selection - need good resolution
+These models have one additional round of dimensionality reduction, need evaluate that effect
+Also want to try dropout.
+D'OH!  makemodel files had different affinitylyaer parames AND different random translate
+
+#iteration 9.1
+
+Reevalute above with random_translate at 6 and using the same affinity loss params
+Evaluate batch_relu with alt affinity loss params
+Skip some values.
+Note I modify makemodel to random_translate 6
+
+sz=5
+for double in 0 1
+do
+for w1 in 32 64
+do
+for w in 32 64
+do 
+    ../makemodel.py  --pool1_size 0   --conv1_size $sz --conv1_stride 4 --conv1_width $w1 --conv1_norm BatchNorm \
+    --pool2_type AVE --conv2_norm BatchNorm  --conv2_size 3 --conv2_stride 1 --conv2_width $w \
+    --pool3_type AVE --conv3_norm BatchNorm  --conv3_size 3 --conv3_stride 1 --conv3_width $(($w*($double+1))) \
+    --pool4_type AVE --conv4_norm BatchNorm  --conv4_size 3 --conv4_stride 1 --conv4_width $(($w*($double+1)*($double+1))) \
+    --loss_pseudohuber 0 --loss_gap 1 \
+     > affinity_phg_${sz}_${w1}_${w}_${double}.model
+done
+done
+done
+
+#the following should match affinity_batch_relue
+../makemodel.py --conv1_norm BatchNorm --conv2_norm BatchNorm --conv3_norm BatchNorm --pool1_type AVE --pool2_type AVE --pool3_type AVE --conv1_width 32 --conv2_width 32 --conv3_width 32 --loss_pseudohuber 0 --loss_gap 1  > relu_batch.model
+#with default affinity loss
+../makemodel.py --conv1_norm BatchNorm --conv2_norm BatchNorm --conv3_norm BatchNorm --pool1_type AVE --pool2_type AVE --pool3_type AVE --conv1_width 32 --conv2_width 32 --conv3_width 32 > relu_batch_nphg.model
+cp relu_batch.model relu_batch_t2.model  #edit to random_translate 2
+
+
+The different affinity parameters don't seem to matter much - maybe a bit more variance. 
+Slightly better affinity prediction with translate=2
+stride 4 definitely hurts pose selection
+Not a lot of different on the conv models - 32_32_0 might be weaker, but also less prone to overfitting?
+
+
+CREATE NEW TRAINING SPLITS
+for i in {0..4}
+ do
+ ~/git/gninascripts/clustering.py -i types/all_wc6_all.types  -s 0.5 -v -d .. -o types/all_wlig_${i}_ --cpickle pdbinfowlig.pickle --randomize $i
+done
+
+
+----------- revaluate below
+
+Will explore with 5_32_32_1.  
+-Try removing pool into first 3^3 conv layer
+-set to stride 2
+-use pseudohuber false, gap1
+
+Regular batch_relu
+-Add a conv3 layer
+-use pseudohuber true, gap 0, delta 4
+
+w1=32
+sz=5
+w=32
+double=1
+../makemodel.py  --pool1_size 0   --conv1_size $sz --conv1_stride 4 --conv1_width $w1 --conv1_norm BatchNorm \
+    --pool2_size 0 --conv2_norm BatchNorm  --conv2_size 3 --conv2_stride 1 --conv2_width $w \
+    --pool3_type AVE --conv3_norm BatchNorm  --conv3_size 3 --conv3_stride 1 --conv3_width $(($w*($double+1))) \
+    --pool4_type AVE --conv4_norm BatchNorm  --conv4_size 3 --conv4_stride 1 --conv4_width $(($w*($double+1)*($double+1))) \
+     > affinity_${sz}_${w1}_${w}_${double}_nopool.model
+../makemodel.py  --pool1_size 0   --conv1_size $sz --conv1_stride 2 --conv1_width $w1 --conv1_norm BatchNorm \
+    --pool2_type AVE --conv2_norm BatchNorm  --conv2_size 3 --conv2_stride 1 --conv2_width $w \
+    --pool3_type AVE --conv3_norm BatchNorm  --conv3_size 3 --conv3_stride 1 --conv3_width $(($w*($double+1))) \
+    --pool4_type AVE --conv4_norm BatchNorm  --conv4_size 3 --conv4_stride 1 --conv4_width $(($w*($double+1)*($double+1))) \
+     > affinity_${sz}_s2_${w1}_${w}_${double}.model     
+     
+../makemodel.py --conv1_norm BatchNorm --conv2_norm BatchNorm --conv_norm BatchNorm

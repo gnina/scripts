@@ -32,19 +32,19 @@ parser.add_argument('--solver',type=str,help="Solver type",default='SGD',choices
 
 
 # training parameters
-parser.add_argument('--balanced',type=bool,help="Balance training data",default=1,choices=(0,1))
-parser.add_argument('--stratify_receptor',type=bool,help="Stratify receptor",default=1,choices=(0,1))
-parser.add_argument('--stratify_affinity',type=bool,help="Stratify affinity, min=2,max=10",default=0,choices=(0,1))
+parser.add_argument('--balanced',type=int,help="Balance training data",default=1,choices=(0,1))
+parser.add_argument('--stratify_receptor',type=int,help="Stratify receptor",default=1,choices=(0,1))
+parser.add_argument('--stratify_affinity',type=int,help="Stratify affinity, min=2,max=10",default=0,choices=(0,1))
 parser.add_argument('--stratify_affinity_step',type=float,help="Stratify affinity step",default=1,choices=(1,2,4))
 parser.add_argument('--resolution',type=float,help="Grid resolution",default=0.5,choices=(0.5,1.0)) #need smal
 
 # loss parameters
 parser.add_argument('--loss_gap',type=float,help="Affinity loss gap",default=0,choices=Range(0,5),metavar='g')
 parser.add_argument('--loss_penalty',type=float,help="Affinity loss penalty",default=0,choices=Range(0,5),metavar='p')
-parser.add_argument('--loss_pseudohuber',type=bool,help="Use pseudohuber loss",default=1,choices=(0,1))
+parser.add_argument('--loss_pseudohuber',type=int,help="Use pseudohuber loss",default=1,choices=(0,1))
 parser.add_argument('--loss_delta',type=float,help="Affinity loss delta",default=4,choices=Range(0,8),metavar='d')
 parser.add_argument('--ranklossmult',type=float,help="Affinity rank loss multiplier",default=0,choices=Range(0,1),metavar='r')
-parser.add_argument('--ranklossneg',type=bool,help="Affinity rank loss include neg",default=0,choices=(0,1))
+parser.add_argument('--ranklossneg',type=int,help="Affinity rank loss include neg",default=0,choices=(0,1))
 
 
 #the model is N convolutional layers (each independently configured, N <= 5) followed by 1 or 2 fully connected
@@ -245,7 +245,7 @@ layer {
         stratify_affinity_step: %f
         has_affinity: true
         random_rotation: true
-        random_translate: 2
+        random_translate: 6
         root_folder: "DATA_ROOT"
     }
 }
