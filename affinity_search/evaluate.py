@@ -158,7 +158,8 @@ allresults = []
 last = None
 #for each test dataset
 for testprefix in sys.argv[4:]:
-    m = re.search('(\S*)_(\d+)_$', testprefix)
+    m = re.search('([^/ ]*)_(\d+)_$', testprefix)
+    print m,testprefix
     if not m:
         print testprefix,"does not end in slicenum"
     slicenum = int(m.group(2))
