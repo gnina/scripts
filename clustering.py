@@ -73,34 +73,38 @@ def cUTDM2(targets, pair):
     return (a, b, mindist)
 
 
-def assignGroup(dists, t, explore):
+def assignGroup(dists, ligandsim, t, t2, ligandt, explore, names):
     '''group targets that are less than t away from each other and what's in explore'''
     group = set(explore)
     while explore:
         frontier = set()
         for i in explore:
             for j in range(dists.shape[1]):
-                if dists[i][j] < t and j not in group:
-                    group.add(j)
-                    frontier.add(j)
+                if j not in group:
+                    if dists[i][j] < t or (ligandsim[i][j] > ligandt and dists[i][j] >= t2):
+                        group.add(j)
+                        frontier.add(j)                
+                                        
         explore = frontier
     return group
 
 
-def calcClusterGroups(dists, target_names, t):
+def calcClusterGroups(dists, ligandsim, target_names, t, t2, ligandt):
     '''dists is a distance matrix (full) for target_names'''
     assigned = set()
     groups = []
     for i in range(dists.shape[0]):
         if i not in assigned:
-            group = assignGroup(dists, t, set([i]))
+            group = assignGroup(dists, ligandsim, t, t2, ligandt, set([i]),target_names)
             groups.append(group)
             assigned.update(group)
     return [set(target_names[i] for i in g) for g in groups]
 
 
-def createFolds(cluster_groups, numfolds, target_lines):
-    '''split target clusters into numfolds folds with balanced num poses per fold'''
+def createFolds(cluster_groups, numfolds, target_lines, randomize):
+    '''split target clusters into numfolds folds with balanced num poses per fold
+       If randomize, will balance less well.
+    '''
     folds = [[] for _ in range(numfolds)]
     fold_numposes = [0]*numfolds
     group_numposes = [0]*len(cluster_groups)
@@ -112,7 +116,21 @@ def createFolds(cluster_groups, numfolds, target_lines):
     for _ in cluster_groups:
         #iteratively assign group with most poses to fold with fewest poses
         maxgroup = group_numposes.index(np.max(group_numposes))
-        minfold = fold_numposes.index(np.min(fold_numposes))
+        if randomize:
+            space = np.max(fold_numposes) - np.array(fold_numposes)
+            tot = np.sum(space)
+            if tot == 0:
+                minfold = np.random.choice(numfolds)
+            else: #weighted selection, prefer spots with more free space
+                choice = np.random.choice(tot)
+                tot = 0
+                for i in xrange(len(space)):
+                    tot += space[i]
+                    if choice < tot:
+                        minfold = i
+                        break
+        else:
+            minfold = fold_numposes.index(np.min(fold_numposes))
         folds[minfold].extend(cluster_groups[maxgroup])
         fold_numposes[minfold] += group_numposes[maxgroup]
         group_numposes[maxgroup] = -1
@@ -282,8 +300,9 @@ if __name__ == '__main__':
     parser.add_argument('-o','--output',type=str,default='',help='output name for clustered folds')
     parser.add_argument('-c','--check',type=str,help='input name for folds to check for similarity')
     parser.add_argument('-n', '--number',type=int,default=3,help="number of folds to create/check. default=3")
-    parser.add_argument('-s','--similarity',type=float,default=0.5,help='what percentage similarity to cluster by. default=0.8')
-    parser.add_argument('-l','--ligand_similarity',type=float,default=0.7,help='similarity threshold for ligands')
+    parser.add_argument('-s','--similarity',type=float,default=0.5,help='what percentage similarity to cluster by. default=0.5')
+    parser.add_argument('-s2','--similarity_with_similar_ligand',type=float,default=0.2,help='what percentage similarity to cluster by when ligands are similar default=0.2')
+    parser.add_argument('-l','--ligand_similarity',type=float,default=0.9,help='similarity threshold for ligands, default=0.9')
     parser.add_argument('-d','--data_root',type=str,default='/home/dkoes/PDBbind/general-set-with-refined/',help="path to target dirs")
     parser.add_argument('--posedir',required=False,default='',help='subdir of target dirs where ligand poses are located')
     parser.add_argument('--randomize',required=False,type=int,default=None,help='randomize inputs to get a different split, number is random seed')
@@ -292,6 +311,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     threshold = 1 - args.similarity #similarity and distance are complementary
+    threshold2 = 1 - args.similarity_with_similar_ligand
+    ligand_threshold = args.ligand_similarity #this actually is a sim
 
     if args.cpickle:
         with open(args.cpickle, 'r') as file:
@@ -315,16 +336,33 @@ if __name__ == '__main__':
         target_names = list(np.array(target_names)[indices])
         distanceMatrix = distanceMatrix[indices]
         distanceMatrix = distanceMatrix[:,indices]
+        ligandsim = ligandsim[indices]
+        ligandsim = ligandsim[:,indices]
         
+    #de-link super common ligand
+    
+    #while True:
+        #mi = np.argmax([np.sum(row == 1.0) for row in ligandsim[:,]])
+        #cnt = np.sum(ligandsim[mi] == 1.0)
+        #print(target_names[mi],cnt)
+        #if cnt < 10:
+            #break
+        
+        #for i in xrange(len(ligandsim)):
+            #if ligandsim[mi][i] == 1.0:
+                #ligandsim[ligandsim[:,i] == 1.0,i] = 0.0
+    
+    
     if args.input:
         target_lines = linesFromInput(args.input)
-        cluster_groups = calcClusterGroups(distanceMatrix, target_names, threshold)
+        cluster_groups = calcClusterGroups(distanceMatrix, ligandsim, target_names, threshold, threshold2, ligand_threshold)
         if args.verbose: print('{} clusters created'.format(len(cluster_groups)))
         if args.verbose:
             for i, g in enumerate(cluster_groups):
                 print('Cluster {}: {}'.format(i, ' '.join(str(t) for t in g)))
 
-        folds, foldmap = createFolds(cluster_groups, args.number, target_lines)
+        print("Max cluster size: %d" % np.max([len(c) for c in cluster_groups]))
+        folds, foldmap = createFolds(cluster_groups, args.number, target_lines, args.randomize)
         for i, fold in enumerate(folds):
             print('{} targets in fold {}'.format(len(fold), i))
 

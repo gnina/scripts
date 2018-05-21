@@ -146,18 +146,19 @@ def analyze_results(results, outname, uniquify=None):
         return (rmse, R, S)
     
 
-if len(sys.argv) != 4:
-    print "Need prefix, modelname, and output name"
+if len(sys.argv) <= 5:
+    print "Need caffemodel prefix,  modelname, slice number, output name and test prefixes"
     sys.exit(1)
     
 name = sys.argv[1]
 modelname = sys.argv[2]
-out = open(sys.argv[3],'w')
+slicenum = int(sys.argv[3])
+out = open(sys.argv[4],'w')
 
 allresults = []
 last = None
 #for each test dataset
-for testprefix in ['all','crystal','bestonly','affpdb']:
+for testprefix in sys.argv[5:]:
     #find the relevant models for each fold
     testresults = {'best25': [], 'best50': [], 'best100': [], '100k': [], '250k': [], 'best250': [] }
     for fold in [0,1,2]:
@@ -178,7 +179,7 @@ for testprefix in ['all','crystal','bestonly','affpdb']:
             if inum < 250000 and inum > best250:
                 best250 = inum                
         #evalute this fold
-        testfile = '../types/%s_0.5_0_test%d.types' % (testprefix,fold)
+        testfile = '../types/%s_%d_test%d.types' % (testprefix,slicenum,fold)
         #todo, avoid redundant repetitions
         if best25 > 0: testresults['best25'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best25), modelname)
         if best50 > 0: testresults['best50'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best50), modelname)
@@ -198,12 +199,10 @@ for testprefix in ['all','crystal','bestonly','affpdb']:
             print "Missing data with",n
         if len(testresults[n]) == 0:
             continue
-        if testprefix == 'all' or testprefix == 'affpdb':
-            if len(testresults[n][0]) == 6:
-                allresults.append( ('%s_pose'%testprefix, n) + analyze_results(testresults[n],('%s_pose_'%testprefix)+name+'_'+n,'pose'))
-            allresults.append( ('%s_affinity'%testprefix, n) + analyze_results(testresults[n],('%s_affinity_'%testprefix)+name+'_'+n,'affinity'))
-        else:    
-            allresults.append( (testprefix, n) + analyze_results(testresults[n], testprefix+'_'+name+'_'+n) )
+        if len(testresults[n][0]) == 6:
+            allresults.append( ('%s_pose'%testprefix, n) + analyze_results(testresults[n],('%s_pose_'%testprefix)+name+'_'+n,'pose'))
+        allresults.append( ('%s_affinity'%testprefix, n) + analyze_results(testresults[n],('%s_affinity_'%testprefix)+name+'_'+n,'affinity'))
+
      
 for a in allresults:
     out.write(' '.join(map(str,a))+'\n')

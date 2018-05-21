@@ -445,12 +445,16 @@ Slightly better affinity prediction with translate=2
 stride 4 definitely hurts pose selection
 Not a lot of different on the conv models - 32_32_0 might be weaker, but also less prone to overfitting?
 
-
-CREATE NEW TRAINING SPLITS
+==========================
+CREATE NEW TRAINING SPLITS TAKING LIGAND SIM INTO ACCOUNT
 for i in {0..4}
  do
  ~/git/gninascripts/clustering.py -i types/all_wc6_all.types  -s 0.5 -v -d .. -o types/all_wlig_${i}_ --cpickle pdbinfowlig.pickle --randomize $i
 done
+
+#in iteration9.1, for comparison
+for m in relu_batch.model  affinity_phg_5_32_32_1.model ; do for i in {0..4}; do  echo train.py -m $m -d ../.. -p ../types/all_wlig_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_wlig_$i --seed $i --dynamic --lr_policy fixed ; done; done >> cmds
+
 
 
 ----------- revaluate below
