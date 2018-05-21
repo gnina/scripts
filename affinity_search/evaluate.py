@@ -147,7 +147,7 @@ def analyze_results(results, outname, uniquify=None):
     
 
 if len(sys.argv) <= 5:
-    print "Need caffemodel prefix,  modelname, slice number, output name and test prefixes"
+    print "Need caffemodel prefix,  modelname, output name and test prefixes (which should include _<slicenum>_ at end)"
     sys.exit(1)
     
 name = sys.argv[1]
@@ -159,6 +159,11 @@ allresults = []
 last = None
 #for each test dataset
 for testprefix in sys.argv[5:]:
+    m = re.search('(\S*)_(\d+)_$', testprefix)
+    if not m:
+        print testprefix,"does not end in slicenum"
+    slicenum = int(m.group(2))
+    testname = m.group(1)
     #find the relevant models for each fold
     testresults = {'best25': [], 'best50': [], 'best100': [], '100k': [], '250k': [], 'best250': [] }
     for fold in [0,1,2]:
@@ -179,7 +184,7 @@ for testprefix in sys.argv[5:]:
             if inum < 250000 and inum > best250:
                 best250 = inum                
         #evalute this fold
-        testfile = '../types/%s_%d_test%d.types' % (testprefix,slicenum,fold)
+        testfile = '../types/%stest%d.types' % (testprefix,fold)
         #todo, avoid redundant repetitions
         if best25 > 0: testresults['best25'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best25), modelname)
         if best50 > 0: testresults['best50'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best50), modelname)

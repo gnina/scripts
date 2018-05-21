@@ -457,6 +457,9 @@ for m in relu_batch.model  affinity_phg_5_32_32_1.model ; do for i in {0..4}; do
 
 
 
+====================
+FOR CYRING OUT LOUD - I was always evaluationg using slice 0
+
 ----------- revaluate below
 
 Will explore with 5_32_32_1.  
