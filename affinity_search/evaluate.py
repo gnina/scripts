@@ -146,19 +146,18 @@ def analyze_results(results, outname, uniquify=None):
         return (rmse, R, S)
     
 
-if len(sys.argv) <= 5:
+if len(sys.argv) <= 4:
     print "Need caffemodel prefix,  modelname, output name and test prefixes (which should include _<slicenum>_ at end)"
     sys.exit(1)
     
 name = sys.argv[1]
 modelname = sys.argv[2]
-slicenum = int(sys.argv[3])
-out = open(sys.argv[4],'w')
+out = open(sys.argv[3],'w')
 
 allresults = []
 last = None
 #for each test dataset
-for testprefix in sys.argv[5:]:
+for testprefix in sys.argv[4:]:
     m = re.search('(\S*)_(\d+)_$', testprefix)
     if not m:
         print testprefix,"does not end in slicenum"
