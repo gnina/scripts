@@ -205,8 +205,8 @@ for testprefix in sys.argv[4:]:
         if len(testresults[n]) == 0:
             continue
         if len(testresults[n][0]) == 6:
-            allresults.append( ('%s_pose'%testprefix, n) + analyze_results(testresults[n],('%s_pose_'%testprefix)+name+'_'+n,'pose'))
-        allresults.append( ('%s_affinity'%testprefix, n) + analyze_results(testresults[n],('%s_affinity_'%testprefix)+name+'_'+n,'affinity'))
+            allresults.append( ('%s_pose'%testname, n) + analyze_results(testresults[n],('%s_pose_'%testprefix)+name+'_'+n,'pose'))
+        allresults.append( ('%s_affinity'%testname, n) + analyze_results(testresults[n],('%s_affinity_'%testprefix)+name+'_'+n,'affinity'))
 
      
 for a in allresults:
