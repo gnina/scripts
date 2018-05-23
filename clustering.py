@@ -81,7 +81,10 @@ def assignGroup(dists, ligandsim, t, t2, ligandt, explore, names):
         for i in explore:
             for j in range(dists.shape[1]):
                 if j not in group:
-                    if dists[i][j] < t or (ligandsim[i][j] > ligandt and dists[i][j] >= t2):
+                    #add to the group if protein is close by threshold t (these are distances - default 0.5)
+                    #also add if the ligands are more similar (not distance) than ligandt and 
+                    #the protein is closer than t2 (default 0.8 - meaning more than 20% similar)
+                    if dists[i][j] < t or (ligandsim[i][j] > ligandt and dists[i][j] < t2):
                         group.add(j)
                         frontier.add(j)                
                                         
@@ -301,7 +304,7 @@ if __name__ == '__main__':
     parser.add_argument('-c','--check',type=str,help='input name for folds to check for similarity')
     parser.add_argument('-n', '--number',type=int,default=3,help="number of folds to create/check. default=3")
     parser.add_argument('-s','--similarity',type=float,default=0.5,help='what percentage similarity to cluster by. default=0.5')
-    parser.add_argument('-s2','--similarity_with_similar_ligand',type=float,default=0.2,help='what percentage similarity to cluster by when ligands are similar default=0.2')
+    parser.add_argument('-s2','--similarity_with_similar_ligand',type=float,default=0.3,help='what percentage similarity to cluster by when ligands are similar default=0.3')
     parser.add_argument('-l','--ligand_similarity',type=float,default=0.9,help='similarity threshold for ligands, default=0.9')
     parser.add_argument('-d','--data_root',type=str,default='/home/dkoes/PDBbind/general-set-with-refined/',help="path to target dirs")
     parser.add_argument('--posedir',required=False,default='',help='subdir of target dirs where ligand poses are located')
