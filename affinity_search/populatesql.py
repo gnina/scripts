@@ -5,7 +5,7 @@
 import sys, re, MySQLdb
 import pandas as pd
         
-conn = MySQLdb.connect (host = "35.196.158.205",user = "opter",passwd=sys.argv[2],db="opt1")
+conn = MySQLdb.connect (host = "35.196.158.205",user = "opter",passwd=sys.argv[2],db="opt2")
 cursor = conn.cursor()
 
 data = pd.read_csv(sys.argv[1])

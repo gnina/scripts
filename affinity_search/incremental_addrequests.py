@@ -44,7 +44,7 @@ def getcursor():
 parser = argparse.ArgumentParser(description='Generate more configurations if needed')
 parser.add_argument('--host',type=str,help='Database host',required=True)
 parser.add_argument('-p','--password',type=str,help='Database password',required=True)
-parser.add_argument('--db',type=str,help='Database name',default='opt1')
+parser.add_argument('--db',type=str,help='Database name',default='database')
 parser.add_argument('--pending_threshold',type=int,default=12,help='Number of pending jobs that triggers an update')
 parser.add_argument('-n','--num_configs',type=int,default=1,help='Number of configs to generate - will add 3X as many jobs') 
 parser.add_argument('-s','--spearmint',type=str,help='Location of spearmint-lite.py',required=True)

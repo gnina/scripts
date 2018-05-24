@@ -85,9 +85,9 @@ solver = params.solver
 #setup training
 prefix = '%s%d_'% (args.prefix,args.split)
 trainargs = train.parse_args(['--seed',str(args.seed),'--prefix',prefix,'--data_root',
-    args.data_root,'-t','1000','-i','100000','-m','model.model','--checkpoint',
+    args.data_root,'-t','1000','-i','250000','-m','model.model','--checkpoint',
     '--reduced','-o',d,'--momentum',str(momentum),'--weight_decay',str(weight_decay),
-    '--base_lr',str(base_lr),'--solver',solver])[0]
+    '--base_lr',str(base_lr),'--solver',solver,'--dynamic','--lr_policy','fixed'])[0]
 
 train_test_files = train.get_train_test_files(prefix=prefix, foldnums=None, allfolds=False, reduced=True, prefix2=None)
 if len(train_test_files) == 0:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 '''Given a results.dat file and password for db, put the contents into google sql as
-configurations that are being requested.  Specify three of each.'''
+configurations that are being requested.  Specify five of each.'''
 
 import sys, re, MySQLdb
 import pandas as pd
@@ -30,8 +30,7 @@ def addrows(fname,host,db,password,start=0):
         names += ',id'
         values += ',"REQUESTED"'
         #do three variations
-        for _ in xrange(3):
-            split = np.random.randint(0,5)
+        for split in xrange(5):
             seed = np.random.randint(0,100000)
             n = names + ',split,seed'
             v = values + ',%d,%d' % (split,seed) 
@@ -40,4 +39,4 @@ def addrows(fname,host,db,password,start=0):
     conn.commit()
 
 if __name__ == '__main__':
-    addrows(sys.argv[1],"35.196.158.205","opt1",sys.argv[2])
+    addrows(sys.argv[1],"35.196.158.205","opt2",sys.argv[2])

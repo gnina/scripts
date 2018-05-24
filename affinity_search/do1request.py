@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 '''Connects to sql database.
-   Checks (atomically to see if there are an configurations that should be run 
+   Checks atomically to see if there are an configurations that should be run 
    because they are requested (R).  If so, runs one
    '''
 
@@ -127,7 +127,7 @@ except Exception as e:
     cursor.execute('UPDATE params SET id = "ERROR", msg = %s WHERE serial = %s',(str(pid),config['serial']))
     print "Error"
     print output
-    if re.search(r'out of memory',output) and host.startswith('gnina'):
+    if re.search(r'out of memory',output) and (host.startswith('gnina') or host.startswith('client')):
         #host migration restarts don't seem to bring the gpu up in agood state
         print "REBOOTING"
         os.system("sudo reboot")

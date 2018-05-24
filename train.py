@@ -355,7 +355,20 @@ def train_and_test_model(args, files, outname, cont=0):
     best_train_rmsd = np.inf
     best_test_rmsd_rmse = np.inf
     best_train_rmsd_rmse = np.inf
-    best_train_interval = 0
+    best_train_interval = cont
+    
+    if args.checkpoint:
+        snapname = solver.snapshot()
+        checkname = '%s.CHECKPOINT'%outname
+        try:
+            if os.path.exists(checkname):
+                (dontremove, prevsnap, best_train_loss,best_test_rmsd,best_train_rmsd,best_test_rmsd_rmse,best_train_rmsd_rmse,best_train_interval) = open(checkname).read().rstrip().split()[:2]
+                if not int(dontremove):
+                    os.remove(prevsnap)
+                    prevsnap = prevsnap.replace('caffemodel','solverstate')
+                    os.remove(prevsnap)
+        except:
+            pass
     
     train_rmsd = np.inf
     test_rmsd = np.inf
@@ -613,15 +626,15 @@ def train_and_test_model(args, files, outname, cont=0):
             checkname = '%s.CHECKPOINT'%outname
             try:
                 if os.path.exists(checkname):
-                    (dontremove, prevsnap) = open(checkname).read().rstrip().split()
+                    (dontremove, prevsnap) = open(checkname).read().rstrip().split()[:2]
                     if not int(dontremove):
                         os.remove(prevsnap)
                         prevsnap = prevsnap.replace('caffemodel','solverstate')
                         os.remove(prevsnap)
             except:
                 pass
-            checkout = open(checkname,'w')
-            checkout.write('%d %s'%(keepsnap,snapname))
+            checkout = open(checkname,'w')    
+            checkout.write('%d %s %f %f %f %f %f %d'%(keepsnap,snapname,best_train_loss,best_test_rmsd,best_train_rmsd,best_test_rmsd_rmse,best_train_rmsd_rmse,best_train_interval))
             checkout.close()
         
 

@@ -469,7 +469,6 @@ Will explore with 5_32_32_1.
 -use pseudohuber false, gap1
 
 Regular batch_relu
--Add a conv3 layer
 -use pseudohuber true, gap 0, delta 4
 
 w1=32
