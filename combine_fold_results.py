@@ -7,6 +7,32 @@ import matplotlib.pyplot as plt
 import glob, re, argparse, sys, os
 import sklearn.metrics
 import scipy.stats
+import seaborn as sns
+import seaborn.utils, seaborn.palettes
+from seaborn.palettes import blend_palette
+
+def makejoint(x,y,color,title):
+    '''Plot x vs y where x are experimental values and y are predictions'''
+    color_rgb = matplotlib.colors.colorConverter.to_rgb(color)
+    colors = [seaborn.utils.set_hls_values(color_rgb, l=l)
+              for l in np.linspace(1, 0, 12)]
+    cmap = blend_palette(colors, as_cmap=True)
+    g = sns.JointGrid(x=x,y=y)
+    #g = g.plot_joint(plt.hexbin, cmap=cmap)
+    g = g.plot_joint(plt.scatter, marker='.',color=color,alpha=.25,s=2)
+    g = g.plot_joint(sns.kdeplot, shade=True,cmap=cmap,shade_lowest=False)
+    g = g.plot_marginals(sns.distplot, color=color)
+    g.ax_joint.set_xlabel('Experiment')
+    g.ax_joint.set_ylabel('Prediction')
+    plt.suptitle(title,verticalalignment='center')
+    s = scipy.stats.spearmanr(x,y)[0]
+    rmse = np.sqrt(np.mean(np.square(x-y)))
+    ax = g.ax_joint
+    ax.set_ylim(0,12)
+    ax.set_xlim(0,12)
+    #ax.plot(x,y,'.',color=color,alpha=.25,markersize=2)
+    ax.text(0.5, 0.05, 'Spearman = %.3f, RMSE = %.3f'%(s,rmse),fontsize=18,transform=ax.transAxes,horizontalalignment='center')
+    plt.savefig('%s.pdf'%title,bbox_inches='tight')
 
 def read_results_file(file):
     '''Read columns of float data from a file, ignoring # comments'''
@@ -60,7 +86,7 @@ def plot_roc_curve(plot_file, fpr, tpr, auc, txt):
 def plot_correlation(plot_file, y_aff, y_predaff, rmsd, r2):
     assert len(y_aff) == len(y_predaff)
     fig = plt.figure(figsize=(8,8))
-    plt.plot(y_aff, y_predaff, 'o', label='RMSD=%.2f, R^2=%.3f (Pos)' % (rmsd, r2))
+    plt.plot(y_aff, y_predaff, 'o', alpha=.2,label='RMSD=%.2f, R^2=%.3f (Pos)' % (rmsd, r2))
     plt.legend(loc='best', fontsize=20, numpoints=1)
     lo = np.min([np.min(y_aff), np.min(y_predaff)])
     hi = np.max([np.max(y_aff), np.max(y_predaff)])
@@ -113,6 +139,12 @@ def get_results_files(prefix, foldnums, binary_class, affinity, two_data_sources
 def filter_actives(values, y_true):
     return np.array(values)[np.array(y_true, dtype=np.bool)]
 
+def make_uniform_array(lists):
+    '''Take a list of possibly variable sized lists and return a numpy 2D array
+        where the smaller lists are padded to the size of the longest list using 
+        their last value'''
+    maxlen = max([len(l) for l in lists])
+    return np.array([list(l) + [l[-1]]*(maxlen-len(l)) for l in lists])
 
 def combine_fold_results(test_metrics, train_metrics, test_labels, test_preds, train_labels, train_preds,
                          outprefix, test_interval, affinity=False, second_data_source=False,
@@ -131,6 +163,12 @@ def combine_fold_results(test_metrics, train_metrics, test_labels, test_preds, t
     metric = 'rmsd' if affinity else 'auc'
     two = '2' if second_data_source else ''
 
+    #test and train metrics are organized by fold iteration, which with dynamic
+    #stepping can be different lengths; pad them out to the max length with 
+    #the last value
+    test_metrics = make_uniform_array(test_metrics)
+    train_metrics = make_uniform_array(train_metrics)
+    
     #average metric across folds
     mean_test_metrics = np.mean(test_metrics, axis=0)
     mean_train_metrics = np.mean(train_metrics, axis=0)
@@ -152,7 +190,8 @@ def combine_fold_results(test_metrics, train_metrics, test_labels, test_preds, t
         rmsd = np.sqrt(sklearn.metrics.mean_squared_error(test_preds, test_labels))
         r2 = scipy.stats.pearsonr(test_preds, test_labels)[0]**2
         write_results_file('%s.rmsd.finaltest%s' % (outprefix, two), test_preds, test_labels, footer='RMSD,R %f %f\n' % (rmsd, r2))
-        plot_correlation('%s_corr_test%s.pdf' % (outprefix, two), test_preds, test_labels, rmsd, r2)
+        makejoint(test_labels, test_preds, 'royalblue','%s_corr_test%s' % (outprefix, two))
+        #plot_correlation('%s_corr_test%s.pdf' % (outprefix, two), test_preds, test_labels, rmsd, r2)
 
         if filter_actives_train:
             train_preds = filter_actives(train_preds, filter_actives_train)
@@ -161,7 +200,8 @@ def combine_fold_results(test_metrics, train_metrics, test_labels, test_preds, t
         rmsd = np.sqrt(sklearn.metrics.mean_squared_error(train_preds, train_labels))
         r2 = scipy.stats.pearsonr(train_preds, train_labels)[0]**2
         write_results_file('%s.rmsd.finaltrain%s' % (outprefix, two), train_preds, train_labels, footer='RMSD,R %f %f\n' % (rmsd, r2))
-        plot_correlation('%s_corr_train%s.pdf' % (outprefix, two), train_preds, train_labels, rmsd, r2)
+        makejoint(train_labels, train_preds, 'orangered','%s_corr_train%s' % (outprefix, two))        
+        #plot_correlation('%s_corr_train%s.pdf' % (outprefix, two), train_preds, train_labels, rmsd, r2)
 
     else:
 
