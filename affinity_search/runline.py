@@ -113,7 +113,7 @@ for i in train_test_files:
     cont = 0
     checkname = '%s.CHECKPOINT'%outname
     if os.path.exists(checkname):
-        (dontremove, prevsnap) = open(checkname).read().rstrip().split()
+        (dontremove, prevsnap) = open(checkname).read().rstrip().split()[:2]
         m = re.search(r'%s_iter_(\d+)\.caffemodel'%outname,prevsnap)
         if m:
             cont = int(m.group(1))
