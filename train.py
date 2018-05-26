@@ -362,7 +362,7 @@ def train_and_test_model(args, files, outname, cont=0):
         checkname = '%s.CHECKPOINT'%outname
         try:
             if os.path.exists(checkname):
-                (dontremove, prevsnap, best_train_loss,best_test_rmsd,best_train_rmsd,best_test_rmsd_rmse,best_train_rmsd_rmse,best_train_interval) = open(checkname).read().rstrip().split()[:2]
+                (dontremove, prevsnap, best_train_loss,best_test_rmsd,best_train_rmsd,best_test_rmsd_rmse,best_train_rmsd_rmse,best_train_interval) = open(checkname).read().rstrip().split()
                 if not int(dontremove):
                     os.remove(prevsnap)
                     prevsnap = prevsnap.replace('caffemodel','solverstate')
