@@ -362,11 +362,12 @@ def train_and_test_model(args, files, outname, cont=0):
         checkname = '%s.CHECKPOINT'%outname
         try:
             if os.path.exists(checkname):
-                (dontremove, prevsnap, best_train_loss,best_test_rmsd,best_train_rmsd,best_test_rmsd_rmse,best_train_rmsd_rmse,best_train_interval) = open(checkname).read().rstrip().split()
+                (dontremove, prevsnap, best_train_loss,best_test_rmsd,best_train_rmsd,best_test_rmsd_rmse,best_train_rmsd_rmse,best_train_interval,prevlr) = open(checkname).read().rstrip().split()
                 if not int(dontremove):
                     os.remove(prevsnap)
                     prevsnap = prevsnap.replace('caffemodel','solverstate')
                     os.remove(prevsnap)
+                solver.set_base_lr(prevlr) #this isn't saved in solver state!
         except:
             pass
     
@@ -634,7 +635,7 @@ def train_and_test_model(args, files, outname, cont=0):
             except:
                 pass
             checkout = open(checkname,'w')    
-            checkout.write('%d %s %f %f %f %f %f %d'%(keepsnap,snapname,best_train_loss,best_test_rmsd,best_train_rmsd,best_test_rmsd_rmse,best_train_rmsd_rmse,best_train_interval))
+            checkout.write('%d %s %f %f %f %f %f %d %f'%(keepsnap,snapname,best_train_loss,best_test_rmsd,best_train_rmsd,best_test_rmsd_rmse,best_train_rmsd_rmse,best_train_interval,solver.get_base_lr()))
             checkout.close()
         
     if args.checkpoint:
