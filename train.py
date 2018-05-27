@@ -13,6 +13,7 @@ from caffe.proto.caffe_pb2 import NetParameter, SolverParameter
 import google.protobuf.text_format as prototxt
 import time
 import psutil
+import cPickle
 from combine_fold_results import write_results_file, combine_fold_results, filter_actives
 
 
@@ -333,6 +334,28 @@ def train_and_test_model(args, files, outname, cont=0):
             for k in test_nets.iterkeys():
                 test_nets[k][0].clearblobs()
 
+
+    def update_from_result(name, test, result):
+        '''Put results into test/train structure'''
+            test.y_true = result.y_true
+            test.y_score = result.y_score
+            test.y_aff = result.y_aff
+            test.y_predaff = result.y_predaff
+            test.rmsd_true = result.rmsd_true
+            test.rmsd_pred = result.rmsd_pred
+            if result.auc is not None:
+                print "%s AUC: %f" % (name,result.auc)
+                test.aucs.append(result.auc)
+            if result.loss:
+                print "%s loss: %f" % (name,result.loss)
+                test.losses.append(result.loss)
+            if result.rmsd is not None:
+                print "%s RMSD: %f" % (name,result.rmsd)
+                test.rmsds.append(result.rmsd)
+            if result.rmsd_rmse is not None:
+                print "%s rmsd_rmse: %f" % (name,result.rmsd_rmse)
+                test.rmsd_rmses.append(result.rmsd_rmse)
+
     #return evaluation results:
     #  auc, loss, and rmsd from each test
     #  y_true, y_score, y_aff, y_predaff from last test
@@ -349,32 +372,15 @@ def train_and_test_model(args, files, outname, cont=0):
             test2 = train2
 
     #also keep track of best test and train aucs
-    best_test_auc = 0
-    best_train_loss = np.inf #loss is a bit more sensitive
-    best_test_rmsd = np.inf
-    best_train_rmsd = np.inf
-    best_test_rmsd_rmse = np.inf
-    best_train_rmsd_rmse = np.inf
     best_train_interval = cont
     
-    if args.checkpoint:
-        snapname = solver.snapshot()
-        checkname = '%s.CHECKPOINT'%outname
-        try:
-            if os.path.exists(checkname):
-                vals = open(checkname).read().rstrip().split()
-                dontremove = int(vals[0])
-                prevsnap = vals[1]
-                (best_train_loss,best_test_rmsd,best_train_rmsd,best_test_rmsd_rmse,best_train_rmsd_rmse,best_train_interval,prevlr) = map(float,vals[2:])
-                best_train_interval = int(best_train_interval)
+    bests = {'test_auc': np.inf,
+        'train_loss': np.inf, \
+        'test_rmsd': np.inf, \
+        'train_rmsd' = np.inf, \
+        'test_rmsd_rmse' = np.inf, \
+        'train_rmsd_rmse' = np.inf}      
 
-                if not int(dontremove):
-                    os.remove(prevsnap)
-                    prevsnap = prevsnap.replace('caffemodel','solverstate')
-                    os.remove(prevsnap)
-                solver.set_base_lr(prevlr) #this isn't saved in solver state!
-        except:
-            pass
     
     train_rmsd = np.inf
     test_rmsd = np.inf
@@ -382,9 +388,23 @@ def train_and_test_model(args, files, outname, cont=0):
     test_rmsd_rmse = np.inf
     step_reduce_cnt = 0
     i_time_avg = 0
-    original_lr = solver.get_base_lr()
+    original_lr = args.base_lr
+        
+    if args.checkpoint:
+        snapname = solver.snapshot()
+        checkname = '%s.CHECKPOINT'%outname
+        if os.path.exists(checkname):
+            checkdata = cPickle.load(checkname)
+            (dontremove, training, prevsnap,train,test,bests,best_train_interval,prevlr, step_reduce_cnt) = checkdata
+            solver.set_base_lr(prevlr) #this isn't saved in solver state!
+            if not training:
+                iterations = 0 #just returned the stored values
+
+    
+
     for i in xrange(iterations/test_interval):
-        last_test = i == iterations/test_interval-1
+        if not args.dynamic:
+            last_test = i == iterations/test_interval-1
 
         i_start = start = time.time()
         keepsnap = False
@@ -404,29 +424,10 @@ def train_and_test_model(args, files, outname, cont=0):
             test_net, n_tests, offset = test_nets[key]
             freemem()
             result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
-
-            test_nets[key] = test_net, n_tests, offset
+            test_nets[key] = test_net, n_tests, offset  #why doing this?
             print "Eval test time: %f" % (time.time()-start)
 
-            if i > 0 and not (args.reduced and last_test): #check alignment
-                assert np.all(result.y_true == test.y_true)
-                assert np.all(result.y_aff == test.y_aff)
-
-            test.y_true = result.y_true
-            test.y_score = result.y_score
-            test.y_aff = result.y_aff
-            test.y_predaff = result.y_predaff
-            test.rmsd_true = result.rmsd_true
-            test.rmsd_pred = result.rmsd_pred
-            if result.auc is not None:
-                print "Test AUC: %f" % result.auc
-                test.aucs.append(result.auc)
-            if result.rmsd is not None:
-                print "Test RMSD: %f" % result.rmsd
-                test.rmsds.append(result.rmsd)
-            if result.rmsd_rmse is not None:
-                print "Test rmsd_rmse: %f" % result.rmsd_rmse
-                test.rmsd_rmses.append(result.rmsd_rmse)
+            update_from_result("Test", test, result)
 
             if args.prefix2:
                 #evaluate test set 2
@@ -441,20 +442,7 @@ def train_and_test_model(args, files, outname, cont=0):
                 test_nets[key] = test_net, n_tests, offset
                 print "Eval test2 time: %f" % (time.time()-start)
 
-                if i > 0 and not (args.reduced and last_test): #check alignment
-                    assert np.all(result.y_true == test2.y_true)
-                    assert np.all(result.y_aff == test2.y_aff)
-
-                test2.y_true = result.y_true
-                test2.y_aff = result.y_aff
-                test2.y_score = result.y_score
-                test2.y_predaff = result.y_predaff
-                if result.auc is not None:
-                    print "Test2 AUC: %f" % result.auc
-                    test2.aucs.append(result.auc)
-                if result.rmsd is not None:
-                    print "Test2 RMSD: %f" % result.rmsd
-                    test2.rmsds.append(result.rmsd)
+                update_from_result("Test2", test2, result)
 
         #evaluate train set
         start = time.time()
@@ -468,28 +456,7 @@ def train_and_test_model(args, files, outname, cont=0):
         test_nets[key] = test_net, n_tests, offset
         print "Eval train time: %f" % (time.time()-start)
 
-        if i > 0 and not (args.reduced and last_test): #check alignment
-            assert np.all(result.y_true == train.y_true)
-            assert np.all(result.y_aff == train.y_aff)
-
-        train.y_true = result.y_true
-        train.y_score = result.y_score
-        train.y_aff = result.y_aff
-        train.rmsd_true = result.rmsd_true
-        train.rmsd_pred = result.rmsd_pred
-        train.y_predaff = result.y_predaff
-        if result.auc is not None:
-            print "Train AUC: %f" % result.auc
-            train.aucs.append(result.auc)
-            print "Train loss: %f" % result.loss
-            train.losses.append(result.loss)
-        if result.rmsd is not None:
-            print "Train RMSD: %f" % result.rmsd
-            train.rmsds.append(result.rmsd)
-        if result.rmsd_rmse is not None:
-            print "Train rmsd_rmse: %f" % result.rmsd_rmse
-            train.rmsd_rmses.append(result.rmsd_rmse)  
-            
+        update_from_result("Train", train, result)
 
         if args.prefix2:
             #evaluate train set 2
@@ -508,32 +475,54 @@ def train_and_test_model(args, files, outname, cont=0):
                 assert np.all(result.y_true == train2.y_true)
                 assert np.all(result.y_aff == train2.y_aff)
 
-            train2.y_true = result.y_true
-            train2.y_score = result.y_score
-            train2.y_aff = result.y_aff
-            train2.y_predaff = result.y_predaff
-            if result.auc is not None:
-                print "Train2 AUC: %f" % result.auc
-                train2.aucs.append(result.auc)
-                print "Train2 loss: %f" % result.loss
-                train2.losses.append(result.loss)
-            if result.rmsd is not None:
-                print "Train2 RMSD: %f" % result.rmsd
-                train2.rmsds.append(result.rmsd)
+            update_from_result("Train2", train2, result)            
 
         if training:
+            row = []            
+
+            #check for improvement
             if result.auc is not None:
                 test_auc = test.aucs[-1]
                 train_auc = train.aucs[-1]
                 train_loss = train.losses[-1]
+                row += [test_auc,train_auc,train_loss]
+                if test_auc > bests['test_auc']:
+                    bests['test_auc'] = test_auc
+                    if args.keep_best:
+                        keepsnap = True
+                        solver.snapshot() #a bit too much - gigabytes of data
+                if train_loss < bests['train_loss']:
+                    bests['train_loss'] = train_loss
+                    best_train_interval = i
+                    
+            row += [solver.get_base_lr()]                    
+            #check for rmsd improvement
             if result.rmsd is not None:
                 test_rmsd = test.rmsds[-1]
                 train_rmsd = train.rmsds[-1]
+                if test_rmsd < bests['test_rmsd']:
+                    bests['test_rmsd'] = test_rmsd
+                    if args.keep_best:
+                        keepsnap = True
+                        solver.snapshot() #a bit too much - gigabytes of data     
+                        
+                if train_rmsd < bests['train_rmsd']:
+                    bests['train_rmsd' = train_rmsd
+                    best_train_interval = i #note updated for both pose and aff    
+                row += [test_rmsd, train_rmsd]
+                    
+            #check for rmse improvement
             if result.rmsd_rmse is not None:
                 test_rmsd_rmse = test.rmsd_rmses[-1]
                 train_rmsd_rmse = train.rmsd_rmses[-1]
-            
-            if args.prefix2:
+                if test_rmsd_rmse < bests['test_rmsd_rmse']:
+                    bests['test_rmsd_rmse'] = test_rmsd_rmse
+                    if args.keep_best:
+                        keepsnap = True
+                        solver.snapshot() #a bit too much - gigabytes of data  
+                row += [test_rmsd_rmse, train_rmsd_rmse]                            
+                                                 
+            if args.prefix2:  #blah
                 if result.auc:
                     test2_auc = test2.aucs[-1]
                     train2_auc = train2.aucs[-1]
@@ -541,67 +530,12 @@ def train_and_test_model(args, files, outname, cont=0):
                 if result.rmsd:
                     test2_rmsd = test2.rmsds[-1]
                     train2_rmsd = train2.rmsds[-1]
-
-            #check for improvement
-            if result.auc is not None:
-                if test_auc > best_test_auc:
-                    best_test_auc = test_auc
-                    if args.keep_best:
-                        keepsnap = True
-                        solver.snapshot() #a bit too much - gigabytes of data
-                if train_loss < best_train_loss:
-                    best_train_loss = train_loss
-                    best_train_interval = i
-                if train_rmsd < best_train_rmsd:
-                    best_train_rmsd = train_rmsd
-                    best_train_interval = i #note updated for both pose and aff
-                if args.dynamic:
-                    lr = solver.get_base_lr()
-                    if (i-best_train_interval) > args.step_when: #reduce learning rate
-                        lr *= args.step_reduce
-                        solver.set_base_lr(lr)
-                        best_train_interval = i #reset
-                        step_reduce_cnt += 1
-                        
-                    if step_reduce_cnt > args.step_end_cnt:
-                        break
-                    if lr < args.step_end:
-                        break #end early
-                elif args.cyclic:
-                    lrs = [original_lr*1.5, original_lr*1.25, original_lr, original_lr*0.75, original_lr*0.5]
-                    indexes = [0, 1, 2, 3, 4, 3, 2, 1]
-                    lr = lrs[indexes[i%len(indexes)]]
-                    solver.set_base_lr(lr)
-            #check for rmse improvement
-            if result.rmsd is not None:
-                if test_rmsd < best_test_rmsd:
-                    best_test_rmsd = test_rmsd
-                    if args.keep_best:
-                        keepsnap = True
-                        solver.snapshot() #a bit too much - gigabytes of data                    
-                    
-            #check for rmse improvement
-            if result.rmsd_rmse is not None:
-                if test_rmsd_rmse < best_test_rmsd_rmse:
-                    best_test_rmsd_rmse = test_rmsd_rmse
-                    if args.keep_best:
-                        keepsnap = True
-                        solver.snapshot() #a bit too much - gigabytes of data                    
-                                        
-            #write out evaluation results
-            row = []
-            if result.auc is not None:
-                row += [test_auc, train_auc, train_loss]
-            row += [solver.get_base_lr()]
-            if result.rmsd is not None:
-                row += [test_rmsd, train_rmsd]
-            if args.prefix2:
                 if result.auc is not None:
                     row += [test2_auc, train2_auc, train2_loss]
                 if result.rmsd is not None:
                     row += [test2_rmsd, train2_rmsd]
-            if result.rmsd_rmse is not None:
-                row += [test_rmsd_rmse, train_rmsd_rmse]
+                
+            #write out evaluation results                
             out.write(' '.join('%.6f' % x for x in row) + '\n')
             out.flush()
 
@@ -615,6 +549,31 @@ def train_and_test_model(args, files, outname, cont=0):
             if len(result.rmsd_pred) and len(np.unique(result.rmsd_pred)) == 1:
                 print "Identical rmsd rmses in test, bailing early"
                 break
+                
+            #update learning rate if necessary
+            if args.dynamic:
+                if last_test:
+                    break
+                lr = solver.get_base_lr()
+                if (i-best_train_interval) > args.step_when: #reduce learning rate
+                    lr *= args.step_reduce
+                    solver.set_base_lr(lr)
+                    best_train_interval = i #reset
+                    step_reduce_cnt += 1
+                    
+                if step_reduce_cnt > args.step_end_cnt or lr < args.step_end:
+                    #end early, but run full test if needed
+                    if args.reduced
+                        training = False
+                        last_test = True
+                    else
+                        break
+            elif args.cyclic:
+                lrs = [original_lr*1.5, original_lr*1.25, original_lr, original_lr*0.75, original_lr*0.5]
+                indexes = [0, 1, 2, 3, 4, 3, 2, 1]
+                lr = lrs[indexes[i%len(indexes)]]
+                solver.set_base_lr(lr) 
+                                  
         #track avg time per loop
         i_time = time.time()-i_start
         i_time_avg = (i*i_time_avg + i_time)/(i+1)
@@ -632,28 +591,15 @@ def train_and_test_model(args, files, outname, cont=0):
             checkname = '%s.CHECKPOINT'%outname
             try:
                 if os.path.exists(checkname):
-                    (dontremove, prevsnap) = open(checkname).read().rstrip().split()[:2]
-                    if not int(dontremove):
+                    prevals = cPickle.load(open(checkname))
+                    if not prevals[0]:
                         os.remove(prevsnap)
                         prevsnap = prevsnap.replace('caffemodel','solverstate')
                         os.remove(prevsnap)
             except:
                 pass
-            checkout = open(checkname,'w')    
-            checkout.write('%d %s %f %f %f %f %f %d %f'%(keepsnap,snapname,best_train_loss,best_test_rmsd,best_train_rmsd,best_test_rmsd_rmse,best_train_rmsd_rmse,best_train_interval,solver.get_base_lr()))
-            checkout.close()
+            cPickle.dump((dontremove, training, prevsnap,train,test,bests,best_train_interval,prevlr, step_reduce_cnt), open(checkname,'w'))
         
-    if args.checkpoint:
-        checkname = '%s.CHECKPOINT'%outname
-        try:
-            if os.path.exists(checkname):
-                (dontremove, prevsnap) = open(checkname).read().rstrip().split()[:2]
-                if not int(dontremove):
-                    os.remove(prevsnap)
-                    prevsnap = prevsnap.replace('caffemodel','solverstate')
-                    os.remove(prevsnap)
-        except:
-            pass
 
     if training:
         out.close()
