@@ -362,7 +362,12 @@ def train_and_test_model(args, files, outname, cont=0):
         checkname = '%s.CHECKPOINT'%outname
         try:
             if os.path.exists(checkname):
-                (dontremove, prevsnap, best_train_loss,best_test_rmsd,best_train_rmsd,best_test_rmsd_rmse,best_train_rmsd_rmse,best_train_interval,prevlr) = open(checkname).read().rstrip().split()
+                vals = open(checkname).read().rstrip().split()
+                dontremove = int(vals[0])
+                prevsnap = vals[1]
+                (best_train_loss,best_test_rmsd,best_train_rmsd,best_test_rmsd_rmse,best_train_rmsd_rmse,best_train_interval,prevlr) = map(float,vals[2:])
+                best_train_interval = int(best_train_interval)
+
                 if not int(dontremove):
                     os.remove(prevsnap)
                     prevsnap = prevsnap.replace('caffemodel','solverstate')
@@ -642,7 +647,7 @@ def train_and_test_model(args, files, outname, cont=0):
         checkname = '%s.CHECKPOINT'%outname
         try:
             if os.path.exists(checkname):
-                (dontremove, prevsnap, best_train_loss,best_test_rmsd,best_train_rmsd,best_test_rmsd_rmse,best_train_rmsd_rmse,best_train_interval) = open(checkname).read().rstrip().split()[:2]
+                (dontremove, prevsnap) = open(checkname).read().rstrip().split()[:2]
                 if not int(dontremove):
                     os.remove(prevsnap)
                     prevsnap = prevsnap.replace('caffemodel','solverstate')
