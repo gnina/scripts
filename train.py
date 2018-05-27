@@ -13,10 +13,38 @@ from caffe.proto.caffe_pb2 import NetParameter, SolverParameter
 import google.protobuf.text_format as prototxt
 import time
 import psutil
-import cPickle
+import cPickle, signal
 from combine_fold_results import write_results_file, combine_fold_results, filter_actives
 
 
+# class based on: http://stackoverflow.com/a/21919644/487556
+# this tries to protecta critical section from being interrupted
+# (obviously can't do anything with SIGKILL)
+class DelayedInterrupt(object):
+    def __init__(self, signals):
+        if not isinstance(signals, list) and not isinstance(signals, tuple):
+            signals = [signals]
+        self.sigs = signals        
+
+    def __enter__(self):
+        self.signal_received = {}
+        self.old_handlers = {}
+        for sig in self.sigs:
+            self.signal_received[sig] = False
+            self.old_handlers[sig] = signal.getsignal(sig)
+            def handler(s, frame):
+                self.signal_received[sig] = (s, frame)
+                # Note: in Python 3.5, you can use signal.Signals(sig).name
+                logging.info('Signal %s received. Delaying KeyboardInterrupt.' % sig)
+            self.old_handlers[sig] = signal.getsignal(sig)
+            signal.signal(sig, handler)
+
+    def __exit__(self, type, value, traceback):
+        for sig in self.sigs:
+            signal.signal(sig, self.old_handlers[sig])
+            if self.signal_received[sig] and self.old_handlers[sig]:
+                self.old_handlers[sig](*self.signal_received[sig])
+                
 '''Script for training a neural net model from gnina grid data.
 A model template is provided along with training and test sets of the form
 <prefix>[train|test][num].types
@@ -246,38 +274,39 @@ def train_and_test_model(args, files, outname, cont=0):
                 test_nets[k][0].clearblobs()
 
     def clean_checkpoint(checkname):
-         '''delete a checkpoint solver state if it should be (because we are about to write a new one)'''
+        '''delete a checkpoint solver state if it should be (because we are about to write a new one)'''
         try:
             if os.path.exists(checkname):
-                (dontremove,prevsnap) = cPickle.load(open(checkname))[:2]
-                if not dontremoe:
+                (dontremove,_,prevsnap) = cPickle.load(open(checkname))[:3]
+                if not dontremove:
+                    print "Removing",prevsnap
                     os.remove(prevsnap)
-                    prevsnap = prevsnap.replace('caffemodel','solverstate')
+                    prevsnap = prevsnap.replace('solverstate','caffemodel')
                     os.remove(prevsnap)
-        except:
-            pass
+        except Exception as e:
+            print e
         
 
     def update_from_result(name, test, result):
         '''Put results into test/train structure'''
-            test.y_true = result.y_true
-            test.y_score = result.y_score
-            test.y_aff = result.y_aff
-            test.y_predaff = result.y_predaff
-            test.rmsd_true = result.rmsd_true
-            test.rmsd_pred = result.rmsd_pred
-            if result.auc is not None:
-                print "%s AUC: %f" % (name,result.auc)
-                test.aucs.append(result.auc)
-            if result.loss:
-                print "%s loss: %f" % (name,result.loss)
-                test.losses.append(result.loss)
-            if result.rmsd is not None:
-                print "%s RMSD: %f" % (name,result.rmsd)
-                test.rmsds.append(result.rmsd)
-            if result.rmsd_rmse is not None:
-                print "%s rmsd_rmse: %f" % (name,result.rmsd_rmse)
-                test.rmsd_rmses.append(result.rmsd_rmse)
+        test.y_true = result.y_true
+        test.y_score = result.y_score
+        test.y_aff = result.y_aff
+        test.y_predaff = result.y_predaff
+        test.rmsd_true = result.rmsd_true
+        test.rmsd_pred = result.rmsd_pred
+        if result.auc is not None:
+            print "%s AUC: %f" % (name,result.auc)
+            test.aucs.append(result.auc)
+        if result.loss:
+            print "%s loss: %f" % (name,result.loss)
+            test.losses.append(result.loss)
+        if result.rmsd is not None:
+            print "%s RMSD: %f" % (name,result.rmsd)
+            test.rmsds.append(result.rmsd)
+        if result.rmsd_rmse is not None:
+            print "%s rmsd_rmse: %f" % (name,result.rmsd_rmse)
+            test.rmsd_rmses.append(result.rmsd_rmse)
                 
                     
     template = args.model
@@ -358,9 +387,9 @@ def train_and_test_model(args, files, outname, cont=0):
     bests = {'test_auc': np.inf,
         'train_loss': np.inf, \
         'test_rmsd': np.inf, \
-        'train_rmsd' = np.inf, \
-        'test_rmsd_rmse' = np.inf, \
-        'train_rmsd_rmse' = np.inf}      
+        'train_rmsd': np.inf, \
+        'test_rmsd_rmse': np.inf, \
+        'train_rmsd_rmse': np.inf}      
     
     train_rmsd = np.inf
     test_rmsd = np.inf
@@ -391,17 +420,24 @@ def train_and_test_model(args, files, outname, cont=0):
     if args.checkpoint:
         checkname = '%s.CHECKPOINT'%outname
         if os.path.exists(checkname):
-            checkdata = cPickle.load(checkname)
+            checkdata = cPickle.load(open(checkname))
             (dontremove, training, prevsnap,train,test,bests,best_train_interval,prevlr, step_reduce_cnt) = checkdata
+            print "Restoring",prevsnap
+
             solver.restore(prevsnap)
+            print "Testall"
             solver.testall()            
             solver.set_base_lr(prevlr) #this isn't saved in solver state!
             #figure out iteration
             m = re.search(r'_iter_(%d)\.solverstate',prevsnap)
             cont = int(m.group(1))
             iterations = args.iterations-cont
+            
             if not training:
                 iterations = 0 #just returned the stored values
+                print "Fold %s already completed"%outname
+            else:
+                print "Continuing checkpoing from",cont
                 
     if args.weights:
         check_file_exists(args.weights)
@@ -417,6 +453,7 @@ def train_and_test_model(args, files, outname, cont=0):
         out = open(outfile, 'a' if cont else 'w', 0) #unbuffered
 
 
+    last_test = False
     for i in xrange(iterations/test_interval):
         if not args.dynamic:
             last_test = i == iterations/test_interval-1
@@ -522,7 +559,7 @@ def train_and_test_model(args, files, outname, cont=0):
                         solver.snapshot() #a bit too much - gigabytes of data     
                         
                 if train_rmsd < bests['train_rmsd']:
-                    bests['train_rmsd' = train_rmsd
+                    bests['train_rmsd'] = train_rmsd
                     best_train_interval = i #note updated for both pose and aff    
                 row += [test_rmsd, train_rmsd]
                     
@@ -578,10 +615,10 @@ def train_and_test_model(args, files, outname, cont=0):
                     
                 if step_reduce_cnt > args.step_end_cnt or lr < args.step_end:
                     #end early, but run full test if needed
-                    if args.reduced
+                    if args.reduced:
                         training = False
                         last_test = True
-                    else
+                    else:
                         break
             elif args.cyclic:
                 lrs = [original_lr*1.5, original_lr*1.25, original_lr, original_lr*0.75, original_lr*0.5]
@@ -603,9 +640,16 @@ def train_and_test_model(args, files, outname, cont=0):
         
         if args.checkpoint:
             snapname = solver.snapshot()
+            snapname = snapname.replace('caffemodel','solverstate')
+
             checkname = '%s.CHECKPOINT'%outname
-            clean_checkpoint(checkname)
-            cPickle.dump((dontremove, training, prevsnap,train,test,bests,best_train_interval,prevlr, step_reduce_cnt), open(checkname,'w'))
+
+            with DelayedInterrupt([signal.SIGTERM, signal.SIGINT]):
+                clean_checkpoint(checkname)   
+                checkout = open(checkname,'w')         
+                cPickle.dump((keepsnap, training, snapname,train,test,bests,best_train_interval,solver.get_base_lr(), step_reduce_cnt), checkout)
+                checkout.flush()
+                checkout.close()
         
 
     if training:
@@ -784,18 +828,6 @@ if __name__ == '__main__':
 
         outname = '%s.%s' % (outprefix, i)        
         cont = args.cont
-        if args.checkpoint: #is there a checkpiont for this fold
-            checkname = '%s.CHECKPOINT'%outname
-            if os.path.exists(checkname):
-                (dontremove, prevsnap) = open(checkname).read().rstrip().split()
-                m = re.search(r'%s_iter_(\d+)\.caffemodel'%outname,prevsnap)
-                if m:
-                    cont = int(m.group(1))
-                    if cont >= args.iterations:
-                        continue  #finished this fold
-                else:
-                    print "Error parsing",checkname
-                    sys.exit(1)
                 
         results = train_and_test_model(args, train_test_files[i], outname, cont)
 

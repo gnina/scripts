@@ -17,6 +17,7 @@ import numpy as np
 import sklearn.metrics
 import scipy.stats
 import calctop
+import evaluate
 
 class Bunch(object):
   def __init__(self, adict):
@@ -96,16 +97,7 @@ if len(train_test_files) == 0:
 
 
 outprefix = d
-
-test_aucs, train_aucs = [], []
-test_rmsds, train_rmsds = [], []
-test_y_true, train_y_true = [], []
-test_y_score, train_y_score = [], []
-test_y_aff, train_y_aff = [], []
-test_y_predaff, train_y_predaff = [], []
-topresults = []
-
-#train each pair
+#train 
 numfolds = 0
 for i in train_test_files:
 
@@ -126,44 +118,27 @@ for i in train_test_files:
         print "Non-finite test aff"
         sys.exit(-1)                        
 
-    #aggregate results from different crossval folds
-    if test.aucs:
-        test_aucs.append(test.aucs)
-        train_aucs.append(trainres.aucs)
-        test_y_true.extend(test.y_true)
-        test_y_score.extend(test.y_score)
-        train_y_true.extend(trainres.y_true)
-        train_y_score.extend(trainres.y_score)
-
-    if test.rmsds:
-        test_rmsds.append(test.rmsds)
-        train_rmsds.append(trainres.rmsds)
-        test_y_aff.extend(test.y_aff)
-        test_y_predaff.extend(test.y_predaff)
-        train_y_aff.extend(trainres.y_aff)
-        train_y_predaff.extend(trainres.y_predaff)
-        
-    #run model to get calctop
-    #first fine last model
-    lastiter = 0
-    cmodel = None
-    for fname in glob.glob('*.%d_iter_*.caffemodel'%i):
-        nums=(re.findall('\d+', fname ))
-        new_iter=int(nums[-1])
-        if new_iter>lastiter:
-            lastiter=new_iter
-            cmodel = fname
-    topresults += calctop.evaluate_fold(train_test_files[i]['test'], cmodel, 'model.model',args.data_root)
+#once all folds are trained, test and evaluate them
+testresults = []
+for i in train_test_files:
     
-#don't consider bad poses for affinity
-test_y_aff = np.array(test_y_aff)
-test_y_predaff = np.array(test_y_predaff)
-exp = test_y_aff[test_y_aff > 0]
-pred = test_y_predaff[test_y_aff > 0]
-R = scipy.stats.pearsonr(exp, pred)[0]
-rmse = np.sqrt(sklearn.metrics.mean_squared_error(exp,pred))
-auc = sklearn.metrics.roc_auc_score(test_y_true, test_y_score)
-top = calctop.find_top_ligand(topresults,1)/100.0
+    #get latest model file for this fold
+    lasti = -1
+    caffemodel = ''
+    for model in glob.glob('%s.%d_iter_*.caffemodel'%(outprefix,i)):
+        m = re.search(r'_iter_(\d+).caffemodel', model)
+        inum = int(m.group(1))
+        if inum > lasti:
+            lasti = inum
+            caffemodel = model
+    if lasti == -1:
+        print "Couldn't find valid caffemodel file %s.%d_iter_*.caffemodel"%(outprefix,i)
+        sys.exit(-1)
+        
+    testresults += evaluate_fold(train_test_files[i]['test'], caffemodel, 'model.model')
+    
 
-print d, R, rmse, auc, top
+(rmse, R, S, aucpose, aucaff, top) = analyze_results(testresults,'%s.summary'%outprefix,'pose')
+
+print d, R, rmse, aucpose, top
 

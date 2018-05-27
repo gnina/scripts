@@ -146,68 +146,69 @@ def analyze_results(results, outname, uniquify=None):
         return (rmse, R, S)
     
 
-if len(sys.argv) <= 4:
-    print "Need caffemodel prefix,  modelname, output name and test prefixes (which should include _<slicenum>_ at end)"
-    sys.exit(1)
-    
-name = sys.argv[1]
-modelname = sys.argv[2]
-out = open(sys.argv[3],'w')
-
-allresults = []
-last = None
-#for each test dataset
-for testprefix in sys.argv[4:]:
-    m = re.search('([^/ ]*)_(\d+)_$', testprefix)
-    print m,testprefix
-    if not m:
-        print testprefix,"does not end in slicenum"
-    slicenum = int(m.group(2))
-    testname = m.group(1)
-    #find the relevant models for each fold
-    testresults = {'best25': [], 'best50': [], 'best100': [], '100k': [], '250k': [], 'best250': [] }
-    for fold in [0,1,2]:
-        best25 = 0
-        best50 = 0
-        best100 = 0
-        best250 = 0
-        #identify best iteration models at each cut point for this fold
-        for model in glob.glob('%s.%d_iter_*.caffemodel'%(name,fold)):
-            m = re.search(r'_iter_(\d+).caffemodel', model)
-            inum = int(m.group(1))
-            if inum < 25000 and inum > best25:
-                best25 = inum
-            if inum < 50000 and inum > best50:
-                best50 = inum
-            if inum < 100000 and inum > best100:
-                best100 = inum
-            if inum < 250000 and inum > best250:
-                best250 = inum                
-        #evalute this fold
-        testfile = '../types/%stest%d.types' % (testprefix,fold)
-        #todo, avoid redundant repetitions
-        if best25 > 0: testresults['best25'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best25), modelname)
-        if best50 > 0: testresults['best50'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best50), modelname)
-        if best100 > 0: testresults['best100'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best100), modelname)
-        if best250 > 0: testresults['best250'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best250), modelname)
-
-        if os.path.exists('%s.%d_iter_%d.caffemodel' % (name,fold,100000)): #100k
-            testresults['100k'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,100000), modelname)
-            last = '100k'
-        if os.path.exists('%s.%d_iter_%d.caffemodel' % (name,fold,250000)): #possibility that the 100k model was output even if went to 250k
-            if best250 > 0: testresults['best250'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best250), modelname)
-            testresults['250k'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,250000), modelname)
-            last = '250k'
+if __name__ == '__main__':
+    if len(sys.argv) <= 4:
+        print "Need caffemodel prefix,  modelname, output name and test prefixes (which should include _<slicenum>_ at end)"
+        sys.exit(1)
         
-    for n in testresults.keys():
-        if last == None or len(testresults[n]) != len(testresults[last]) or len(testresults[last]) == 0:
-            print "Missing data with",n
-        if len(testresults[n]) == 0:
-            continue
-        if len(testresults[n][0]) == 6:
-            allresults.append( ('%s_pose'%testname, n) + analyze_results(testresults[n],('%s_pose_'%testname)+name+'_'+n,'pose'))
-        allresults.append( ('%s_affinity'%testname, n) + analyze_results(testresults[n],('%s_affinity_'%testname)+name+'_'+n,'affinity'))
+    name = sys.argv[1]
+    modelname = sys.argv[2]
+    out = open(sys.argv[3],'w')
 
-     
-for a in allresults:
-    out.write(' '.join(map(str,a))+'\n')
+    allresults = []
+    last = None
+    #for each test dataset
+    for testprefix in sys.argv[4:]:
+        m = re.search('([^/ ]*)_(\d+)_$', testprefix)
+        print m,testprefix
+        if not m:
+            print testprefix,"does not end in slicenum"
+        slicenum = int(m.group(2))
+        testname = m.group(1)
+        #find the relevant models for each fold
+        testresults = {'best25': [], 'best50': [], 'best100': [], '100k': [], '250k': [], 'best250': [] }
+        for fold in [0,1,2]:
+            best25 = 0
+            best50 = 0
+            best100 = 0
+            best250 = 0
+            #identify best iteration models at each cut point for this fold
+            for model in glob.glob('%s.%d_iter_*.caffemodel'%(name,fold)):
+                m = re.search(r'_iter_(\d+).caffemodel', model)
+                inum = int(m.group(1))
+                if inum < 25000 and inum > best25:
+                    best25 = inum
+                if inum < 50000 and inum > best50:
+                    best50 = inum
+                if inum < 100000 and inum > best100:
+                    best100 = inum
+                if inum < 250000 and inum > best250:
+                    best250 = inum                
+            #evalute this fold
+            testfile = '../types/%stest%d.types' % (testprefix,fold)
+            #todo, avoid redundant repetitions
+            if best25 > 0: testresults['best25'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best25), modelname)
+            if best50 > 0: testresults['best50'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best50), modelname)
+            if best100 > 0: testresults['best100'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best100), modelname)
+            if best250 > 0: testresults['best250'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best250), modelname)
+
+            if os.path.exists('%s.%d_iter_%d.caffemodel' % (name,fold,100000)): #100k
+                testresults['100k'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,100000), modelname)
+                last = '100k'
+            if os.path.exists('%s.%d_iter_%d.caffemodel' % (name,fold,250000)): #possibility that the 100k model was output even if went to 250k
+                if best250 > 0: testresults['best250'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best250), modelname)
+                testresults['250k'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,250000), modelname)
+                last = '250k'
+            
+        for n in testresults.keys():
+            if last == None or len(testresults[n]) != len(testresults[last]) or len(testresults[last]) == 0:
+                print "Missing data with",n
+            if len(testresults[n]) == 0:
+                continue
+            if len(testresults[n][0]) == 6:
+                allresults.append( ('%s_pose'%testname, n) + analyze_results(testresults[n],('%s_pose_'%testname)+name+'_'+n,'pose'))
+            allresults.append( ('%s_affinity'%testname, n) + analyze_results(testresults[n],('%s_affinity_'%testname)+name+'_'+n,'affinity'))
+
+         
+    for a in allresults:
+        out.write(' '.join(map(str,a))+'\n')
