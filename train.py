@@ -232,6 +232,54 @@ def train_and_test_model(args, files, outname, cont=0):
     for every test iteration, and also the labels and predictions for the
     final test iteration. If cont > 0, assumes the presence of a saved 
     caffemodel at that iteration.'''
+    
+    #helper functions
+    def freemem():
+        '''Free intermediate blobs from all networks.  These will be reallocated as needed.'''
+        net = solver.net
+        if net.clearblobs:
+            #solver will need values in output blobs
+            for (bname, blob) in net.blobs.iteritems():
+                if bname not in net.outputs:
+                    blob.clear()
+            for k in test_nets.iterkeys():
+                test_nets[k][0].clearblobs()
+
+    def clean_checkpoint(checkname):
+         '''delete a checkpoint solver state if it should be (because we are about to write a new one)'''
+        try:
+            if os.path.exists(checkname):
+                (dontremove,prevsnap) = cPickle.load(open(checkname))[:2]
+                if not dontremoe:
+                    os.remove(prevsnap)
+                    prevsnap = prevsnap.replace('caffemodel','solverstate')
+                    os.remove(prevsnap)
+        except:
+            pass
+        
+
+    def update_from_result(name, test, result):
+        '''Put results into test/train structure'''
+            test.y_true = result.y_true
+            test.y_score = result.y_score
+            test.y_aff = result.y_aff
+            test.y_predaff = result.y_predaff
+            test.rmsd_true = result.rmsd_true
+            test.rmsd_pred = result.rmsd_pred
+            if result.auc is not None:
+                print "%s AUC: %f" % (name,result.auc)
+                test.aucs.append(result.auc)
+            if result.loss:
+                print "%s loss: %f" % (name,result.loss)
+                test.losses.append(result.loss)
+            if result.rmsd is not None:
+                print "%s RMSD: %f" % (name,result.rmsd)
+                test.rmsds.append(result.rmsd)
+            if result.rmsd_rmse is not None:
+                print "%s rmsd_rmse: %f" % (name,result.rmsd_rmse)
+                test.rmsd_rmses.append(result.rmsd_rmse)
+                
+                    
     template = args.model
     test_interval = args.test_interval
     iterations = args.iterations-cont
@@ -290,75 +338,8 @@ def train_and_test_model(args, files, outname, cont=0):
         else:
             write_model_file(test_model, template, files['train'], test_file, args.data_root, args.avg_rotations)
 
-    #write solver prototxt
-    solverf = 'solver.%d.prototxt' % pid
-    write_solver_file(solverf, test_models[0], test_models, args.solver, args.base_lr, args.momentum, args.weight_decay,
-                      args.lr_policy, args.gamma, args.power, args.seed, iterations+cont, args.clip_gradients, outname)
 
-    #set up solver in caffe
-    if args.gpu >= 0:
-        caffe.set_device(args.gpu)
-    caffe.set_mode_gpu()
-    solver = caffe.get_solver(solverf)
-    if cont:
-        modelname = '%s_iter_%d.caffemodel' % (outname, cont)
-        solvername = '%s_iter_%d.solverstate' % (outname, cont)
-        check_file_exists(solvername)
-        solver.restore(solvername)
-        solver.testall() #link testnets to train net
-    if args.weights:
-        check_file_exists(args.weights)
-        solver.net.copy_from(args.weights) #TODO this doesn't actually set the necessary weights...
-
-    test_nets = {}
-    for key, test_file in files.items():
-        idx = test_files.index(test_file)
-        test_nets[key] = solver.test_nets[idx], count_lines(test_file), 0
-
-    if training: #outfile is training progress, don't write if we're not training
-        if cont: #TODO changes in test_interval not reflected in outfile
-            mode = 'a'
-        else:
-            mode = 'w'
-        outfile = '%s.out' % outname
-        out = open(outfile, mode, 0) #unbuffered
-
-    def freemem():
-        '''Free intermediate blobs from all networks.  These will be reallocated as needed.'''
-        net = solver.net
-        if net.clearblobs:
-            #solver will need values in output blobs
-            for (bname, blob) in net.blobs.iteritems():
-                if bname not in net.outputs:
-                    blob.clear()
-            for k in test_nets.iterkeys():
-                test_nets[k][0].clearblobs()
-
-
-    def update_from_result(name, test, result):
-        '''Put results into test/train structure'''
-            test.y_true = result.y_true
-            test.y_score = result.y_score
-            test.y_aff = result.y_aff
-            test.y_predaff = result.y_predaff
-            test.rmsd_true = result.rmsd_true
-            test.rmsd_pred = result.rmsd_pred
-            if result.auc is not None:
-                print "%s AUC: %f" % (name,result.auc)
-                test.aucs.append(result.auc)
-            if result.loss:
-                print "%s loss: %f" % (name,result.loss)
-                test.losses.append(result.loss)
-            if result.rmsd is not None:
-                print "%s RMSD: %f" % (name,result.rmsd)
-                test.rmsds.append(result.rmsd)
-            if result.rmsd_rmse is not None:
-                print "%s rmsd_rmse: %f" % (name,result.rmsd_rmse)
-                test.rmsd_rmses.append(result.rmsd_rmse)
-
-    #return evaluation results:
-    #  auc, loss, and rmsd from each test
-    #  y_true, y_score, y_aff, y_predaff from last test
+    #initialize variables
     train = Namespace(aucs=[], y_true=[], y_score=[], losses=[], rmsds=[], y_aff=[], y_predaff=[],rmsd_rmses=[])
     if not test_on_train:
         test = Namespace(aucs=[], y_true=[], y_score=[], losses=[], rmsds=[], y_aff=[], y_predaff=[],rmsd_rmses=[])
@@ -380,7 +361,6 @@ def train_and_test_model(args, files, outname, cont=0):
         'train_rmsd' = np.inf, \
         'test_rmsd_rmse' = np.inf, \
         'train_rmsd_rmse' = np.inf}      
-
     
     train_rmsd = np.inf
     test_rmsd = np.inf
@@ -388,19 +368,54 @@ def train_and_test_model(args, files, outname, cont=0):
     test_rmsd_rmse = np.inf
     step_reduce_cnt = 0
     i_time_avg = 0
-    original_lr = args.base_lr
-        
+    original_lr = args.base_lr    
+
+    #write solver prototxt
+    solverf = 'solver.%d.prototxt' % pid
+    write_solver_file(solverf, test_models[0], test_models, args.solver, args.base_lr, args.momentum, args.weight_decay,
+                      args.lr_policy, args.gamma, args.power, args.seed, iterations+cont, args.clip_gradients, outname)
+
+    #set up solver in caffe
+    if args.gpu >= 0:
+        caffe.set_device(args.gpu)
+    caffe.set_mode_gpu()
+    solver = caffe.get_solver(solverf)
+    
+                    
+    if cont:
+        solvername = '%s_iter_%d.solverstate' % (outname, cont)
+        check_file_exists(solvername)
+        solver.restore(solvername)
+        solver.testall() #link testnets to train net
+            
     if args.checkpoint:
-        snapname = solver.snapshot()
         checkname = '%s.CHECKPOINT'%outname
         if os.path.exists(checkname):
             checkdata = cPickle.load(checkname)
             (dontremove, training, prevsnap,train,test,bests,best_train_interval,prevlr, step_reduce_cnt) = checkdata
+            solver.restore(prevsnap)
+            solver.testall()            
             solver.set_base_lr(prevlr) #this isn't saved in solver state!
+            #figure out iteration
+            m = re.search(r'_iter_(%d)\.solverstate',prevsnap)
+            cont = int(m.group(1))
+            iterations = args.iterations-cont
             if not training:
                 iterations = 0 #just returned the stored values
+                
+    if args.weights:
+        check_file_exists(args.weights)
+        solver.net.copy_from(args.weights) #TODO this doesn't actually set the necessary weights...
+                
+    test_nets = {}
+    for key, test_file in files.items():
+        idx = test_files.index(test_file)
+        test_nets[key] = solver.test_nets[idx], count_lines(test_file), 0
 
-    
+    if training: #outfile is training progress, don't write if we're not training
+        outfile = '%s.out' % outname
+        out = open(outfile, 'a' if cont else 'w', 0) #unbuffered
+
 
     for i in xrange(iterations/test_interval):
         if not args.dynamic:
@@ -589,15 +604,7 @@ def train_and_test_model(args, files, outname, cont=0):
         if args.checkpoint:
             snapname = solver.snapshot()
             checkname = '%s.CHECKPOINT'%outname
-            try:
-                if os.path.exists(checkname):
-                    prevals = cPickle.load(open(checkname))
-                    if not prevals[0]:
-                        os.remove(prevsnap)
-                        prevsnap = prevsnap.replace('caffemodel','solverstate')
-                        os.remove(prevsnap)
-            except:
-                pass
+            clean_checkpoint(checkname)
             cPickle.dump((dontremove, training, prevsnap,train,test,bests,best_train_interval,prevlr, step_reduce_cnt), open(checkname,'w'))
         
 
