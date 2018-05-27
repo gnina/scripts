@@ -652,7 +652,6 @@ def train_and_test_model(args, files, outname, cont=0):
                     os.remove(prevsnap)
                     prevsnap = prevsnap.replace('caffemodel','solverstate')
                     os.remove(prevsnap)
-                os.remove(checkname)
         except:
             pass
 
