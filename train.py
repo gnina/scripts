@@ -420,6 +420,7 @@ def train_and_test_model(args, files, outname, cont=0):
     if args.checkpoint:
         checkname = '%s.CHECKPOINT'%outname
         if os.path.exists(checkname):
+            print checkname
             checkdata = cPickle.load(open(checkname))
             (dontremove, training, prevsnap,train,test,bests,best_train_interval,prevlr, step_reduce_cnt) = checkdata
             print "Restoring",prevsnap
@@ -428,8 +429,8 @@ def train_and_test_model(args, files, outname, cont=0):
             print "Testall"
             solver.testall()            
             solver.set_base_lr(prevlr) #this isn't saved in solver state!
-            #figure out iteration
-            m = re.search(r'_iter_(%d)\.solverstate',prevsnap)
+            #figure out iteration 
+            m = re.search(r'_iter_(\d+)\.solverstate',prevsnap)
             cont = int(m.group(1))
             iterations = args.iterations-cont
             
@@ -437,7 +438,7 @@ def train_and_test_model(args, files, outname, cont=0):
                 iterations = 0 #just returned the stored values
                 print "Fold %s already completed"%outname
             else:
-                print "Continuing checkpoing from",cont
+                print "Continuing checkpoint from",cont
                 
     if args.weights:
         check_file_exists(args.weights)

@@ -17,7 +17,8 @@ import numpy as np
 import sklearn.metrics
 import scipy.stats
 import calctop
-import evaluate
+from evaluate import evaluate_fold, analyze_results
+from train import Namespace
 
 class Bunch(object):
   def __init__(self, adict):
@@ -135,7 +136,7 @@ for i in train_test_files:
         print "Couldn't find valid caffemodel file %s.%d_iter_*.caffemodel"%(outprefix,i)
         sys.exit(-1)
         
-    testresults += evaluate_fold(train_test_files[i]['test'], caffemodel, 'model.model')
+    testresults += evaluate_fold(train_test_files[i]['test'], caffemodel, 'model.model',trainargs.data_root)
     
 
 (rmse, R, S, aucpose, aucaff, top) = analyze_results(testresults,'%s.summary'%outprefix,'pose')

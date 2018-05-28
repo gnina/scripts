@@ -21,7 +21,7 @@ import sklearn.metrics
 import scipy.stats
 
 
-def evaluate_fold(testfile, caffemodel, modelname):
+def evaluate_fold(testfile, caffemodel, modelname, datadir='../..'):
     '''Evaluate the passed model and the specified test set.
     Returns tuple:
     (correct, prediction, receptor, ligand, label (optional), posescore (optional))
@@ -32,7 +32,7 @@ def evaluate_fold(testfile, caffemodel, modelname):
         
     caffe.set_mode_gpu()
     test_model = 'predict.%d.prototxt' % os.getpid()
-    train.write_model_file(test_model, modelname, testfile, testfile, '../..')
+    train.write_model_file(test_model, modelname, testfile, testfile, datadir)
     test_net = caffe.Net(test_model, caffemodel, caffe.TEST)
     lines = open(testfile).readlines()
     res = None
