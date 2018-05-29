@@ -444,8 +444,8 @@ def train_and_test_model(args, files, outname, cont=0):
 
     last_test = False
     for i in xrange(iterations/test_interval):
-        if not args.dynamic:
-            last_test = i == iterations/test_interval-1
+        if i == (int(iterations/test_interval) - 1):
+            last_test = True
 
         i_start = start = time.time()
         keepsnap = False
