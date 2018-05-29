@@ -273,18 +273,6 @@ def train_and_test_model(args, files, outname, cont=0):
             for k in test_nets.iterkeys():
                 test_nets[k][0].clearblobs()
 
-    def clean_checkpoint(checkname):
-        '''delete a checkpoint solver state if it should be (because we are about to write a new one)'''
-        try:
-            if os.path.exists(checkname):
-                (dontremove,_,prevsnap) = cPickle.load(open(checkname))[:3]
-                if not dontremove:
-                    print "Removing",prevsnap
-                    os.remove(prevsnap)
-                    prevsnap = prevsnap.replace('solverstate','caffemodel')
-                    os.remove(prevsnap)
-        except Exception as e:
-            print e
         
 
     def update_from_result(name, test, result):
@@ -645,13 +633,24 @@ def train_and_test_model(args, files, outname, cont=0):
             snapname = snapname.replace('caffemodel','solverstate')
 
             checkname = '%s.CHECKPOINT'%outname
+            #read previous snap
+            (dontremove,_,prevsnap) = cPickle.load(open(checkname))[:3]
 
             with DelayedInterrupt([signal.SIGTERM, signal.SIGINT]):
-                clean_checkpoint(checkname)   
+                #write new snap
                 checkout = open(checkname,'w')         
                 cPickle.dump((keepsnap, training, snapname,train,test,bests,best_train_interval,solver.get_base_lr(), step_reduce_cnt), checkout)
                 checkout.flush()
                 checkout.close()
+                if prevsnap != snapname: #not sure why this would happen, but be on the safe side
+                    try:
+                        if not dontremove:
+                            print "Removing",prevsnap
+                            os.remove(prevsnap)
+                            prevsnap = prevsnap.replace('solverstate','caffemodel')
+                            os.remove(prevsnap)
+                    except Exception as e:
+                        print e
         
 
     if training:
