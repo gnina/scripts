@@ -117,6 +117,9 @@ print cmdline
 try:
     output = subprocess.check_output(cmdline,shell=True,stderr=subprocess.STDOUT)
     d, R, rmse, auc, top = output.rstrip().split('\n')[-1].split()
+    pid = os.getpid()
+    out = open('output.%s.%d'%(host,pid),'w')
+    out.write(output)
 except Exception as e:
     pid = os.getpid()
     out = open('output.%s.%d'%(host,pid),'w')
