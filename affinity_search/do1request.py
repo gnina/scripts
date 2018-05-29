@@ -82,7 +82,7 @@ else:
     config = None
     for row in rows:
         # need to atomically update id
-        ret = cursor.execute('UPDATE params SET id = "INPROGRESS" WHERE serial = %s AND id = "REQUESTED"',[row['serial']])
+        ret = cursor.execute('UPDATE params SET id = "INPROGRESS", msg = "%s" WHERE serial = %s AND id = "REQUESTED"',[inprogressname,row['serial']])
         if ret: # success!
             #set config
             config = row
