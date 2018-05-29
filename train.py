@@ -423,6 +423,11 @@ def train_and_test_model(args, files, outname, cont=0):
             print checkname
             checkdata = cPickle.load(open(checkname))
             (dontremove, training, prevsnap,train,test,bests,best_train_interval,prevlr, step_reduce_cnt) = checkdata
+            
+            if not training:
+                print "Fold %s already completed"%outname
+                return test, train
+
             print "Restoring",prevsnap
 
             solver.restore(prevsnap)
@@ -433,12 +438,7 @@ def train_and_test_model(args, files, outname, cont=0):
             m = re.search(r'_iter_(\d+)\.solverstate',prevsnap)
             cont = int(m.group(1))
             iterations = args.iterations-cont
-            
-            if not training:
-                iterations = 0 #just returned the stored values
-                print "Fold %s already completed"%outname
-            else:
-                print "Continuing checkpoint from",cont
+            print "Continuing checkpoint from",cont
                 
     if args.weights:
         check_file_exists(args.weights)
@@ -616,6 +616,7 @@ def train_and_test_model(args, files, outname, cont=0):
                     
                 if step_reduce_cnt > args.step_end_cnt or lr < args.step_end:
                     #end early, but run full test if needed
+                    keepsnap = True
                     if args.reduced:
                         training = False
                         last_test = True
