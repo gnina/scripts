@@ -74,9 +74,7 @@ print inprogressname
 if os.path.isfile(inprogressname):
     config = json.load(open(inprogressname))
     d = config['msg']    
-    #only retry once - remove the file
     print "Retrying with config: %s" % json.dumps(config)
-    rm(inprogressname)
 else:
 #are there any requested configurations?  if so select one
     cursor.execute('SELECT * FROM params WHERE id = "REQUESTED"')
