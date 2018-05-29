@@ -593,8 +593,6 @@ def train_and_test_model(args, files, outname, cont=0):
                 
             #update learning rate if necessary
             if args.dynamic:
-                if last_test:
-                    break
                 lr = solver.get_base_lr()
                 if (i-best_train_interval) > args.step_when: #reduce learning rate
                     lr *= args.step_reduce
@@ -615,7 +613,7 @@ def train_and_test_model(args, files, outname, cont=0):
                 indexes = [0, 1, 2, 3, 4, 3, 2, 1]
                 lr = lrs[indexes[i%len(indexes)]]
                 solver.set_base_lr(lr) 
-                                  
+
         #track avg time per loop
         i_time = time.time()-i_start
         i_time_avg = (i*i_time_avg + i_time)/(i+1)
@@ -656,7 +654,8 @@ def train_and_test_model(args, files, outname, cont=0):
                     except Exception as e:
                         print e
         
-
+        if last_test:
+             break
     if training:
         out.close()
         solver.snapshot()
