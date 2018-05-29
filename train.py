@@ -634,7 +634,11 @@ def train_and_test_model(args, files, outname, cont=0):
 
             checkname = '%s.CHECKPOINT'%outname
             #read previous snap
-            (dontremove,_,prevsnap) = cPickle.load(open(checkname))[:3]
+            if os.path.exists(checkname):
+              (dontremove,_,prevsnap) = cPickle.load(open(checkname))[:3]
+            else:
+              dontremove = True
+              prevsnap = None
 
             with DelayedInterrupt([signal.SIGTERM, signal.SIGINT]):
                 #write new snap
