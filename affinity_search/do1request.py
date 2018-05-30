@@ -19,6 +19,8 @@ parser.add_argument('--prefix',type=str,help='gninatypes prefix, needs to be abs
 parser.add_argument('--host',type=str,help='Database host',required=True)
 parser.add_argument('-p','--password',type=str,help='Database password',required=True)
 parser.add_argument('--db',type=str,help='Database name',required=True)
+parser.add_argument('--ligmap',type=str,help="Ligand atom typing map to use",default='') 
+parser.add_argument('--recmap',type=str,help="Receptor atom typing map to use",default='') 
 
 args = parser.parse_args()
 
@@ -109,6 +111,8 @@ for (name,val) in sorted(opts.items()):
     
 cmdline = '%s/runline.py --prefix %s --data_root "%s" --seed %d --split %d --dir %s --line "%s"' % \
         (get_script_path(), args.prefix,args.data_root,config['seed'],config['split'], config['msg'], ' '.join(values))
+if(args.ligmap) cmdline += " --ligmap %s"%args.ligmap
+if(args.recmap) cmdline += " --recmap %s"%args.recmap
 print cmdline
 
 #call runline to insulate ourselves from catestrophic failure (caffe)

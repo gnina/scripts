@@ -37,6 +37,9 @@ parser.add_argument('--stratify_receptor',type=int,help="Stratify receptor",defa
 parser.add_argument('--stratify_affinity',type=int,help="Stratify affinity, min=2,max=10",default=0,choices=(0,1))
 parser.add_argument('--stratify_affinity_step',type=float,help="Stratify affinity step",default=1,choices=(1,2,4))
 parser.add_argument('--resolution',type=float,help="Grid resolution",default=0.5,choices=(0.5,1.0)) #need smal
+parser.add_argument('--jitter',type=float,help="Amount of jitter to apply",default=0.0,choices=Range(0,1),metavar='j') 
+parser.add_argument('--ligmap',type=str,help="Ligand atom typing map to use",default='') 
+parser.add_argument('--recmap',type=str,help="Receptor atom typing map to use",default='') 
 
 # loss parameters
 parser.add_argument('--loss_gap',type=float,help="Affinity loss gap",default=0,choices=Range(0,5),metavar='g')
@@ -91,19 +94,21 @@ parser.add_argument('--fc_pose_init',type=str,help="Weight initialization for po
 nonparms = parser.add_argument_group('non-parameter options')
 
 def getoptions():
+    '''return options that have choices'''
     ret = dict()
     for a in parser._actions:
         if type(a) == argparse._StoreAction:
             if a.type == bool:
                 ret[a.dest] = (0,1)
-            else:
+            elif a.choices:
                 ret[a.dest] = a.choices
     return ret
 
 def getdefaults():
+    '''return defaults for arguments with choices'''
     ret = dict()
     for a in parser._actions:
-        if type(a) == argparse._StoreAction:
+        if type(a) == argparse._StoreAction and a.choices:
             ret[a.dest] = a.default
     return ret
     
@@ -214,12 +219,14 @@ layer {
         dimension: 23.5
         resolution: %f
         shuffle: false
+        ligmap: "%s"
+        recmap: "%s"
         balanced: false
         has_affinity: true
         root_folder: "DATA_ROOT"
     }
   }
-  ''' % args.resolution
+  ''' % (args.resolution,args.ligmap,args.recmap)
   
   #train input,
     m += '''
@@ -239,6 +246,9 @@ layer {
         resolution: %f
         shuffle: true
         balanced: %s
+        jitter: %f
+        ligmap: "%s"
+        recmap: "%s"        
         stratify_receptor: %s
         stratify_affinity_min: %d
         stratify_affinity_max: %d
@@ -249,7 +259,7 @@ layer {
         root_folder: "DATA_ROOT"
     }
 }
-''' % (args.resolution, boolstr(args.balanced), boolstr(args.stratify_receptor), 2 if args.stratify_affinity else 0, 10 if args.stratify_affinity else 0, args.stratify_affinity_step)
+''' % (args.resolution, boolstr(args.balanced), args.jitter, args.ligmap, args.recmap, boolstr(args.stratify_receptor), 2 if args.stratify_affinity else 0, 10 if args.stratify_affinity else 0, args.stratify_affinity_step)
 
     #now pool/conv layers
         

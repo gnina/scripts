@@ -32,6 +32,8 @@ parser.add_argument('--split',type=int,help='Which predefined split to use',defa
 parser.add_argument('--data_root',type=str,help='Location of gninatypes directory',default='')
 parser.add_argument('--prefix',type=str,help='Prefix, not including split',default='../data/refined/all_0.5_')
 parser.add_argument('--dir',type=str,help='Directory to use')
+parser.add_argument('--ligmap',type=str,help="Ligand atom typing map to use",default='') 
+parser.add_argument('--recmap',type=str,help="Receptor atom typing map to use",default='') 
 args = parser.parse_args()
 
 linevals = args.line.split()[2:]
@@ -57,6 +59,9 @@ for (i,(name,vals)) in enumerate(sorted(opts.items())):
         v = float(v)
     params[name] = v
 
+
+if(args.ligmap) params['ligmap'] = args.ligmap
+if(args.recmap) params['recmap'] = args.recmap
 
 params = Bunch(params)
 

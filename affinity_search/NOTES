@@ -504,3 +504,29 @@ do
      done; 
 done > cmds
 awk '{print "../evaluate.py " $17,$3,$17".summary",$7}' cmds > evals
+
+
+s2 does the best for pose (but only slightly better than default), 5_32_32_1 does poorly with pose - basically need more resolution?
+for affinity, all pretty similar, gap may result in more variability?
+5_32_32_1 had both best and worse affinity point
+defaults are generaly better for affinity
+
+
+ITERATION 11
+
+Stick with defaults, evaluate jitter, different atom type maps
+../makemodel.py --conv1_norm BatchNorm --conv2_norm BatchNorm --conv3_norm BatchNorm  > default_batch.model
+../makemodel.py --conv1_norm BatchNorm --conv2_norm BatchNorm --conv3_norm BatchNorm --jitter 0.1 > jitter_0.1.model
+../makemodel.py --conv1_norm BatchNorm --conv2_norm BatchNorm --conv3_norm BatchNorm --jitter 1.0 > jitter_1.model  #this should be too big?
+
+../makemodel.py --conv1_norm BatchNorm --conv2_norm BatchNorm --conv3_norm BatchNorm  > default_newmap.model
+#manually edit
+default_newrec.model  - rec only
+default_newlig.model  - lig only
+
+../makemodel.py --conv1_norm BatchNorm --conv2_norm BatchNorm --conv3_norm BatchNorm --ligmap simplelig --recmap simplerec > default_simplemap.model
+
+
+for m in *.model  ; do   for i in {0..4};     do        echo train.py -m $m -d ../.. -p ../types/all_wlig_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_wlig_$i --seed $i --dynamic --lr_policy fixed ;       done;  done > cmds
+awk '{print "../evaluate.py " $17,$3,$17".summary",$7}' cmds > evals
+
