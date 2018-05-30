@@ -132,7 +132,7 @@ except Exception as e:
     cursor.execute('UPDATE params SET id = "ERROR", msg = %s WHERE serial = %s',(str(pid),config['serial']))
     print "Error"
     print output
-    if re.search(r'out of memory',output) and (host.startswith('gnina') or host.startswith('client')):
+    if re.search(r'out of memory',output) and (host.startswith('gnina') ):
         #host migration restarts don't seem to bring the gpu up in agood state
         print "REBOOTING"
         os.system("sudo reboot")
