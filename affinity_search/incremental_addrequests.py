@@ -48,13 +48,12 @@ parser.add_argument('--db',type=str,help='Database name',default='database')
 parser.add_argument('--pending_threshold',type=int,default=12,help='Number of pending jobs that triggers an update')
 parser.add_argument('-n','--num_configs',type=int,default=1,help='Number of configs to generate - will add 3X as many jobs') 
 parser.add_argument('-s','--spearmint',type=str,help='Location of spearmint-lite.py',required=True)
-parser.add_argument('--model_threshold',type=int,default=64,help='Number of unique models to evaluate at a level before giving up and going to the next level')
+parser.add_argument('--model_threshold',type=int,default=16,help='Number of unique models to evaluate at a level before giving up and going to the next level')
 parser.add_argument('--priority',type=file,help='priority order of parameters',required=True)
 parser.add_argument('--info',type=str,help='incremental information file',default='INCREMENTAL.info')
 parser.add_argument('--mingroup',type=int,help='required number of evaluations of a model for it to count',default=3)
 args = parser.parse_args()
 
-opts = makemodel.getoptions()
 
 
 # first see how many id=REQUESTED jobs there are
@@ -62,6 +61,9 @@ cursor = getcursor()
 cursor.execute('SELECT COUNT(*) FROM params WHERE id = "REQUESTED"')
 rows = cursor.fetchone()
 pending = rows.values()[0]
+
+#get options
+options = sorted(makemodel.getoptions().items())
 
 #print "Pending jobs:",pending
 sys.stdout.write('%d '%pending)
@@ -71,7 +73,6 @@ sys.stdout.flush()
 if pending > args.pending_threshold:
     sys.exit(0)
 
-sys.exit(0)
 #create gnina-spearmint directory if it doesn't exist already
 if not os.path.exists('gnina-spearmint-incremental'):
     os.makedirs('gnina-spearmint-incremental')
@@ -129,7 +130,7 @@ config = makejson()
 defaults = dict()
 for (i,(name,value)) in enumerate(zip(params,defaultparams)):
     if i > level:
-        defaults[name] = value
+        defaults[name] = str(value)
         del config[name]
            
 cout = open('gnina-spearmint-incremental/config.json','w')
@@ -146,7 +147,7 @@ evalconfigs = set()
 validrows = 0
 for (i,row) in data.iterrows():
     outrow = []
-    for (name,vals) in sorted(opts.items()):
+    for (name,vals) in options:
         if name == 'resolution':
             val = str(float(row[name])) #gets returned as 1 instead of 1.0 
         else:
@@ -207,7 +208,7 @@ for line in newlines:
     vals = line.rstrip().split()
     pos = 2
     outrow = [vals[0],vals[1]]
-    for (name,_) in sorted(opts.items()):
+    for (name,_) in options:
         if name in defaults:  
             outrow.append(defaults[name])
         else: #not defaults in opt order
@@ -218,5 +219,6 @@ for line in newlines:
     out.write('\n')
 out.close()
 #add to database as REQUESTED jobs
+
 addrows('gnina-spearmint-incremental/newrows.dat',args.host,args.db,args.password)
 

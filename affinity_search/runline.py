@@ -60,8 +60,8 @@ for (i,(name,vals)) in enumerate(sorted(opts.items())):
     params[name] = v
 
 
-if(args.ligmap) params['ligmap'] = args.ligmap
-if(args.recmap) params['recmap'] = args.recmap
+if(args.ligmap): params['ligmap'] = args.ligmap
+if(args.recmap): params['recmap'] = args.recmap
 
 params = Bunch(params)
 
