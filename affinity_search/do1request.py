@@ -111,8 +111,8 @@ for (name,val) in sorted(opts.items()):
     
 cmdline = '%s/runline.py --prefix %s --data_root "%s" --seed %d --split %d --dir %s --line "%s"' % \
         (get_script_path(), args.prefix,args.data_root,config['seed'],config['split'], config['msg'], ' '.join(values))
-if(args.ligmap) cmdline += " --ligmap %s"%args.ligmap
-if(args.recmap) cmdline += " --recmap %s"%args.recmap
+if(args.ligmap): cmdline += " --ligmap %s"%args.ligmap
+if(args.recmap): cmdline += " --recmap %s"%args.recmap
 print cmdline
 
 #call runline to insulate ourselves from catestrophic failure (caffe)
