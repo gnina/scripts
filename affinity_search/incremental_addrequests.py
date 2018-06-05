@@ -46,12 +46,12 @@ parser.add_argument('--host',type=str,help='Database host',required=True)
 parser.add_argument('-p','--password',type=str,help='Database password',required=True)
 parser.add_argument('--db',type=str,help='Database name',default='database')
 parser.add_argument('--pending_threshold',type=int,default=12,help='Number of pending jobs that triggers an update')
-parser.add_argument('-n','--num_configs',type=int,default=1,help='Number of configs to generate - will add 3X as many jobs') 
+parser.add_argument('-n','--num_configs',type=int,default=1,help='Number of configs to generate - will add a multiple as many jobs') 
 parser.add_argument('-s','--spearmint',type=str,help='Location of spearmint-lite.py',required=True)
-parser.add_argument('--model_threshold',type=int,default=16,help='Number of unique models to evaluate at a level before giving up and going to the next level')
+parser.add_argument('--model_threshold',type=int,default=12,help='Number of unique models to evaluate at a level before giving up and going to the next level')
 parser.add_argument('--priority',type=file,help='priority order of parameters',required=True)
 parser.add_argument('--info',type=str,help='incremental information file',default='INCREMENTAL.info')
-parser.add_argument('--mingroup',type=int,help='required number of evaluations of a model for it to count',default=3)
+parser.add_argument('--mingroup',type=int,help='required number of evaluations of a model for it to count',default=5)
 args = parser.parse_args()
 
 
@@ -99,6 +99,7 @@ metrics['Rtop'] = metrics.R * metrics.top
 defaultparams = metrics['Rtop'].idxmax()  #this is in priority order
 bestRtop = metrics['Rtop'].max()
 
+
 print "Best",bestRtop
 #figure out what param we are on
 if os.path.exists(args.info):
@@ -120,10 +121,12 @@ if bestRtop > prevbest*1.01:
     info = open(args.info,'a')
     info.write('%d %f\n' % (level,bestRtop))
     info.close()
-    try:  #remove pickle file since number of parameters has changed
-        os.remove('gnina-spearmint-incremental/chooser.GPEIOptChooser.pkl')
-    except:
-        pass
+
+
+try:  #remove pickle file in case number of parameters has changed
+    os.remove('gnina-spearmint-incremental/chooser.GPEIOptChooser.pkl')
+except:
+    pass
     
 #create config.json without defaulted parameters
 config = makejson()
@@ -217,6 +220,7 @@ for line in newlines:
     assert(pos == len(vals))
     out.write(' '.join(outrow))
     out.write('\n')
+    print ' '.join(outrow)
 out.close()
 #add to database as REQUESTED jobs
 

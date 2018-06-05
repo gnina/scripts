@@ -21,7 +21,7 @@ class Range():
     
 parser = argparse.ArgumentParser(description='Create model from parameters.')
 #solver hyper parameters
-parser.add_argument('--base_lr_exp',type=float,help='Initial learning rate exponent, for log10 scaling',default=-2,choices=Range(-10,0),metavar='lr')
+parser.add_argument('--base_lr_exp',type=float,help='Initial learning rate exponent, for log10 scaling',default=-2,choices=Range(-5,0),metavar='lr')
 parser.add_argument('--momentum',type=float,help="Momentum parameters, default 0.9",default=0.9,choices=Range(0,1),metavar='m')
 parser.add_argument('--weight_decay_exp',type=float,help="Weight decay exponent (for log10 scaling)",default=-3,choices=Range(-10,0),metavar='w')
 parser.add_argument('--solver',type=str,help="Solver type",default='SGD',choices=('SGD','Adam'))
@@ -154,13 +154,13 @@ layer {{
   name: "unit{1}_norm"
   type: "{2}"
   bottom: "{0}"
-  top: "{0}"
+  top: "{0}n"
 }}
 layer {{
  name: "unit{1}_scale"
  type: "Scale"
- bottom: "{0}"
- top: "{0}"
+ bottom: "{0}n"
+ top: "{0}n"
  scale_param {{
   bias_term: true
  }}
@@ -291,6 +291,7 @@ layer {
             m += convolutionlayer.format(convlayer,lastlayer, convwidth, pad, ksize,stride)
             if norm != 'none':
                 m += normlayer.format(convlayer, i, norm)
+                convlayer += 'n'
             
             m += funclayer(convlayer, 'unit%d_func'%i, func)
             lastlayer = convlayer
