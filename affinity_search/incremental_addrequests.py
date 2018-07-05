@@ -46,7 +46,7 @@ parser.add_argument('--host',type=str,help='Database host',required=True)
 parser.add_argument('-p','--password',type=str,help='Database password',required=True)
 parser.add_argument('--db',type=str,help='Database name',default='database')
 parser.add_argument('--pending_threshold',type=int,default=12,help='Number of pending jobs that triggers an update')
-parser.add_argument('-n','--num_configs',type=int,default=1,help='Number of configs to generate - will add a multiple as many jobs') 
+parser.add_argument('-n','--num_configs',type=int,default=5,help='Number of configs to generate - will add a multiple as many jobs') 
 parser.add_argument('-s','--spearmint',type=str,help='Location of spearmint-lite.py',required=True)
 parser.add_argument('--model_threshold',type=int,default=12,help='Number of unique models to evaluate at a level before giving up and going to the next level')
 parser.add_argument('--priority',type=file,help='priority order of parameters',required=True)
@@ -124,7 +124,7 @@ if bestRtop > prevbest*1.01:
 
 
 try:  #remove pickle file in case number of parameters has changed
-    os.remove('gnina-spearmint-incremental/chooser.GPEIOptChooser.pkl')
+    if level != 50: os.remove('gnina-spearmint-incremental/chooser.GPEIOptChooser.pkl')
 except:
     pass
     
