@@ -46,6 +46,23 @@ def cleanparams(p):
         if p['pool%d_size'%i] == 0:
             name = 'pool%d_type'%i
             p[name] = modeldefaults[name]
+    if p['fc_pose_hidden'] == 0:
+        p['fc_pose_func'] = modeldefaults['fc_pose_func']
+        p['fc_pose_hidden2'] = modeldefaults['fc_pose_hidden2']
+        p['fc_pose_func2'] = modeldefaults['fc_pose_func2']
+        p['fc_pose_init'] = modeldefaults['fc_pose_init']
+    elif p['fc_pose_hidden2'] == 0:
+        p['fc_pose_hidden2'] = modeldefaults['fc_pose_hidden2']
+        p['fc_pose_func2'] = modeldefaults['fc_pose_func2']
+        
+    if p['fc_affinity_hidden'] == 0:
+        p['fc_affinity_func'] = modeldefaults['fc_affinity_func']
+        p['fc_affinity_hidden2'] = modeldefaults['fc_affinity_hidden2']
+        p['fc_affinity_func2'] = modeldefaults['fc_affinity_func2']
+        p['fc_affinity_init'] = modeldefaults['fc_affinity_init']
+    elif p['fc_affinity_hidden2'] == 0:
+        p['fc_affinity_hidden2'] = modeldefaults['fc_affinity_hidden2']
+        p['fc_affinity_func2'] = modeldefaults['fc_affinity_func2']                    
     return p
     
 def randParam(param, choices):
@@ -130,8 +147,8 @@ parser = argparse.ArgumentParser(description='Generate more configurations with 
 parser.add_argument('--host',type=str,help='Database host',required=True)
 parser.add_argument('-p','--password',type=str,help='Database password',required=True)
 parser.add_argument('--db',type=str,help='Database name',default='database')
-parser.add_argument('--pending_threshold',type=int,default=5,help='Number of pending jobs that triggers an update')
-parser.add_argument('-n','--num_configs',type=int,default=3,help='Number of configs to generate - will add a multiple as many jobs') 
+parser.add_argument('--pending_threshold',type=int,default=0,help='Number of pending jobs that triggers an update')
+parser.add_argument('-n','--num_configs',type=int,default=1,help='Number of configs to generate - will add a multiple as many jobs') 
 args = parser.parse_args()
 
 
@@ -215,6 +232,7 @@ print "Best recommended: %f"%pop[0].fitness.values[0]
 
 uniquified = []
 for config in pop:
+    config = cleanparams(config)
     fr = frozendict(config)
     if fr not in seen:
         seen.add(fr)

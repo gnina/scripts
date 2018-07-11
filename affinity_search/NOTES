@@ -553,6 +553,7 @@ Additionally, setting the middle convolution to kernel size 1 was beneficial, su
 ../makemodel.py --ligmap simplelig --recmap simplerec --pool1_size 0 --conv1_width 256 --conv2_width 512 --conv3_width 8 > highcap_np_256_512_8.model
 ../makemodel.py --ligmap simplelig --recmap simplerec  --conv1_width 256 --conv2_width 512 --conv3_width 8 > highcap_wp_256_512_8.model
 
+#netinnet
 ../makemodel.py --ligmap simplelig --recmap simplerec --pool2_size 0 --conv2_size 1 --conv2_width 32 --conv3_width 64 --conv4_width 64 --conv4_size 1 --conv5_width 128 --pool5_size 2 > netinnet.model
 
 #the high capacity no pool models were too large
@@ -565,4 +566,10 @@ awk '{print "../evaluate.py " $17,$3,$17".summary",$7}' cmds > evals
 
 Try reducing affinity scale parameter: highcap_wp_256_512_128_scale.model
 Also, smaller last conv:
+#ALERT - This was a buggy commandline
 ../makemodel.py --ligmap simplelig --recmap simplerec  --conv1_width 256 --conv2_width 512 --conv2_width 32 > highcap_wp_256_512_32.model
+
+
+The higher capacity models outperform at pose selection, even with pooling.  Net in net does okay as well.
+Interestingly, bottlenecking the affinity side sometimes adversely affects pose selection (maybe helps, or doesn't hurt, affinity).
+Net-in-net did better on pose and about the same on affinity, but had higher variance.

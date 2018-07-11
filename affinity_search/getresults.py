@@ -42,13 +42,13 @@ def getres(host, password, db, mingroup, priority, selected_params):
     params = open(priority).read().rstrip().split()
 
     grouped = nonan.groupby(params)
-    metrics = grouped.agg([np.mean,np.std])
+    metrics = grouped.agg([np.mean,np.std,np.min,np.max])
     metrics = metrics[grouped.size() >= mingroup]
     metrics = metrics.my_flatten_cols()
 
     metrics = metrics.reset_index()
 
-    sel = ['rmse_mean','top_mean','R_mean','auc_mean','Rtop_mean','rmse_std','top_std','R_std','auc_std','Rtop_std']
+    sel = ['rmse_mean','top_mean','R_mean','auc_mean','Rtop_mean','rmse_std','top_std','R_std','auc_std','Rtop_std','serial_min','serial_max']
     if selected_params:
         sel += selected_params
     return  metrics.loc[:,sel]

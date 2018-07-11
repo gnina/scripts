@@ -442,7 +442,7 @@ def train_and_test_model(args, files, outname, cont=0):
         out = open(outfile, 'a' if cont else 'w', 0) #unbuffered
 
 
-    last_test = False
+    last_test = False # indicator we should test full set
     for i in xrange(iterations/test_interval):
         if i == (int(iterations/test_interval) - 1):
             last_test = True
@@ -604,7 +604,6 @@ def train_and_test_model(args, files, outname, cont=0):
                     #end early, but run full test if needed
                     keepsnap = True
                     if args.reduced:
-                        training = False
                         last_test = True
                     else:
                         break
@@ -655,7 +654,10 @@ def train_and_test_model(args, files, outname, cont=0):
                         print e
         
         if last_test:
-             break
+            if training: # we indicated we are done, but still need last test
+                training = False
+            else: #training is false, we've done the last test
+                break
     if training:
         out.close()
         solver.snapshot()
