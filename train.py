@@ -162,22 +162,32 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
 
             if not res or i >= batch_size:
                 res = test_net.forward()
+                # print res
                 if 'output' in res:
-                    batch_size = res['output'].shape[0]
+                    idx = 1 if len(res['output'].shape) > 2 else 0
+                    batch_size = res['output'].shape[idx]
                 elif 'affout' in res:
-                    batch_size = res['affout'].shape[0]
+                    idx = 1 if len(res['affout'].shape) > 1 else 0
+                    batch_size = res['affout'].shape[idx]
                 else:                    
-                    batch_size = res['label'].shape[0]
+                    idx = 1 if len(res['label'].shape) > 2 else 0
+                    batch_size = res['label'].shape[idx]
                 i = 0
 
             if 'labelout' in res:
                 if r == 0:
-                    y_true[x] = float(res['labelout'][i])
+                    if len(res['labelout'].shape) > 1:
+                        y_true[x] = float(res['labelout'][-1][i])
+                    else:
+                        y_true[x] = float(res['labelout'][i])
                 else:
                     assert y_true[x] == res['labelout'][i] #sanity check
 
             if 'output' in res:
-                y_scores[x].append(float(res['output'][i][1]))
+                if len(res['output'].shape) > 2:
+                    y_scores[x].append(float(res['output'][-1][i][1]))
+                else:
+                    y_scores[x].append(float(res['output'][i][1]))
 
             if 'affout' in res:
                 if r == 0:
@@ -581,9 +591,9 @@ def train_and_test_model(args, files, outname, cont=0):
             out.flush()
 
             #check for a stuck network (same prediction for everything)
-            if len(result.y_score) > 1 and len(np.unique(result.y_score)) == 1:
-                print "Identical scores in test, bailing early"
-                break
+            # if len(result.y_score) > 1 and len(np.unique(result.y_score)) == 1:
+                # print "Identical scores in test, bailing early"
+                # break
             if len(result.y_predaff) > 1 and len(np.unique(result.y_predaff)) == 1:
                 print "Identical affinities in test, bailing early"
                 break
