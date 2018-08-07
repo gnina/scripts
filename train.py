@@ -230,8 +230,8 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
     #compute mean squared error (rmsd) of affinity (for actives only)
     if result.y_aff and result.y_predaff:
         if result.y_true:
-            y_predaff_true = np.array(result.y_predaff)[np.array(result.y_true)>0]#filter_actives(result.y_predaff, result.y_true)
-            y_aff_true = np.array(result.y_aff)[np.array(result.y_true)>0]#filter_actives(result.y_aff, result.y_true)
+            y_predaff_true = np.array(result.y_predaff)[np.array(result.y_aff)>0]#filter_actives(result.y_predaff, result.y_true)
+            y_aff_true = np.array(result.y_aff)[np.array(result.y_aff)>0]#filter_actives(result.y_aff, result.y_true)
             
         result.rmsd = np.sqrt(sklearn.metrics.mean_squared_error(y_aff_true, y_predaff_true))
 
