@@ -786,7 +786,7 @@ if __name__ == '__main__':
         print "error: missing train/test files"
         sys.exit(1)
     
-    if args.skip_full and args.reduced==False:
+    if args.skip_full and not args.reduced:
         print "WARNING: ignoring --skip_full since --reduced was not passed"
     
     for i in train_test_files:
