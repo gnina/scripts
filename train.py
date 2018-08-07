@@ -648,11 +648,15 @@ def train_and_test_model(args, files, outname, cont=0):
                     except Exception as e:
                         print e
         
-        if last_test:
-            if training: # we indicated we are done, but still need last test
-                training = False
-            else: #training is false, we've done the last test
+        if args.skip_full and args.reduced: #we flagged that we want to skip the last test evaluation
+            if last_test: #we indicated we are done
                 break
+        else:
+            if last_test:
+                if training: # we indicated we are done, but still need last test
+                    training = False
+                else: #training is false, we've done the last test
+                    break
     if training:
         out.close()
         solver.snapshot()
@@ -708,6 +712,7 @@ def parse_args(argv=None):
     parser.add_argument('--data_ratio',type=float,required=False,help="Ratio to combine training data from 2 sources",default=None)
     parser.add_argument('--test_only',action='store_true',default=False,help="Don't train, just evaluate test nets once")
     parser.add_argument('--clip_gradients',type=float,default=10.0,help="Clip gradients threshold (default 10)")
+    parser.add_argument('--skip_full',action='store_true',default=False,help='Use reduced testset on final evaluation, requires passing --reduced')
     args = parser.parse_args(argv)
     
     argdict = vars(args)
@@ -780,7 +785,10 @@ if __name__ == '__main__':
     if len(train_test_files) == 0:
         print "error: missing train/test files"
         sys.exit(1)
-
+    
+    if args.skip_full and args.reduced==False:
+        print "WARNING: ignoring --skip_full since --reduced was not passed"
+    
     for i in train_test_files:
         for key in sorted(train_test_files[i], key=len):
             print str(i).rjust(3), key.rjust(14), train_test_files[i][key]
