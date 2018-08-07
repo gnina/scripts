@@ -14,7 +14,7 @@ import google.protobuf.text_format as prototxt
 import time
 import psutil
 import cPickle, signal
-from combine_fold_results import write_results_file, combine_fold_results, filter_actives
+from combine_fold_results import write_results_file, combine_fold_results
 
 
 # class based on: http://stackoverflow.com/a/21919644/487556
@@ -230,13 +230,9 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
     #compute mean squared error (rmsd) of affinity (for actives only)
     if result.y_aff and result.y_predaff:
         if result.y_true:
-            y_predaff_true = filter_actives(result.y_predaff, result.y_true)
-            y_aff_true = filter_actives(result.y_aff, result.y_true)
-        #remove negative affinities
-        y_aff_true = np.array(y_aff_true)
-        y_predaff_true = np.array(y_predaff_true)
-        y_predaff_true = y_predaff_true[y_aff_true>0]
-        y_aff_true = y_aff_true[y_aff_true>0]
+            y_predaff_true = np.array(result.y_predaff)[np.array(result.y_true)>0]#filter_actives(result.y_predaff, result.y_true)
+            y_aff_true = np.array(result.y_aff)[np.array(result.y_true)>0]#filter_actives(result.y_aff, result.y_true)
+            
         result.rmsd = np.sqrt(sklearn.metrics.mean_squared_error(y_aff_true, y_predaff_true))
 
     if any(rmsd_pred):
