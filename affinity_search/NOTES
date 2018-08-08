@@ -530,3 +530,46 @@ default_newlig.model  - lig only
 for m in *.model  ; do   for i in {0..4};     do        echo train.py -m $m -d ../.. -p ../types/all_wlig_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_wlig_$i --seed $i --dynamic --lr_policy fixed ;       done;  done > cmds
 awk '{print "../evaluate.py " $17,$3,$17".summary",$7}' cmds > evals
 
+
+ITERATION 12
+
+Based off single axis grid search, it looks like pose scoring would like a higher capacity model
+ - less pooling
+ - wider convolutional outputs
+The affinity model doesn't seem to benefit from these.  In fact, it prefers smaller widths, but larger kernels.
+My hypothesis is the extra model capacity resuls in overfitting for affinity prediction (because there is less data)
+so we may be able to rectify this with a small hidden layer or a small final convolution
+
+Additionally, setting the middle convolution to kernel size 1 was beneficial, suggesting we try a network in network architecture.
+
+../makemodel.py --ligmap simplelig --recmap simplerec > default.model
+../makemodel.py --ligmap simplelig --recmap simplerec --pool1_size 0 --conv1_width 256 --conv2_width 512 > highcap_np_256_512_128.model
+
+../makemodel.py --ligmap simplelig --recmap simplerec  --conv1_width 256 --conv2_width 512 > highcap_wp_256_512_128.model
+../makemodel.py --ligmap simplelig --recmap simplerec  --conv1_width 256 --conv2_width 512 --fc_affinity_hidden 32 > highcap_wp_256_512_128_a32.model
+../makemodel.py --ligmap simplelig --recmap simplerec  --conv1_width 256 --conv2_width 512 --fc_affinity_hidden 16 > highcap_wp_256_512_128_a16.model
+../makemodel.py --ligmap simplelig --recmap simplerec  --conv1_width 256 --conv2_width 512 --fc_affinity_hidden 16 --pool1_size 0 > highcap_np_256_512_128_a16.model
+
+../makemodel.py --ligmap simplelig --recmap simplerec --pool1_size 0 --conv1_width 256 --conv2_width 512 --conv3_width 8 > highcap_np_256_512_8.model
+../makemodel.py --ligmap simplelig --recmap simplerec  --conv1_width 256 --conv2_width 512 --conv3_width 8 > highcap_wp_256_512_8.model
+
+#netinnet
+../makemodel.py --ligmap simplelig --recmap simplerec --pool2_size 0 --conv2_size 1 --conv2_width 32 --conv3_width 64 --conv4_width 64 --conv4_size 1 --conv5_width 128 --pool5_size 2 > netinnet.model
+
+#the high capacity no pool models were too large
+../makemodel.py --ligmap simplelig --recmap simplerec --pool1_size 0 --conv1_width 256 --conv2_width 256 > highcap_np_256_256_128.model
+../makemodel.py --ligmap simplelig --recmap simplerec  --conv1_width 256 --conv2_width 256 --fc_affinity_hidden 16 --pool1_size 0 > highcap_np_256_256_128_a16.model
+
+
+for m in *.model  ; do   for i in {0..4};     do        echo train.py -m $m -d ../.. -p ../types/all_wlig_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_wlig_$i --seed $i --dynamic --lr_policy fixed ;       done;  done > cmds
+awk '{print "../evaluate.py " $17,$3,$17".summary",$7}' cmds > evals
+
+Try reducing affinity scale parameter: highcap_wp_256_512_128_scale.model
+Also, smaller last conv:
+#ALERT - This was a buggy commandline
+../makemodel.py --ligmap simplelig --recmap simplerec  --conv1_width 256 --conv2_width 512 --conv2_width 32 > highcap_wp_256_512_32.model
+
+
+The higher capacity models outperform at pose selection, even with pooling.  Net in net does okay as well.
+Interestingly, bottlenecking the affinity side sometimes adversely affects pose selection (maybe helps, or doesn't hurt, affinity).
+Net-in-net did better on pose and about the same on affinity, but had higher variance.

@@ -29,7 +29,7 @@ def addrows(fname,host,db,password,start=0):
         values = ','.join(['%s']*len(row))
         names += ',id'
         values += ',"REQUESTED"'
-        #do three variations
+        #do five variations
         for split in xrange(5):
             seed = np.random.randint(0,100000)
             n = names + ',split,seed'
