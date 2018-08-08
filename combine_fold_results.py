@@ -135,10 +135,6 @@ def get_results_files(prefix, foldnums, binary_class, affinity, two_data_sources
             check_file_exists(file)
     return files
 
-
-def filter_actives(values, y_true):
-    return np.array(values)[np.array(y_true, dtype=np.bool)]
-
 def make_uniform_array(lists):
     '''Take a list of possibly variable sized lists and return a numpy 2D array
         where the smaller lists are padded to the size of the longest list using 
@@ -183,23 +179,23 @@ def combine_fold_results(test_metrics, train_metrics, test_labels, test_preds, t
     if affinity:
 
         if filter_actives_test:
-            test_preds = filter_actives(test_preds, filter_actives_test)
-            test_labels = filter_actives(test_labels, filter_actives_test)
+            test_preds = np.array(test_preds)[np.array(test_labels)>0]
+            test_labels = np.array(test_labels)[np.array(test_labels)>0]
 
         #correlation plots for last test iteration
         rmsd = np.sqrt(sklearn.metrics.mean_squared_error(test_preds, test_labels))
         r2 = scipy.stats.pearsonr(test_preds, test_labels)[0]**2
-        write_results_file('%s.rmsd.finaltest%s' % (outprefix, two), test_preds, test_labels, footer='RMSD,R %f %f\n' % (rmsd, r2))
+        write_results_file('%s.rmsd.finaltest%s' % (outprefix, two), test_labels, test_preds, footer='RMSD,R %f %f\n' % (rmsd, r2))
         makejoint(test_labels, test_preds, 'royalblue','%s_corr_test%s' % (outprefix, two))
         #plot_correlation('%s_corr_test%s.pdf' % (outprefix, two), test_preds, test_labels, rmsd, r2)
 
         if filter_actives_train:
-            train_preds = filter_actives(train_preds, filter_actives_train)
-            train_labels = filter_actives(train_labels, filter_actives_train)
+            train_preds = np.array(train_preds)[np.array(train_labels)>0]
+            train_labels = np.array(train_labels)[np.array(train_labels)>0]
 
         rmsd = np.sqrt(sklearn.metrics.mean_squared_error(train_preds, train_labels))
         r2 = scipy.stats.pearsonr(train_preds, train_labels)[0]**2
-        write_results_file('%s.rmsd.finaltrain%s' % (outprefix, two), train_preds, train_labels, footer='RMSD,R %f %f\n' % (rmsd, r2))
+        write_results_file('%s.rmsd.finaltrain%s' % (outprefix, two), train_labels, train_preds, footer='RMSD,R %f %f\n' % (rmsd, r2))
         makejoint(train_labels, train_preds, 'orangered','%s_corr_train%s' % (outprefix, two))        
         #plot_correlation('%s_corr_train%s.pdf' % (outprefix, two), train_preds, train_labels, rmsd, r2)
 
