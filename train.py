@@ -598,6 +598,7 @@ def train_and_test_model(args, files, outname, cont=0):
                 if step_reduce_cnt > args.step_end_cnt or lr < args.step_end:
                     #end early, but run full test if needed
                     keepsnap = True
+                    solver.snapshot()
                     if args.reduced:
                         last_test = True
                     else:

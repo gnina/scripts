@@ -78,7 +78,7 @@ add_conv_args(4,0)
 add_conv_args(5,0)
 
 #fully connected layer
-parser.add_argument('--fc_affinity_hidden',type=int,help='Hidden nodes in affinity fully connected layer; 0 for single layer',default=0,choices=(0,32,64,128,256,512,1024,2048,4096))
+parser.add_argument('--fc_affinity_hidden',type=int,help='Hidden nodes in affinity fully connected layer; 0 for single layer',default=0,choices=(0,16,32,64,128,256,512,1024,2048,4096))
 parser.add_argument('--fc_affinity_func',type=str,help="Activation function in for first affinity hidden layer",default='ReLU',choices=('ReLU','leaky','ELU','Sigmoid','TanH'))
 parser.add_argument('--fc_affinity_hidden2',type=int,help='Second set of hidden nodes in affinity fully connected layer; 0 for single layer',default=0,choices=(0,32,64,128,256,512,1024,2048,4096))
 parser.add_argument('--fc_affinity_func2',type=str,help="Activation function in for second affinity hidden layer",default='ReLU',choices=('ReLU','leaky','ELU','Sigmoid','TanH'))
