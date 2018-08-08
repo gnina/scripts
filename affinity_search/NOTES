@@ -573,3 +573,19 @@ Also, smaller last conv:
 The higher capacity models outperform at pose selection, even with pooling.  Net in net does okay as well.
 Interestingly, bottlenecking the affinity side sometimes adversely affects pose selection (maybe helps, or doesn't hurt, affinity).
 Net-in-net did better on pose and about the same on affinity, but had higher variance.
+
+
+#followup_8_07
+Reevaluating some models from hyperparameter search as well as modifications.
+aff.model - best model of affinity pred (slooow)
+default.model - default, for yet another baseline
+faster_nin.model - the net-in-net model that had  best combined performance of models < 100ms
+faster_nin_complete.model - try an atom mapping that is complete
+faster_nin_weightedaff2.0.model - affinity weighting in loss layer with stdcut of 2.0
+faster_nin_weightedaff3.0.model - w/3.0
+top.model - best model for pose selection (slow)
+
+for m in *.model  ; do   for i in {0..4};     do        echo train.py -m $m -d ../.. -p ../types/all_wlig_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_wlig_$i --seed $i --dynamic --lr_policy fixed ;       done;  done > cmds
+awk '{print "../evaluate.py " $17,$3,$17".summary",$7}' cmds > evals
+
+
