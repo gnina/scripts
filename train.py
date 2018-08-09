@@ -447,7 +447,7 @@ def train_and_test_model(args, files, outname, cont=0):
         if training:
             #train
             solver.step(test_interval)
-            print "Iteration %d" % (cont + (i+1)*test_interval)
+            print "\nIteration %d" % (cont + (i+1)*test_interval)
             print "Train time: %f" % (time.time()-start)
 
         if not test_on_train:
@@ -526,6 +526,7 @@ def train_and_test_model(args, files, outname, cont=0):
                     bests['test_auc'] = test_auc
                     if args.keep_best:
                         keepsnap = True
+                        print "Writing snapshot because auc is better"
                         solver.snapshot() #a bit too much - gigabytes of data
                 if train_loss < bests['train_loss']:
                     bests['train_loss'] = train_loss
@@ -540,6 +541,7 @@ def train_and_test_model(args, files, outname, cont=0):
                     bests['test_rmsd'] = test_rmsd
                     if args.keep_best:
                         keepsnap = True
+                        print "Writing snapshot because rmsd is better"
                         solver.snapshot() #a bit too much - gigabytes of data     
                         
                 if train_rmsd < bests['train_rmsd']:
@@ -555,6 +557,7 @@ def train_and_test_model(args, files, outname, cont=0):
                     bests['test_rmsd_rmse'] = test_rmsd_rmse
                     if args.keep_best:
                         keepsnap = True
+                        print "Writing snapshot because rmsd_rmse is better"
                         solver.snapshot() #a bit too much - gigabytes of data  
                 row += [test_rmsd_rmse, train_rmsd_rmse]                            
                                                  
@@ -621,6 +624,7 @@ def train_and_test_model(args, files, outname, cont=0):
         freemem()
         print "Memory usage: %.3fgb (%d)" % (mem/1073741824., mem)
         
+        print "Best train AUC/RMSD: %f %f"%(bests['train_auc'],bests['train_rmsd'])
         if args.checkpoint:
             snapname = solver.snapshot()
             snapname = snapname.replace('caffemodel','solverstate')
@@ -658,9 +662,9 @@ def train_and_test_model(args, files, outname, cont=0):
                     training = False
                 else: #training is false, we've done the last test
                     break
-    if training:
-        out.close()
-        solver.snapshot()
+    print "Writing final snapshot"
+    out.close()
+    solver.snapshot()
 
     if not args.keep:
         print "REMOVING",solverf

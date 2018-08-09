@@ -588,4 +588,24 @@ top.model - best model for pose selection (slow)
 for m in *.model  ; do   for i in {0..4};     do        echo train.py -m $m -d ../.. -p ../types/all_wlig_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_wlig_$i --seed $i --dynamic --lr_policy fixed ;       done;  done > cmds
 awk '{print "../evaluate.py " $17,$3,$17".summary",$7}' cmds > evals
 
+#second followup_8_08
+stratified
+avepool 
+avepool+elu
+no pool1
+no pool1 + additional conv
 
+../makemodel.py --ligmap simplelig --recmap simplerec --pool2_size 0 --conv2_size 1 --conv2_width 32 --conv3_width 64 --pool4_size 0 --conv4_size 1 --conv4_width 64 --pool5_size 2 --conv5_width 128 --stratify_affinity 1 > nin_strat.model
+../makemodel.py --ligmap simplelig --pool1_type AVE --pool2_type AVE --pool3_type AVE --pool4_type AVE --pool5_type AVE --recmap simplerec --pool2_size 0 --conv2_size 1 --conv2_width 32 --conv3_width 64 --pool4_size 0 --conv4_size 1 --conv4_width 64 --pool5_size 2 --conv5_width 128  > nin_ave.model
+../makemodel.py --conv1_func ELU --conv2_func ELU --conv3_func ELU --conv4_func ELU --conv5_func ELU --ligmap simplelig --pool1_type AVE --pool2_type AVE --pool3_type AVE --pool4_type AVE --pool5_type AVE --recmap simplerec --pool2_size 0 --conv2_size 1 --conv2_width 32 --conv3_width 64 --pool4_size 0 --conv4_size 1 --conv4_width 64 --pool5_size 2 --conv5_width 128  > nin_aveelu.model
+
+../makemodel.py --ligmap simplelig --recmap simplerec --pool1_size 0 --pool2_size 0 --conv2_size 1 --conv2_width 32 --conv3_width 64 --pool4_size 0 --conv4_size 1 --conv4_width 64 --pool5_size 2 --conv5_width 128  > nin_nopool.model
+
+#manually construct 6th conv
+
+for m in *.model  ; do   for i in {0..4};     do        echo train.py -m $m -d ../.. -p ../types/all_wlig_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_wlig_$i --seed $i --dynamic --lr_policy fixed ;       done;  done > cmds
+awk '{print "../evaluate.py " $17,$3,$17".summary",$7}' cmds > evals
+
+
+TODO
+scan conv output for aff and top and nin
