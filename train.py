@@ -624,7 +624,7 @@ def train_and_test_model(args, files, outname, cont=0):
         freemem()
         print "Memory usage: %.3fgb (%d)" % (mem/1073741824., mem)
         
-        print "Best train AUC/RMSD: %f %f"%(bests['train_auc'],bests['train_rmsd'])
+        print "Best test AUC/RMSD: %f %f   Best train loss: %f"%(bests['test_auc'],bests['test_rmsd'],bests['train_loss'])
         if args.checkpoint:
             snapname = solver.snapshot()
             snapname = snapname.replace('caffemodel','solverstate')
