@@ -367,7 +367,7 @@ def train_and_test_model(args, files, outname, cont=0):
     #also keep track of best test and train aucs
     best_train_interval = cont
     
-    bests = {'test_auc': np.inf,
+    bests = {'test_auc': 0,
         'train_loss': np.inf, \
         'test_rmsd': np.inf, \
         'train_rmsd': np.inf, \
@@ -625,6 +625,8 @@ def train_and_test_model(args, files, outname, cont=0):
         print "Memory usage: %.3fgb (%d)" % (mem/1073741824., mem)
         
         print "Best test AUC/RMSD: %f %f   Best train loss: %f"%(bests['test_auc'],bests['test_rmsd'],bests['train_loss'])
+        sys.stdout.flush()
+        
         if args.checkpoint:
             snapname = solver.snapshot()
             snapname = snapname.replace('caffemodel','solverstate')
