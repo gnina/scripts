@@ -39,7 +39,7 @@ def reduce_results(results, index, which):
             if which == 'small': #select smallest by index
                 if res[key][index] > r[index]:
                     res[key] = r
-            else if res[key][index] < r[index]:
+            elif res[key][index] < r[index]:
                 res[key] = r
                     
     return res.values()
