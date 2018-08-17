@@ -135,7 +135,7 @@ if __name__ == '__main__':
             
         if len(testresults) == 0:
             print "Missing data with",testprefix
-        assert(len(testresults[0]) == 6)
+        assert(len(testresults[0]) == 7)
         
         allresults.append( (testname,'pose') + analyze_cross_results(testresults,sys.argv[4]+'_pose','pose'))
         allresults.append( (testname,'rmsd') + analyze_cross_results(testresults,sys.argv[4]+'_rmsd','rmsd'))
