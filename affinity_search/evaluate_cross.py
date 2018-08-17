@@ -115,7 +115,7 @@ if __name__ == '__main__':
         print testprefix        
         #find the relevant models for each fold
         
-        testresuls = []
+        testresults = []
         for fold in [0,1,2]: #blah! hard coded
             lastm = 0
             #identify last iteration model for this fold
@@ -133,9 +133,9 @@ if __name__ == '__main__':
             print "Missing data with",testprefix
         assert(len(testresults[0]) == 6)
         
-        allresults.append( (testname,'pose') + analyze_cross_results(testresults,testname+'_pose','pose')
-        allresults.append( (testname,'rmsd') + analyze_cross_results(testresults,testname+'_rmsd','rmsd')
-        allresults.append( (testname,'pose') + analyze_cross_results(testresults,testname+'_affinity','affinity')
+        allresults.append( (testname,'pose') + analyze_cross_results(testresults,testname+'_pose','pose'))
+        allresults.append( (testname,'rmsd') + analyze_cross_results(testresults,testname+'_rmsd','rmsd'))
+        allresults.append( (testname,'pose') + analyze_cross_results(testresults,testname+'_affinity','affinity'))
 
          
     for a in allresults:
