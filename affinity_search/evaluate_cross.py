@@ -88,7 +88,7 @@ def analyze_cross_results(results,outname,uniquify):
     out = open('%s.predictions'%outname,'w')
     out.write('aff,pred,rec,lig,lab,score,rmsd\n')
     for res in results:
-        out.write(','.join(res)+'\n')
+        out.write(','.join(map(str,res))+'\n')
     out.write('#RMSD %f\n'%rmse)
     out.write('#R %f\n'%R)
 
