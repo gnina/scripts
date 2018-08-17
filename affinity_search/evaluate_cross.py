@@ -100,13 +100,13 @@ def analyze_cross_results(results,outname,uniquify):
 
 if __name__ == '__main__':
     if len(sys.argv) <= 4:
-        print "Need data root, caffemodel prefix,  modelname, output name and test prefix(es)"
+        print "Need data root, caffemodel prefix,  modelname, output prefix and test prefix(es)"
         sys.exit(1)
         
     datadir = sys.argv[1]
     name = sys.argv[2]
     modelname = sys.argv[3]
-    out = open(sys.argv[4],'w')
+    out = open(sys.argv[4]+'.summary','w')
 
     allresults = []
     last = None
@@ -133,9 +133,9 @@ if __name__ == '__main__':
             print "Missing data with",testprefix
         assert(len(testresults[0]) == 6)
         
-        allresults.append( (testname,'pose') + analyze_cross_results(testresults,testname+'_pose','pose'))
-        allresults.append( (testname,'rmsd') + analyze_cross_results(testresults,testname+'_rmsd','rmsd'))
-        allresults.append( (testname,'pose') + analyze_cross_results(testresults,testname+'_affinity','affinity'))
+        allresults.append( (testname,'pose') + analyze_cross_results(testresults,sys.argv[4]+'_pose','pose'))
+        allresults.append( (testname,'rmsd') + analyze_cross_results(testresults,sys.argv[4]+'_rmsd','rmsd'))
+        allresults.append( (testname,'pose') + analyze_cross_results(testresults,sys.argv[4]+'_affinity','affinity'))
 
          
     for a in allresults:
