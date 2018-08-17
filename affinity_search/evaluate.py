@@ -21,7 +21,7 @@ import sklearn.metrics
 import scipy.stats
 
 
-def evaluate_fold(testfile, caffemodel, modelname, datadir='../..'):
+def evaluate_fold(testfile, caffemodel, modelname, datadir='../..',hasrmsd=False):
     '''Evaluate the passed model and the specified test set.
     Returns tuple:
     (correct, prediction, receptor, ligand, label (optional), posescore (optional))
@@ -71,15 +71,19 @@ def evaluate_fold(testfile, caffemodel, modelname, datadir='../..'):
 
         #extract ligand/receptor for input file
         tokens = line.split()
+        rmsd = -1
         for t in xrange(len(tokens)):
             if tokens[t].endswith('gninatypes'):
                 receptor = tokens[t]
                 ligand = tokens[t+1]
                 break
-        
+        if hasrmsd:
+            rmsd = float(tokens[2])
         #(correct, prediction, receptor, ligand, label (optional), posescore (optional))       
         if posescore < 0:
             ret.append((correct, prediction, receptor, ligand))
+        else if hasrmsd:
+            ret.append((correct, prediction, receptor, ligand, label, posescore, rmsd))            
         else:
             ret.append((correct, prediction, receptor, ligand, label, posescore))
             
@@ -166,12 +170,13 @@ if __name__ == '__main__':
         slicenum = int(m.group(2))
         testname = m.group(1)
         #find the relevant models for each fold
-        testresults = {'best25': [], 'best50': [], 'best100': [], '100k': [], '250k': [], 'best250': [] }
+        testresults = {'best25': [], 'best50': [], 'best100': [], 'last': [], 'best250': [] }
         for fold in [0,1,2]:
             best25 = 0
             best50 = 0
             best100 = 0
             best250 = 0
+            lastm = 0
             #identify best iteration models at each cut point for this fold
             for model in glob.glob('%s.%d_iter_*.caffemodel'%(name,fold)):
                 m = re.search(r'_iter_(\d+).caffemodel', model)
@@ -183,7 +188,9 @@ if __name__ == '__main__':
                 if inum < 100000 and inum > best100:
                     best100 = inum
                 if inum < 250000 and inum > best250:
-                    best250 = inum                
+                    best250 = inum
+                if inum > lastm:
+                    lastm = inum
             #evalute this fold
             testfile = '../types/%stest%d.types' % (testprefix,fold)
             #todo, avoid redundant repetitions
@@ -191,18 +198,10 @@ if __name__ == '__main__':
             if best50 > 0: testresults['best50'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best50), modelname)
             if best100 > 0: testresults['best100'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best100), modelname)
             if best250 > 0: testresults['best250'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best250), modelname)
+            if lastm > 0: testresults['last'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,lastm), modelname)
 
-            if os.path.exists('%s.%d_iter_%d.caffemodel' % (name,fold,100000)): #100k
-                testresults['100k'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,100000), modelname)
-                last = '100k'
-            if os.path.exists('%s.%d_iter_%d.caffemodel' % (name,fold,250000)): #possibility that the 100k model was output even if went to 250k
-                if best250 > 0: testresults['best250'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best250), modelname)
-                testresults['250k'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,250000), modelname)
-                last = '250k'
             
         for n in testresults.keys():
-            if last == None or len(testresults[n]) != len(testresults[last]) or len(testresults[last]) == 0:
-                print "Missing data with",n
             if len(testresults[n]) == 0:
                 continue
             if len(testresults[n][0]) == 6:

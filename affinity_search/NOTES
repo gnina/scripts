@@ -143,6 +143,7 @@ train.py -m affinity_g0_p1_rec1_astrat0_b1_h4.model -p extrema_0.5_0_ --keep_bes
 #Plan: 
 # iteration1: vary training approach (training set, poses, rec strat, aff strat)
 # iteration2: build on that (presumably all,p1,rec1,strat0) with loss modifications: h[1,2,4,6], penalty[0,1,2], gap[0,1,2], rankloss??
+
 # iteration3: activation functions and normalizations
 
 cd iteration1
@@ -632,4 +633,38 @@ remove pool from nin_ave_complete_nohuber.model
 
 for m in *.model  ; do   for i in {0..4};     do        echo train.py --checkpoint -m $m -d ../.. -p ../types/all_wlig_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_wlig_$i --seed $i --dynamic --lr_policy fixed ;       done;  done > cmds
 awk '{print "../evaluate.py " $18,$4,$18".summary",$8}' cmds > evals
+
+
+
+#default2018
+
+#start training on full set
+
+../makemodel.py --ligmap completelig --pool1_type AVE --pool2_type AVE --pool3_type AVE --pool4_type AVE --pool5_type AVE --recmap completerec --pool2_size 0 --conv2_size 1 --conv2_width 32 --conv3_width 64 --pool4_size 0 --conv4_size 1 --conv4_width 64 --pool5_size 2 --conv5_width 128 --loss_pseudohuber 0 > default2018_lo.model
+for m in *.model  ; do   for i in {0..4};     do        echo train.py --checkpoint -m $m -d ../.. -p ../types/all_wlig_all_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_wlig_$i --seed $i --dynamic --lr_policy fixed ;       done;  done > cmds
+
+# REPLACED with re-evals with all complete
+
+#rand2018
+
+../makemodel.py --ligmap completelig --pool1_type AVE --pool2_type AVE --pool3_type AVE --pool4_type AVE --pool5_type AVE --recmap completerec --pool2_size 0 --conv2_size 1 --conv2_width 32 --conv3_width 64 --pool4_size 0 --conv4_size 1 --conv4_width 64 --pool5_size 2 --conv5_width 128 --loss_pseudohuber 0 > default2018_lo.model
+for m in *.model  ; do   for i in {0..4};     do        echo train.py --checkpoint -m $m -d ../.. -p ../types/rand_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_rand_$i --seed $i --dynamic --lr_policy fixed ;       done;  done > cmds
+awk '{print "../evaluate.py " $18,$4,$18".summary",$8}' cmds > evals
+
+
+#crossdockign from paul
+
+-change cache in models, add hasrmsd
+
+for i in {0..4}
+do
+for m in *.model  ; do   
+for n in {0..2};     do        
+ echo train.py -m $m -d /net/pulsar/home/koes/paf46/Research/CrossDocking_script/PocketomeOutput/PocketomeGenCross_Output -p crosstypes/probis_3_5_crystal_fn${i}_memsave_ --base_lr 0.01 --keep_best -t 1000 -i 500000 --reduced -o ${m%.model}_cross_$i --seed $i --dynamic --lr_policy fixed -n $n --skip_full 
+done;   done;  done > cmds
+
+qsub -q dept_gpu_12GB -t 1-3,10-15 run.pbs 
+qsub -q dept_gpu -t 4-9 run.pbs 
+qsub -t 16-21,28-33,40-45,52-57 -q any_gpu run.pbs
+qsub -t 22-27,34-39,46-51,58-60 -q dept_gpu run.pbs
 
