@@ -108,6 +108,10 @@ if __name__ == '__main__':
     modelname = sys.argv[3]
     out = open(sys.argv[4]+'.summary','w')
 
+    testname = sys.argv[4]
+    m = re.search(r'(_fn\d)',testname)
+    if m: #remove fold name
+        testname = testname.replace(m.group(1),'')
     allresults = []
     last = None
     #for each test dataset
