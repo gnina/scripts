@@ -29,7 +29,7 @@ def reduce_results(results, index, which):
     res = dict() #indexed by pocketligand
     for r in results:
         lname = r[3]
-        m = re.search(r'(\S+)/????_?_rec_????_(\S+)_lig',lname)
+        m = re.search(r'(\S+)/...._._rec_...._(\S+)_lig',lname)
         pocket = m.group(1)
         lig = m.group(2)
         key = pocket+':'+lig
