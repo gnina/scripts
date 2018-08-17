@@ -82,7 +82,7 @@ def evaluate_fold(testfile, caffemodel, modelname, datadir='../..',hasrmsd=False
         #(correct, prediction, receptor, ligand, label (optional), posescore (optional))       
         if posescore < 0:
             ret.append((correct, prediction, receptor, ligand))
-        else if hasrmsd:
+        elif hasrmsd:
             ret.append((correct, prediction, receptor, ligand, label, posescore, rmsd))            
         else:
             ret.append((correct, prediction, receptor, ligand, label, posescore))
