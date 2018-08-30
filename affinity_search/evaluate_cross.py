@@ -139,7 +139,7 @@ if __name__ == '__main__':
         
         allresults.append( (testname,'pose') + analyze_cross_results(testresults,sys.argv[4]+'_pose','pose'))
         allresults.append( (testname,'rmsd') + analyze_cross_results(testresults,sys.argv[4]+'_rmsd','rmsd'))
-        allresults.append( (testname,'pose') + analyze_cross_results(testresults,sys.argv[4]+'_affinity','affinity'))
+        allresults.append( (testname,'affinity') + analyze_cross_results(testresults,sys.argv[4]+'_affinity','affinity'))
 
          
     for a in allresults:
