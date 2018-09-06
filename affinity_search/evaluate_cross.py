@@ -81,7 +81,9 @@ def analyze_cross_results(results,outname,uniquify):
     predictions = np.array([r[1] for r in results])
     correctaff = np.array([abs(r[0]) for r in results])
     #(correct, prediction, receptor, ligand, label (optional), posescore (optional))    
-
+    #skip cases with no affinity
+    predictions = predictions[correctaff != 0]
+    correctaff = np.abs(correctaff[correctaff != 0])
     rmse = np.sqrt(sklearn.metrics.mean_squared_error(correctaff, predictions))
     R = scipy.stats.pearsonr(correctaff, predictions)[0]
     S = scipy.stats.spearmanr(correctaff, predictions)[0]
