@@ -14,7 +14,7 @@ import google.protobuf.text_format as prototxt
 import time
 import psutil
 import cPickle, signal
-from combine_fold_results import write_results_file, combine_fold_results, filter_actives
+from combine_fold_results import write_results_file, combine_fold_results
 
 
 # class based on: http://stackoverflow.com/a/21919644/487556
@@ -239,14 +239,9 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
 
     #compute mean squared error (rmsd) of affinity (for actives only)
     if result.y_aff and result.y_predaff:
-        if result.y_true:
-            y_predaff_true = filter_actives(result.y_predaff, result.y_true)
-            y_aff_true = filter_actives(result.y_aff, result.y_true)
-        #remove negative affinities
-        y_aff_true = np.array(y_aff_true)
-        y_predaff_true = np.array(y_predaff_true)
-        y_predaff_true = y_predaff_true[y_aff_true>0]
-        y_aff_true = y_aff_true[y_aff_true>0]
+        y_predaff_true = np.array(result.y_predaff)[np.array(result.y_aff)>0]#filter_actives(result.y_predaff, result.y_true)
+        y_aff_true = np.array(result.y_aff)[np.array(result.y_aff)>0]#filter_actives(result.y_aff, result.y_true)
+            
         result.rmsd = np.sqrt(sklearn.metrics.mean_squared_error(y_aff_true, y_predaff_true))
 
     if any(rmsd_pred):
@@ -382,7 +377,7 @@ def train_and_test_model(args, files, outname, cont=0):
     #also keep track of best test and train aucs
     best_train_interval = cont
     
-    bests = {'test_auc': np.inf,
+    bests = {'test_auc': 0,
         'train_loss': np.inf, \
         'test_rmsd': np.inf, \
         'train_rmsd': np.inf, \
@@ -452,7 +447,7 @@ def train_and_test_model(args, files, outname, cont=0):
         out = open(outfile, 'a' if cont else 'w', 0) #unbuffered
 
 
-    last_test = False
+    last_test = False # indicator we should test full set
     for i in xrange(iterations/test_interval):
         if i == (int(iterations/test_interval) - 1):
             last_test = True
@@ -462,7 +457,7 @@ def train_and_test_model(args, files, outname, cont=0):
         if training:
             #train
             solver.step(test_interval)
-            print "Iteration %d" % (cont + (i+1)*test_interval)
+            print "\nIteration %d" % (cont + (i+1)*test_interval)
             print "Train time: %f" % (time.time()-start)
 
         if not test_on_train:
@@ -541,6 +536,7 @@ def train_and_test_model(args, files, outname, cont=0):
                     bests['test_auc'] = test_auc
                     if args.keep_best:
                         keepsnap = True
+                        print "Writing snapshot because auc is better"
                         solver.snapshot() #a bit too much - gigabytes of data
                 if train_loss < bests['train_loss']:
                     bests['train_loss'] = train_loss
@@ -555,6 +551,7 @@ def train_and_test_model(args, files, outname, cont=0):
                     bests['test_rmsd'] = test_rmsd
                     if args.keep_best:
                         keepsnap = True
+                        print "Writing snapshot because rmsd is better"
                         solver.snapshot() #a bit too much - gigabytes of data     
                         
                 if train_rmsd < bests['train_rmsd']:
@@ -570,6 +567,7 @@ def train_and_test_model(args, files, outname, cont=0):
                     bests['test_rmsd_rmse'] = test_rmsd_rmse
                     if args.keep_best:
                         keepsnap = True
+                        print "Writing snapshot because rmsd_rmse is better"
                         solver.snapshot() #a bit too much - gigabytes of data  
                 row += [test_rmsd_rmse, train_rmsd_rmse]                            
                                                  
@@ -613,8 +611,8 @@ def train_and_test_model(args, files, outname, cont=0):
                 if step_reduce_cnt > args.step_end_cnt or lr < args.step_end:
                     #end early, but run full test if needed
                     keepsnap = True
+                    solver.snapshot()
                     if args.reduced:
-                        training = False
                         last_test = True
                     else:
                         break
@@ -635,6 +633,9 @@ def train_and_test_model(args, files, outname, cont=0):
         mem = psutil.Process(os.getpid()).memory_info().rss
         freemem()
         print "Memory usage: %.3fgb (%d)" % (mem/1073741824., mem)
+        
+        print "Best test AUC/RMSD: %f %f   Best train loss: %f"%(bests['test_auc'],bests['test_rmsd'],bests['train_loss'])
+        sys.stdout.flush()
         
         if args.checkpoint:
             snapname = solver.snapshot()
@@ -664,11 +665,18 @@ def train_and_test_model(args, files, outname, cont=0):
                     except Exception as e:
                         print e
         
-        if last_test:
-             break
-    if training:
-        out.close()
-        solver.snapshot()
+        if args.skip_full and args.reduced: #we flagged that we want to skip the last test evaluation
+            if last_test: #we indicated we are done
+                break
+        else:
+            if last_test:
+                if training: # we indicated we are done, but still need last test
+                    training = False
+                else: #training is false, we've done the last test
+                    break
+    print "Writing final snapshot"
+    out.close()
+    solver.snapshot()
 
     if not args.keep:
         print "REMOVING",solverf
@@ -721,6 +729,7 @@ def parse_args(argv=None):
     parser.add_argument('--data_ratio',type=float,required=False,help="Ratio to combine training data from 2 sources",default=None)
     parser.add_argument('--test_only',action='store_true',default=False,help="Don't train, just evaluate test nets once")
     parser.add_argument('--clip_gradients',type=float,default=10.0,help="Clip gradients threshold (default 10)")
+    parser.add_argument('--skip_full',action='store_true',default=False,help='Use reduced testset on final evaluation, requires passing --reduced')
     args = parser.parse_args(argv)
     
     argdict = vars(args)
@@ -793,7 +802,10 @@ if __name__ == '__main__':
     if len(train_test_files) == 0:
         print "error: missing train/test files"
         sys.exit(1)
-
+    
+    if args.skip_full and not args.reduced:
+        print "WARNING: ignoring --skip_full since --reduced was not passed"
+    
     for i in train_test_files:
         for key in sorted(train_test_files[i], key=len):
             print str(i).rjust(3), key.rjust(14), train_test_files[i][key]
