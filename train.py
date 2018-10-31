@@ -162,7 +162,6 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
 
             if not res or i >= batch_size:
                 res = test_net.forward()
-                # print res
                 if 'output' in res:
                     idx = 1 if len(res['output'].shape) > 2 else 0
                     batch_size = res['output'].shape[idx]
@@ -173,7 +172,6 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
                     idx = 1 if len(res['label'].shape) > 2 else 0
                     batch_size = res['label'].shape[idx]
                 i = 0
-
             if 'labelout' in res:
                 if r == 0:
                     if len(res['labelout'].shape) > 1:
@@ -440,7 +438,7 @@ def train_and_test_model(args, files, outname, cont=0):
     test_nets = {}
     for key, test_file in files.items():
         idx = test_files.index(test_file)
-        test_nets[key] = solver.test_nets[idx], count_lines(test_file), 0
+        test_nets[key] = solver.test_nets[idx], count_lines(test_file)/args.maxgroupsize, 0
 
     if training: #outfile is training progress, don't write if we're not training
         outfile = '%s.out' % outname
@@ -730,6 +728,7 @@ def parse_args(argv=None):
     parser.add_argument('--test_only',action='store_true',default=False,help="Don't train, just evaluate test nets once")
     parser.add_argument('--clip_gradients',type=float,default=10.0,help="Clip gradients threshold (default 10)")
     parser.add_argument('--skip_full',action='store_true',default=False,help='Use reduced testset on final evaluation, requires passing --reduced')
+    parser.add_argument('--maxgroupsize', type=int, help="Max group size, default 1", default=1)
     args = parser.parse_args(argv)
     
     argdict = vars(args)
