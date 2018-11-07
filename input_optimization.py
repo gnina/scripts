@@ -59,8 +59,9 @@ if not len(train_files):
 #TODO: check/enforce that lr_mult==0 for non-data layers in the dream net template?
 #check/enforce that molgrid layer has dream==True?
 for train_file in train_files:
-    test_model = 'opt.%d.prototxt' % pid
-    write_model_file(test_model, args.model, train_files, test_file, args.data_root, True)
+    base = os.path.splitext(os.path.basename(train_file))[0]
+    test_model = 'opt_%s.%d.prototxt' % (base, pid)
+    write_model_file(test_model, args.model, train_file, test_file, args.data_root, True)
 
     #construct net and update weights
     check_file_exists(args.weights)
@@ -77,7 +78,7 @@ for train_file in train_files:
             'y_aff':[], 'y_predaff':[], 'rmsd_rmses':[]}
                     
     #do forward, backward, update input grid for desired number of iters 
-    #(molgrid currently handles dumping)
+    #(molgrid currently handles grid dumping)
     #TODO: momentum?
     for i in xrange(args.iterations):
         dream_net.forward()
