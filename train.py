@@ -52,7 +52,8 @@ Test accuracy, as measured by AUC, is periodically assessed.
 At the end graphs are made.'''
 
 
-def write_model_file(model_file, template_file, train_file, test_file, root_folder, avg_rotations=False,
+def write_model_file(model_file, template_file, train_file, test_file,
+                     root_folder, force_backward=False, avg_rotations=False,
                      train_file2=None, ratio=None, root_folder2=None, test_root_folder=None):
     '''Writes a model prototxt file based on a provided template file
     with certain placeholders replaced in each MolGridDataLayer.
@@ -67,6 +68,8 @@ def write_model_file(model_file, template_file, train_file, test_file, root_fold
     If the avg_rotations argument is set and the layer is TEST phase,
     the rotate parameter is set to 24.'''
     netparam = NetParameter()
+    if force_backward:
+        netparam.force_backward = True
     with open(template_file, 'r') as f:
         prototxt.Merge(f.read(), netparam)
     for layer in netparam.layer:
@@ -175,7 +178,10 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
             if 'labelout' in res:
                 if r == 0:
                     if len(res['labelout'].shape) > 1:
-                        y_true[x] = float(res['labelout'][-1][i])
+                        if res['labelout'].shape[-1] != 1:
+                            y_true[x] = float(res['labelout'][-1][i])
+                        else:
+                            y_true[x] = float(res['labelout'][i])
                     else:
                         y_true[x] = float(res['labelout'][i])
                 else:
