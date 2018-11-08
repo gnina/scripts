@@ -2,13 +2,23 @@
 
 import caffe
 from train import write_model_file, check_file_exists
-import argparse,glob,re,os,sys
+from combine_fold_results import write_results_file
+import argparse, glob, re, os
+import numpy as np
+from caffe.proto.caffe_pb2 import NetParameter
+import google.protobuf.text_format as prototxt
+import sklearn.metrics
 
 '''
 Use trained network to optimize grids associated with input structures. Need a
 model template, data, and pre-trained weights. Input model template needs
 lr_mult==0 for non-data layers, dream==True for molgrid layer, and no TEST phase.
 '''
+
+#layers that don't need an lr_mult because they don't have trainable parameters
+no_param_layers = ['Pooling', 'ELU', 'ReLU', 'PReLU', 'Sigmoid', 'TanH', 'Power', 'Exp',
+        'Log', 'BNLL', 'Threshold', 'Bias', 'Scale', 'Softmax',
+        'SoftmaxWithLoss', 'Reshape', 'Split']
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Optimize gnina input grid a"
@@ -28,10 +38,8 @@ if __name__ == "__main__":
     parser.add_argument('-o', '--outprefix', type=str, help="Prefix for output files,"
     " default dream_<model>.<pid>", default='')
     parser.add_argument('-g', '--gpu',type=int, help='Specify GPU to run on', default=-1)
-    parser.add_argument('--dynamic', action='store_true', default=False, help='Attempt'
-    ' to adjust the base_lr in response to training progress')
     parser.add_argument('--lr', type=float, default=0.01, help="Learning rate"
-            " for input grid updates.")
+            " for input grid updates, default=0.01.")
 
 args = parser.parse_args()
 pid = os.getpid()
@@ -42,7 +50,6 @@ if args.gpu >= 0:
 
 glob_files = glob.glob(args.prefix + '*')
 train_files = []
-test_file = ''
 pattern = r'(%s)(reduced)?(train|test)(\d+)\.types$' % (args.prefix)
 for f in glob_files:
     match = re.match(pattern, f)
@@ -56,27 +63,44 @@ for f in glob_files:
 if not len(train_files):
     raise OSError("Prefix matches no files")
 
-#TODO: check/enforce that lr_mult==0 for non-data layers in the dream net template?
-#check/enforce that molgrid layer has dream==True?
+#check that in the template net:
+#lr_mult==0 for non-data layers 
+#dream==True for molgrid layer
+with open(args.model) as f:
+    netparam = NetParameter()
+    prototxt.Merge(f.read(), netparam)
+    for layer in netparam.layer:
+        if layer.type == "MolGridData":
+            assert layer.molgrid_data_param.dream, "molgrid layer must have dream: True"
+        elif layer.type not in no_param_layers:
+            assert len(layer.param)==2, "must set lr_mult for weights and bias"
+            for i in range(2):
+                assert layer.param[i].lr_mult==0.0, "lr_mult for non-data layers must be 0"
+                assert layer.param[i].decay_mult==0.0, "decay mult for non-data layers must be 0"
+
 for train_file in train_files:
     base = os.path.splitext(os.path.basename(train_file))[0]
-    test_model = 'opt_%s.%d.prototxt' % (base, pid)
-    write_model_file(test_model, args.model, train_file, test_file, args.data_root, True)
+    if not args.outprefix:
+        outname = 'dream_%s.%d' %(base, pid)
+    else:
+        if len(train_files) > 1:
+            outname = '%s_%s' %(args.outprefix, base)
+        else:
+            outname = args.outprefix
+    test_model = '%s.prototxt' % outname
+    write_model_file(test_model, args.model, train_file, train_file, args.data_root, True)
 
     #construct net and update weights
     check_file_exists(args.weights)
     check_file_exists(args.trained_net)
-    trained_net = caffe.Net(args.trained_net, args.weights, caffe.TRAIN)
+    trained_net = caffe.Net(args.trained_net, caffe.TRAIN,
+            weights=args.weights)
     dream_net = caffe.Net(test_model, caffe.TRAIN)
-    for layer in trained_net._layer_names:
-        if layer in dream_net._layer_names:
+    for layer in trained_net.params:
+        if layer in dream_net.params:
             dream_net.params[layer][0].data[...] = trained_net.params[layer][0].data[...]
             dream_net.params[layer][1].data[...] = trained_net.params[layer][1].data[...]
     
-    #output final prediction/AUC to see the final result of input optimization
-    train = {'aucs':[], 'y_true':[], 'y_score':[], 'losses':[], 'rmsds':[],
-            'y_aff':[], 'y_predaff':[], 'rmsd_rmses':[]}
-                    
     #do forward, backward, update input grid for desired number of iters 
     #(molgrid currently handles grid dumping)
     #TODO: momentum?
@@ -87,3 +111,43 @@ for train_file in train_files:
         grid_diff = dream_net.blobs['data'].diff
         current_grid -= args.lr * grid_diff
         dream_net.blobs['data'].data[...] = current_grid
+    #do final evaluation, write to output files
+    res = dream_net.forward()
+    y_true = []
+    y_score = []
+    y_affinity = []
+    y_predaff = []
+    losses = []
+
+    if 'labelout' in res:
+        y_true = [float(x) for x in res['labelout']]
+
+    if 'output' in res:
+        y_score = [float(x[1]) for x in res['output']]
+
+    if 'affout' in res:
+        y_affinity = [float(x) for x in res['affout']]
+
+    if 'predaff' in res:
+        y_predaff = [float(x) for x in res['predaff']]
+
+    if 'loss' in res:
+        print "%s loss: %f\n" %(base, res['loss'])
+
+    #compute auc
+    if y_true and y_score:
+        if len(np.unique(y_true)) > 1:
+            auc = sklearn.metrics.roc_auc_score(y_true, y_score)
+        else: # may be evaluating all crystal poses?
+            print "Warning: only one unique label"
+            auc = 1.0
+        write_results_file('%s.auc.finaltest' % outname, y_true, y_score,
+                footer='AUC %f\n' % auc)
+
+    #compute mean squared error (rmsd) of affinity (for actives only)
+    if y_affinity and y_predaff:
+        y_predaff_true = np.array(y_predaff)[np.array(y_affinity)>0]
+        y_aff_true = np.array(y_affinity)[np.array(y_affinity)>0]
+        rmsd = np.sqrt(sklearn.metrics.mean_squared_error(y_aff_true, y_predaff_true))
+        write_results_file('%s.rmsd.finaltest' % outname, y_affinity,
+                y_predaff, footer='RMSD %f\n' % rmsd)
