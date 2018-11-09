@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
 import caffe
-from train import write_model_file, check_file_exists
+from train import write_model_file, check_file_exists, count_lines
 from combine_fold_results import write_results_file
-import argparse, glob, re, os
+import argparse, glob, re, os, itertools
 import numpy as np
 from caffe.proto.caffe_pb2 import NetParameter
 import google.protobuf.text_format as prototxt
@@ -11,8 +11,7 @@ import sklearn.metrics
 
 '''
 Use trained network to optimize grids associated with input structures. Need a
-model template, data, and pre-trained weights. Input model template needs
-lr_mult==0 for non-data layers, dream==True for molgrid layer, and no TEST phase.
+model template, data, and pre-trained weights. 
 '''
 
 #layers that don't need an lr_mult because they don't have trainable parameters
@@ -35,13 +34,20 @@ if __name__ == "__main__":
             " initialize the model with", required=True)
     parser.add_argument('-t', '--trained_net', type=str, help="Net associated"
             " with trained weights", required=True)
+    parser.add_argument('-er', '--exclude_receptor', default=False,
+            action='store_true', help='Only update the ligand')
+    parser.add_argument('-el', '--exclude_ligand', default=False,
+            action='store_true', help='Only update the receptor')
     parser.add_argument('-o', '--outprefix', type=str, help="Prefix for output files,"
     " default dream_<model>.<pid>", default='')
     parser.add_argument('-g', '--gpu',type=int, help='Specify GPU to run on', default=-1)
     parser.add_argument('--lr', type=float, default=0.01, help="Learning rate"
             " for input grid updates, default=0.01.")
+    parser.add_argument('--threshold', type=float, default=1e-5,
+            help="Convergence threshold for early termination, default 1e-5")
 
 args = parser.parse_args()
+assert not (args.exclude_receptor and args.exclude_ligand), "Must optimize at least one of receptor and ligand"
 pid = os.getpid()
 
 if args.gpu >= 0:
@@ -66,17 +72,31 @@ if not len(train_files):
 #check that in the template net:
 #lr_mult==0 for non-data layers 
 #dream==True for molgrid layer
+#also retrieve recmap and ligmap
 with open(args.model) as f:
     netparam = NetParameter()
     prototxt.Merge(f.read(), netparam)
     for layer in netparam.layer:
         if layer.type == "MolGridData":
             assert layer.molgrid_data_param.dream, "molgrid layer must have dream: True"
+            ligmap = layer.molgrid_data_param.ligmap
+            recmap = layer.molgrid_data_param.recmap
         elif layer.type not in no_param_layers:
             assert len(layer.param)==2, "must set lr_mult for weights and bias"
             for i in range(2):
                 assert layer.param[i].lr_mult==0.0, "lr_mult for non-data layers must be 0"
                 assert layer.param[i].decay_mult==0.0, "decay mult for non-data layers must be 0"
+
+#figure out which channels to exclude from updates if applicable
+#rec channels always come first
+if recmap:
+    nrec_channels = count_lines(recmap)
+else:
+    nrec_channels = 16
+if ligmap:
+    nlig_channels = count_lines(ligmap)
+else:
+    nlig_channels = 19
 
 for train_file in train_files:
     base = os.path.splitext(os.path.basename(train_file))[0]
@@ -100,16 +120,33 @@ for train_file in train_files:
         if layer in dream_net.params:
             dream_net.params[layer][0].data[...] = trained_net.params[layer][0].data[...]
             dream_net.params[layer][1].data[...] = trained_net.params[layer][1].data[...]
-    
+   
+    diffs = []
     #do forward, backward, update input grid for desired number of iters 
     #(molgrid currently handles grid dumping)
     #TODO: momentum?
+    all_y_scores = []
     for i in xrange(args.iterations):
-        dream_net.forward()
+        res = dream_net.forward()
+        assert 'output' in res, "Network must produce output"
+        all_y_scores.append([float(x[1]) for x in res['output']])
         dream_net.backward()
         current_grid = dream_net.blobs['data'].data
         grid_diff = dream_net.blobs['data'].diff
-        current_grid -= args.lr * grid_diff
+        #TODO: assumes second dim is atom type channel
+        norm = np.linalg.norm(grid_diff)
+        diffs.append(norm)
+        if norm < args.threshold:
+            print "gradient sufficiently converged, terminating early\n"
+            break
+        assert len(current_grid.shape) == 5, "Currently require grids to be NxCxDIMxDIMxDIM"
+        assert len(grid_diff.shape) == 5, "Currently require grids to be NxCxDIMxDIMxDIM"
+        if args.exclude_receptor:
+            current_grid[:,nrec_channels:,:,:,:] -= args.lr * grid_diff[:,nrec_channels:,:,:,:]
+        elif args.exclude_ligand:
+            current_grid[:,:nrec_channels,:,:,:] -= args.lr * grid_diff[:,nrec_channels:,:,:,:]
+        else:
+            current_grid -= args.lr * grid_diff
         dream_net.blobs['data'].data[...] = current_grid
     #do final evaluation, write to output files
     res = dream_net.forward()
@@ -118,6 +155,10 @@ for train_file in train_files:
     y_affinity = []
     y_predaff = []
     losses = []
+
+    all_y_scores = [list(i) for i in zip(*all_y_scores)]
+    write_results_file('%s.diffs' % outname, diffs)
+    write_results_file('%s.preds' % outname, *all_y_scores)
 
     if 'labelout' in res:
         y_true = [float(x) for x in res['labelout']]
