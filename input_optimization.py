@@ -147,6 +147,8 @@ for train_file in train_files:
             current_grid[:,:nrec_channels,:,:,:] -= args.lr * grid_diff[:,nrec_channels:,:,:,:]
         else:
             current_grid -= args.lr * grid_diff
+        #don't let anything go negative
+        current_grid[current_grid < 0] = 0
         dream_net.blobs['data'].data[...] = current_grid
     #do final evaluation, write to output files
     res = dream_net.forward()
