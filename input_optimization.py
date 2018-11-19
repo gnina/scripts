@@ -16,7 +16,7 @@ model template, data, and pre-trained weights.
 
 #layers that don't need an lr_mult because they don't have trainable parameters
 no_param_layers = ['Pooling', 'ELU', 'ReLU', 'PReLU', 'Sigmoid', 'TanH', 'Power', 'Exp',
-        'Log', 'BNLL', 'Threshold', 'Bias', 'Scale', 'Softmax',
+        'Log', 'BNLL', 'Threshold', 'Bias', 'Scale', 'Softmax', 'AffinityLoss', 
         'SoftmaxWithLoss', 'Reshape', 'Split']
 
 if __name__ == "__main__":
@@ -45,6 +45,10 @@ if __name__ == "__main__":
             " for input grid updates, default=0.01.")
     parser.add_argument('--threshold', type=float, default=1e-5,
             help="Convergence threshold for early termination, default 1e-5")
+    parser.add_argument('-an', '--allow_negative', default=False,
+            action='store_true', help="Allow negative density, useful if the"
+            "result is to be used for a similarity search rather than to"
+            "represent a physical molecule")
 
 args = parser.parse_args()
 assert not (args.exclude_receptor and args.exclude_ligand), "Must optimize at least one of receptor and ligand"
@@ -147,8 +151,9 @@ for train_file in train_files:
             current_grid[:,:nrec_channels,:,:,:] -= args.lr * grid_diff[:,nrec_channels:,:,:,:]
         else:
             current_grid -= args.lr * grid_diff
-        #don't let anything go negative
-        current_grid[current_grid < 0] = 0
+        #don't let anything go negative, if desired
+        if not args.allow_negative:
+            current_grid[current_grid < 0] = 0
         dream_net.blobs['data'].data[...] = current_grid
     #do final evaluation, write to output files
     res = dream_net.forward()
