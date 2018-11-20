@@ -134,7 +134,12 @@ for train_file in train_files:
         res = dream_net.forward()
         assert 'output' in res, "Network must produce output"
         all_y_scores.append([float(x[1]) for x in res['output']])
+        #if there's a max pool before the first conv/inner product layer,
+        #switch it to ave pool for backward, then switch it back
+        switched = caffe.toggle_max_to_ave(dream_net)
         dream_net.backward()
+        if switched:
+            caffe.toggle_ave_to_max(dream_net)
         current_grid = dream_net.blobs['data'].data
         grid_diff = dream_net.blobs['data'].diff
         #TODO: assumes second dim is atom type channel
