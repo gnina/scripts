@@ -12,6 +12,7 @@ import caffe
 from caffe.proto.caffe_pb2 import NetParameter, SolverParameter
 import google.protobuf.text_format as prototxt
 import time
+import datetime
 import psutil
 import cPickle, signal
 from combine_fold_results import write_results_file, combine_fold_results
@@ -617,7 +618,7 @@ def train_and_test_model(args, files, outname, cont=0):
         i_time_avg = (i*i_time_avg + i_time)/(i+1)
         i_left = iterations/test_interval - (i+1)
         time_left = i_time_avg * i_left
-        time_str = time.strftime('%H:%M:%S', time.gmtime(time_left))
+        time_str = str(datetime.timedelta(seconds=time_left))
         print "Loop time: %f (%s left)" % (i_time, time_str)
 
         mem = psutil.Process(os.getpid()).memory_info().rss
