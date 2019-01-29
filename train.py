@@ -54,7 +54,7 @@ At the end graphs are made.'''
 
 
 def write_model_file(model_file, template_file, train_file, test_file, root_folder, avg_rotations=False,
-                     train_file2=None, ratio=None, root_folder2=None, test_root_folder=None):
+                     percent_reduc=False,train_file2=None, ratio=None, root_folder2=None, test_root_folder=None):
     '''Writes a model prototxt file based on a provided template file
     with certain placeholders replaced in each MolGridDataLayer.
     For the source parameter, "TRAINFILE" is replaced with train_file
@@ -94,6 +94,8 @@ def write_model_file(model_file, template_file, train_file, test_file, root_fold
         if avg_rotations and 'TEST' in str(layer):
             param.rotate = 24 #TODO axial rotations aren't working
             #layer.molgrid_data_param.random_rotation = True
+        if percent_reduc and 'TEST' in str(layer) and 'reduced' in model_file:#only shuffle test set for reduced & if percent_reduc was passed
+            param.shuffle = True
     with open(model_file, 'w') as f:
         f.write(str(netparam))
 
@@ -134,7 +136,7 @@ class Namespace():
         self.__dict__.update(kwargs)
 
 
-def evaluate_test_net(test_net, n_tests, n_rotations, offset):
+def evaluate_test_net(test_net, n_tests, n_rotations):
     '''Evaluate a test network and return the results. The number of
     examples in the file the test_net reads from must equal n_tests,
     otherwise output will be misaligned. Can optionally take the average
@@ -159,7 +161,6 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
     res = None
     for r in xrange(n_rotations):
         for x in xrange(n_tests):
-            x = (x + offset) % n_tests
 
             if not res or i >= batch_size:
                 res = test_net.forward()
@@ -198,9 +199,6 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
                 rmsd_pred[x].append(float(rmsd_pred_blob.data[i]))
                 
             i += 1
-
-    #get index of test example that will be at start of next batch
-    offset = (x + 1 + batch_size - i) % n_tests
 
     result = Namespace(auc=None, y_true=y_true, y_score=[], loss=None,
                        rmsd=None, y_aff=y_affinity, rmsd_true=rmsd_true,
@@ -242,7 +240,7 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
     if losses:
         result.loss = np.mean(losses)
 
-    return result, offset
+    return result
 
 
 def count_lines(file):
@@ -256,7 +254,7 @@ def train_and_test_model(args, files, outname, cont=0):
     for every test iteration, and also the labels and predictions for the
     final test iteration. If cont > 0, assumes the presence of a saved 
     caffemodel at that iteration.'''
-    
+
     #helper functions
     def freemem():
         '''Free intermediate blobs from all networks.  These will be reallocated as needed.'''
@@ -297,6 +295,7 @@ def train_and_test_model(args, files, outname, cont=0):
     test_interval = args.test_interval
     iterations = args.iterations-cont
     training = not args.test_only
+    use_reduced = bool(args.reduced or args.percent_reduced)
 
     if args.test_only:
         test_interval = iterations = 1
@@ -315,41 +314,59 @@ def train_and_test_model(args, files, outname, cont=0):
     test_models = ['traintest.%d.prototxt' % pid]
     test_files = [files['test']]
     test_roots = [args.data_root] #which data_root to use
-    if args.reduced:
+    counter=0#for dic below
+    #dic mapping <key>:counter  where key is one of ['test','reducedtest','test2','reducedtest2','train','reducedtrain','train2','reducedtrain2']
+    test_idxs={'test':counter}
+
+    if use_reduced:
         test_models += ['trainreducedtest.%d.prototxt' % pid]
         test_files += [files['reduced_test']]
         test_roots += [args.data_root]
+        counter+=1
+        test_idxs['reduced_test']=counter
     if args.prefix2:
         test_models += ['traintest2.%d.prototxt' % pid]
         test_files += [files['test2']]
         test_roots += [args.data_root2]
-        if args.reduced:
+        counter+=1
+        test_idxs['test2']=counter
+        if use_reduced:
             test_models += ['trainreducedtest2.%d.prototxt' % pid]
             test_files += [files['reduced_test2']]
             test_roots += [args.data_root2]
-    if not test_on_train:
+            counter+=1
+            test_idxs['reduced_test2']=counter
+    if not test_on_train:#TODO - check if this works as intended
         test_models += ['traintrain.%d.prototxt' % pid]
         test_files += [files['train']]
         test_roots += [args.data_root]
-        if args.reduced:
+        counter+=1
+        test_idxs['train']=counter
+        if use_reduced:
             test_models += ['trainreducedtrain.%d.prototxt' % pid]
             test_files += [files['reduced_train']]
             test_roots += [args.data_root]
+            counter+=1
+            test_idxs['reduced_train']=counter
         if args.prefix2:
             test_models += ['traintrain2.%d.prototxt' % pid]
             test_files += [files['train2']]
             test_roots += [args.data_root2]
-            if args.reduced:
+            counter+=1
+            test_idxs['train2']=counter
+            if use_reduced:
                 test_models += ['trainreducedtrain2.%d.prototxt' % pid]
                 test_files += [files['reduced_train2']]
                 test_roots += [args.data_root2]
+                counter+=1
+                test_idxs['reduced_train2']+=counter
 
     for test_model, test_file, test_root in zip(test_models, test_files, test_roots):
         if args.prefix2:
-            write_model_file(test_model, template, files['train'], test_file, args.data_root, args.avg_rotations,
+            write_model_file(test_model, template, files['train'], test_file, args.data_root, args.avg_rotations, args.percent_reduced,
                              files['train2'], args.data_ratio, args.data_root2, test_root)
         else:
-            write_model_file(test_model, template, files['train'], test_file, args.data_root, args.avg_rotations)
+            write_model_file(test_model, template, files['train'], test_file, args.data_root, args.avg_rotations, args.percent_reduced)
 
 
     #initialize variables
@@ -427,11 +444,14 @@ def train_and_test_model(args, files, outname, cont=0):
     if args.weights:
         check_file_exists(args.weights)
         solver.net.copy_from(args.weights) #TODO this doesn't actually set the necessary weights...
-                
+
     test_nets = {}
     for key, test_file in files.items():
-        idx = test_files.index(test_file)
-        test_nets[key] = solver.test_nets[idx], count_lines(test_file), 0
+        idx = test_idxs[key]
+        if args.percent_reduced and 'reduced' in key:
+            test_nets[key] = solver.test_nets[idx], int(count_lines(test_file)*args.percent_reduced/100)
+        else:
+            test_nets[key] = solver.test_nets[idx], count_lines(test_file)
 
     if training: #outfile is training progress, don't write if we're not training
         outfile = '%s.out' % outname
@@ -454,14 +474,14 @@ def train_and_test_model(args, files, outname, cont=0):
         if not test_on_train:
             #evaluate test set
             start = time.time()
-            if args.reduced and not last_test:
+            if use_reduced and (not last_test or args.skip_full):
                 key = 'reduced_test'
             else:
                 key = 'test'
-            test_net, n_tests, offset = test_nets[key]
+            test_net, n_tests = test_nets[key]
             freemem()
-            result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
-            test_nets[key] = test_net, n_tests, offset  #why doing this?
+            result = evaluate_test_net(test_net, n_tests, rotations)
+            test_nets[key] = test_net, n_tests  #why doing this?
             print "Eval test time: %f" % (time.time()-start)
 
             update_from_result("Test", test, result)
@@ -469,28 +489,28 @@ def train_and_test_model(args, files, outname, cont=0):
             if args.prefix2:
                 #evaluate test set 2
                 start = time.time()
-                if args.reduced and not last_test:
+                if use_reduced and (not last_test or args.skip_full):
                     key = 'reduced_test2'
                 else:
                     key = 'test2'
-                test_net, n_tests, offset = test_nets[key]
+                test_net, n_tests = test_nets[key]
                 freemem()
-                result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
-                test_nets[key] = test_net, n_tests, offset
+                result = evaluate_test_net(test_net, n_tests, rotations)
+                test_nets[key] = test_net, n_tests
                 print "Eval test2 time: %f" % (time.time()-start)
 
                 update_from_result("Test2", test2, result)
 
         #evaluate train set
         start = time.time()
-        if args.reduced and not last_test:
+        if use_reduced and (not last_test or args.skip_full):
             key = 'reduced_train'
         else:
             key = 'train'
-        test_net, n_tests, offset = test_nets[key]
+        test_net, n_tests = test_nets[key]
         freemem()
-        result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
-        test_nets[key] = test_net, n_tests, offset
+        result = evaluate_test_net(test_net, n_tests, rotations)
+        test_nets[key] = test_net, n_tests
         print "Eval train time: %f" % (time.time()-start)
 
         update_from_result("Train", train, result)
@@ -498,14 +518,14 @@ def train_and_test_model(args, files, outname, cont=0):
         if args.prefix2:
             #evaluate train set 2
             start = time.time()
-            if args.reduced and not last_test:
+            if use_reduced and (not last_test or args.skip_full):
                 key = 'reduced_train2'
             else:
                 key = 'train2'
-            test_net, n_tests, offset = test_nets[key]
+            test_net, n_tests = test_nets[key]
             freemem()
-            result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
-            test_nets[key] = test_net, n_tests, offset
+            result = evaluate_test_net(test_net, n_tests, rotations)
+            test_nets[key] = test_net, n_tests
             print "Eval train2 time: %f" % (time.time()-start)
 
             if i > 0 and not (args.reduced and last_test): #check alignment
@@ -655,8 +675,8 @@ def train_and_test_model(args, files, outname, cont=0):
                             os.remove(prevsnap)
                     except Exception as e:
                         print e
-        
-        if args.skip_full and args.reduced: #we flagged that we want to skip the last test evaluation
+
+        if args.skip_full and use_reduced: #we flagged that we want to skip the last test evaluation
             if last_test: #we indicated we are done
                 break
         else:
@@ -696,7 +716,8 @@ def parse_args(argv=None):
     parser.add_argument('-g','--gpu',type=int,help='Specify GPU to run on',default=-1)
     parser.add_argument('-c','--cont',type=int,help='Continue a previous simulation from the provided iteration (snapshot must exist)',default=0)
     parser.add_argument('-k','--keep',action='store_true',default=False,help="Don't delete prototxt files")
-    parser.add_argument('-r', '--reduced', action='store_true',default=False,help="Use a reduced file for model evaluation if exists(<prefix>[reducedtrain|reducedtest][num].types)")
+    parser.add_argument('-r', '--reduced', action='store_true',default=False,help="Use a reduced file for model evaluation if exists(<prefix>[reducedtrain|reducedtest][num].types). Incompatible with --percent_reduced")
+    parser.add_argument('--percent_reduced',type=float,default=0,help='Create a reduced set on the fly based on types file, using the given percentage: to use 10 percent pass 10. Range (0,100). Incompatible with --reduced')
     parser.add_argument('--avg_rotations', action='store_true',default=False, help="Use the average of the testfile's 24 rotations in its evaluation results")
     parser.add_argument('--checkpoint', action='store_true',default=False,help="Enable automatic checkpointing")
     #parser.add_argument('-v,--verbose',action='store_true',default=False,help='Verbose output')
@@ -737,7 +758,7 @@ def check_file_exists(file):
         raise OSError('%s does not exist' % file)
 
 
-def get_train_test_files(prefix, foldnums, allfolds, reduced, prefix2):
+def get_train_test_files(prefix, foldnums, allfolds, reduced, prefix2, percent_reduced):
     files = {}
     if foldnums is None:
         foldnums = set()
@@ -755,6 +776,9 @@ def get_train_test_files(prefix, foldnums, allfolds, reduced, prefix2):
         files[i] = {}
         files[i]['train'] = '%strain%d.types' % (prefix, i)
         files[i]['test'] = '%stest%d.types' % (prefix, i)
+        if percent_reduced:
+            files[i]['reduced_train'] = '%strain%d.types' % (prefix, i)
+            files[i]['reduced_test'] = '%stest%d.types' % (prefix, i)
         if reduced:
             files[i]['reduced_train'] = '%sreducedtrain%d.types' % (prefix, i)
             files[i]['reduced_test'] = '%sreducedtest%d.types' % (prefix, i)
@@ -768,6 +792,8 @@ def get_train_test_files(prefix, foldnums, allfolds, reduced, prefix2):
         i = 'all'
         files[i] = {}
         files[i]['train'] = files[i]['test'] = '%s.types' % prefix
+        if bool(percent_reduced):
+            files[i]['reduced_train'] = files[i]['reduced_test'] = '%s.types' % prefix
         if reduced:
             files[i]['reduced_train'] = files[i]['reduced_test'] = '%sreduced.types' % prefix
         if prefix2:
@@ -785,17 +811,28 @@ if __name__ == '__main__':
 
     #identify all train/test pairs
     try:
-        train_test_files = get_train_test_files(args.prefix, args.foldnums, args.allfolds, args.reduced, args.prefix2)
+        train_test_files = get_train_test_files(args.prefix, args.foldnums, args.allfolds, args.reduced, args.prefix2, args.percent_reduced)
     except OSError as e:
         print "error: %s" % e
         sys.exit(1)
 
+    print 'EASYFIND',train_test_files
+
     if len(train_test_files) == 0:
         print "error: missing train/test files"
         sys.exit(1)
-    
-    if args.skip_full and not args.reduced:
-        print "WARNING: ignoring --skip_full since --reduced was not passed"
+
+    if args.percent_reduced < 0 or args.percent_reduced >= 100:
+        print "error: percent_reduced must be greater than 0 and less than 100"
+        sys.exit(1)
+
+    if args.reduced and args.percent_reduced:
+        print "error: can't use reduced and percent_reduced together"
+        sys.exit(1)
+
+    if args.skip_full and (not args.reduced and not args.percent_reduced):
+        print "error: --skip_full requires --reduced OR --percent_reduced. Neither was not passed"
+        sys.exit(1)
     
     for i in train_test_files:
         for key in sorted(train_test_files[i], key=len):
@@ -952,4 +989,3 @@ if __name__ == '__main__':
             combine_fold_results(test2_rmsds, train2_rmsds, test2_y_aff, test2_y_predaff, train2_y_aff, train2_y_predaff,
                                  outprefix, args.test_interval, affinity=True, second_data_source=True,
                                  filter_actives_test=test2_y_true, filter_actives_train=train2_y_true)
-
