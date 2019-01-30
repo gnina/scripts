@@ -254,7 +254,7 @@ def train_and_test_model(args, files, outname, cont=0):
     for every test iteration, and also the labels and predictions for the
     final test iteration. If cont > 0, assumes the presence of a saved 
     caffemodel at that iteration.'''
-
+    
     #helper functions
     def freemem():
         '''Free intermediate blobs from all networks.  These will be reallocated as needed.'''
@@ -336,7 +336,7 @@ def train_and_test_model(args, files, outname, cont=0):
             test_roots += [args.data_root2]
             counter+=1
             test_idxs['reduced_test2']=counter
-    if not test_on_train:#TODO - check if this works as intended
+    if not test_on_train:
         test_models += ['traintrain.%d.prototxt' % pid]
         test_files += [files['train']]
         test_roots += [args.data_root]
@@ -449,7 +449,7 @@ def train_and_test_model(args, files, outname, cont=0):
     for key, test_file in files.items():
         idx = test_idxs[key]
         if args.percent_reduced and 'reduced' in key:
-            test_nets[key] = solver.test_nets[idx], int(count_lines(test_file)*args.percent_reduced/100)
+            test_nets[key] = solver.test_nets[idx], max(int(count_lines(test_file)*args.percent_reduced/100),1)
         else:
             test_nets[key] = solver.test_nets[idx], count_lines(test_file)
 
@@ -779,26 +779,31 @@ def get_train_test_files(prefix, foldnums, allfolds, reduced, prefix2, percent_r
         if percent_reduced:
             files[i]['reduced_train'] = '%strain%d.types' % (prefix, i)
             files[i]['reduced_test'] = '%stest%d.types' % (prefix, i)
-        if reduced:
+        elif reduced:
             files[i]['reduced_train'] = '%sreducedtrain%d.types' % (prefix, i)
             files[i]['reduced_test'] = '%sreducedtest%d.types' % (prefix, i)
         if prefix2:
             files[i]['train2'] = '%strain%d.types' % (prefix2, i)
             files[i]['test2'] = '%stest%d.types' % (prefix2, i)
-            if reduced:
+            if percent_reduced:
+                files[i]['reduced_train2'] = '%strain%d.types' % (prefix2, i)
+                files[i]['reduced_test2'] = '%stest%d.types' % (prefix2, i)
+            elif reduced:
                 files[i]['reduced_train2'] = '%sreducedtrain%d.types' % (prefix2, i)
                 files[i]['reduced_test2'] = '%sreducedtest%d.types' % (prefix2, i)
     if allfolds:
         i = 'all'
         files[i] = {}
         files[i]['train'] = files[i]['test'] = '%s.types' % prefix
-        if bool(percent_reduced):
+        if percent_reduced:
             files[i]['reduced_train'] = files[i]['reduced_test'] = '%s.types' % prefix
-        if reduced:
+        elif reduced:
             files[i]['reduced_train'] = files[i]['reduced_test'] = '%sreduced.types' % prefix
         if prefix2:
             files[i]['train2'] = files[i]['test2'] = '%s.types' % prefix2
-            if reduced:
+            if percent_reduced:
+                files[i]['reduced_train2'] = files[i]['reduced_test2'] = '%s.types' % prefix2
+            elif reduced:
                 files[i]['reduced_train2'] = files[i]['reduced_test2'] = '%sreduced.types' % prefix2
     for i in files:
         for file in files[i].values():
@@ -815,8 +820,6 @@ if __name__ == '__main__':
     except OSError as e:
         print "error: %s" % e
         sys.exit(1)
-
-    print 'EASYFIND',train_test_files
 
     if len(train_test_files) == 0:
         print "error: missing train/test files"
