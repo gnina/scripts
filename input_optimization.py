@@ -174,6 +174,15 @@ for train_file in train_files:
     check_file_exists(args.weights)
     check_file_exists(test_model)
     net = caffe.Net(test_model, caffe.TRAIN, weights=args.weights)
+    found = 0
+    for i,layer in enumerate(net.layers):
+        if layer.type == 'MolGridData':
+            mgrid = layer
+            mgrid_name = net._layer_names[i]
+            found = 1
+        elif found:
+            next_name = net._layer_names[i]
+            break
  
     #figure out which channels to exclude from updates if applicable
     #rec channels always come first
@@ -182,30 +191,29 @@ for train_file in train_files:
         channel_list += get_channel_list(recmap, "Rec_")
         nrec_channels = count_lines(recmap)
     else:
-        channel_list += get_rec_types(net)
+        channel_list += caffe.get_rec_types(mgrid)
         nrec_channels = len(channel_list)
     if ligmap:
         channel_list += get_channel_list(ligmap, "Lig_")
         nlig_channels = count_lines(ligmap)
     else:
-        channel_list += get_lig_types(net)
+        channel_list += caffe.get_lig_types(mgrid)
         nlig_channels = len(channel_list) - nrec_channels
 
     nexamples = count_lines(train_file)
-    nchunks = math.ceil((float(nexamples)) / args.batch_size)
+    nchunks = int(math.ceil((float(nexamples)) / args.batch_size))
     struct_names = get_structure_names(train_file)
     for chunk in range(nchunks):
         startline = chunk * args.batch_size
         diffs = []
         all_y_scores = []
         #do forward, backward, update input grid for desired number of iters 
-        #(molgrid currently handles grid dumping)
         #TODO: momentum? otherwise change the update (switch to BFGS?)
         for i in xrange(args.iterations):
             if i == 0:
-                startlayer = 0
+                startlayer = mgrid_name
             else:
-                startlayer = 1
+                startlayer = next_name
             res = net.forward(start=startlayer)
             assert 'output' in res, "Network must produce output"
             all_y_scores.append([float(x[1]) for x in res['output']])
@@ -244,14 +252,14 @@ for train_file in train_files:
                     center = []
                     for layer in net.layers:
                         if layer.type == "MolGridData":
-                            center = caffe.get_grid_center(ex)
+                            center = caffe.get_grid_center(mgrid, ex)
                     if not center:
                         raise ValueError("Unable to determine grid center")
                     dump_grid_dx(resultname,
                             net.blobs['data'].data[ex,...], dim, resolution,
                             dimension, center, channels)
         #do final evaluation, write to output files
-        res = net.forward(start=1)
+        res = net.forward(start=next_name)
         y_true = []
         y_score = []
         y_affinity = []
@@ -294,3 +302,4 @@ for train_file in train_files:
             rmsd = np.sqrt(sklearn.metrics.mean_squared_error(y_aff_true, y_predaff_true))
             write_results_file('%s.rmsd.finaltest' % outname, y_affinity,
                     y_predaff, footer='RMSD %f\n' % rmsd)
+os.remove(tmpmodel)
