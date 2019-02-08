@@ -38,6 +38,7 @@ def get_structure_names(fname):
             rec = os.path.splitext(os.path.basename(contents[-2]))[0]
             lig = os.path.splitext(os.path.basename(contents[-1]))[0]
             names.append('%s_%s' %(rec,lig))
+    return names
 
 def dump_grid_dx(outname, blob, dim, resolution, dimension, center, channels):
     '''
@@ -45,7 +46,7 @@ def dump_grid_dx(outname, blob, dim, resolution, dimension, center, channels):
     outname_[channel]
     '''
     for chidx,channel in enumerate(channels):
-        with open('%s_%s.dx' %(outname, str(channel)), 'r') as f:
+        with open('%s_%s.dx' %(outname, str(channel)), 'w') as f:
             f.write('%s %d %d %d\n' %("object 1 class gridpositions counts ",
                 dim, dim, dim))
             f.write('%s %.5f %.5f %.5f\n' %("origin", 
@@ -60,9 +61,9 @@ def dump_grid_dx(outname, blob, dim, resolution, dimension, center, channels):
             f.write('%s %d%s\n' %("object 3 class array type double rank 0 "
                 "items [ ", dim*dim*dim, "] data follows"))
             total = 0
-            for i in range(n):
-                for j in range(n):
-                    for k in range(n):
+            for i in range(dim):
+                for j in range(dim):
+                    for k in range(dim):
                         f.write('{:.6e}'.format(blob[chidx][i][j][k]))
                         total += 1
                         if (total % 3 == 0):
@@ -246,9 +247,9 @@ for train_file in train_files:
             #dump a grid at every iteration if desired, otherwise just dump the
             #first and last time
             if (i == 0) or (i == (args.iterations-1)) or (args.dump_all):
-                for ex in range(batch_size):
+                for ex in range(args.batch_size):
                     struct = struct_names[startline + ex]
-                    resultname = '%s_iter%d' %(struct, iter)
+                    resultname = '%s_iter%d' %(struct, i)
                     center = []
                     for layer in net.layers:
                         if layer.type == "MolGridData":
@@ -257,7 +258,7 @@ for train_file in train_files:
                         raise ValueError("Unable to determine grid center")
                     dump_grid_dx(resultname,
                             net.blobs['data'].data[ex,...], dim, resolution,
-                            dimension, center, channels)
+                            dimension, center, channel_list)
         #do final evaluation, write to output files
         res = net.forward(start=next_name)
         y_true = []
