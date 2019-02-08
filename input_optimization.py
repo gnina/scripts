@@ -21,7 +21,12 @@ def get_channel_list(fname, prefix=''):
     channel_list = []
     with open(fname,'r') as f:
         for line in f:
-            channel_list.append(prefix + '_'.join(line))
+            contents = line.split()
+            if len(contents) > 1:
+                contents = '_'.join(contents)
+            else:
+                contents = contents[0]
+            channel_list.append(prefix + contents)
     return channel_list
 
 def get_structure_names(fname):
