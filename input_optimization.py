@@ -3,7 +3,7 @@
 import caffe
 from train import write_model_file, check_file_exists, count_lines
 from combine_fold_results import write_results_file
-import argparse, glob, re, os, itertools
+import argparse, glob, re, os, itertools, math
 import numpy as np
 from caffe.proto.caffe_pb2 import NetParameter
 import google.protobuf.text_format as prototxt
@@ -14,26 +14,78 @@ Use trained network to optimize grids associated with input structures. Need a
 model template, data, and pre-trained weights. 
 '''
 
-#layers that don't need an lr_mult because they don't have trainable parameters
-no_param_layers = ['Pooling', 'ELU', 'ReLU', 'PReLU', 'Sigmoid', 'TanH', 'Power', 'Exp',
-        'Log', 'BNLL', 'Threshold', 'Bias', 'Scale', 'Softmax', 'AffinityLoss', 
-        'SoftmaxWithLoss', 'Reshape', 'Split']
+def get_channel_list(fname, prefix=''):
+    '''
+    Make a list of the channels being used
+    '''
+    channel_list = []
+    with open(fname,'r') as f:
+        for line in f:
+            channel_list.append(prefix + '_'.join(line))
+    return channel_list
+
+def get_structure_names(fname):
+    '''
+    Use types file to get rec/lig names associated with each example
+    '''
+    names = []
+    with open(fname, 'r') as f:
+        for line in f:
+            #strip off comments
+            contents = line.split('#')[0]
+            contents = contents.split()
+            #then lig is last, rec next-to-last
+            rec = os.path.splitext(os.path.basename(contents[-2]))[0]
+            lig = os.path.splitext(os.path.basename(contents[-1]))[0]
+            names.append('%s_%s' %(rec,lig))
+
+def dump_grid_dx(outname, blob, dim, resolution, dimension, center, channels):
+    '''
+    For every atom type channel, dump diff in DX format to file with name
+    outname_[channel]
+    '''
+    for chidx,channel in enumerate(channels):
+        with open('%s_%s.dx' %(outname, str(channel)), 'r') as f:
+            f.write('%s %d %d %d\n' %("object 1 class gridpositions counts ",
+                dim, dim, dim))
+            f.write('%s %.5f %.5f %.5f\n' %("origin", 
+                center[0] - dimension/2.0, 
+                center[1] - dimension/2.0, 
+                center[2] - dimension/2.0))
+            f.write('%s %.5f 0 0\n' %("delta", resolution))
+            f.write('%s 0 %.5f 0\n' %("delta", resolution))
+            f.write('%s 0 0 %.5f\n' %("delta", resolution))
+            f.write('%s %d %d %d\n' %("object 2 class gridconnections counts",
+                dim, dim, dim))
+            f.write('%s %d%s\n' %("object 3 class array type double rank 0 "
+                "items [ ", dim*dim*dim, "] data follows"))
+            total = 0
+            for i in range(n):
+                for j in range(n):
+                    for k in range(n):
+                        f.write('{:.6e}'.format(blob[chidx][i][j][k]))
+                        total += 1
+                        if (total % 3 == 0):
+                            f.write('\n')
+                        else:
+                            f.write(' ')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Optimize gnina input grid a"
     " la DeepDream")
-    parser.add_argument('-m', '--model', type=str, required=True, help="Model"
-    " template file defining network architecture")
     parser.add_argument('-i', '--iterations', type=int, required=False, 
             help="Number of iterations to run, default 100", default=100)
     parser.add_argument('-d', '--data_root', type=str, required=False, 
             help="Root folder for relative paths in train/test files", default='')
     parser.add_argument('-p', '--prefix', type=str, required=False,
             help="Prefix for file(s) containing input data", default='')
-    parser.add_argument('--weights', type=str, help="Set of weights to"
+    parser.add_argument('-w', '--weights', type=str, help="Set of weights to"
             " initialize the model with", required=True)
-    parser.add_argument('-t', '--trained_net', type=str, help="Net associated"
+    parser.add_argument('-m', '--model', type=str, help="Network model associated"
             " with trained weights", required=True)
+    parser.add_argument('-bs', '--batch_size', type=int, help="Batch size for \
+            input optimization, defaults to value in model file",
+            default=0)
     parser.add_argument('-er', '--exclude_receptor', default=False,
             action='store_true', help='Only update the ligand')
     parser.add_argument('-el', '--exclude_ligand', default=False,
@@ -42,13 +94,16 @@ if __name__ == "__main__":
     " default dream_<model>.<pid>", default='')
     parser.add_argument('-g', '--gpu',type=int, help='Specify GPU to run on', default=-1)
     parser.add_argument('--lr', type=float, default=0.01, help="Learning rate"
-            " for input grid updates, default=0.01.")
+            " for input grid updates, default=0.1.")
     parser.add_argument('--threshold', type=float, default=1e-5,
             help="Convergence threshold for early termination, default 1e-5")
     parser.add_argument('-an', '--allow_negative', default=False,
             action='store_true', help="Allow negative density, useful if the"
             "result is to be used for a similarity search rather than to"
             "represent a physical molecule")
+    parser.add_argument('-a', '--dump_all', default=False, action='store_true',
+            help='Dump all intermediate grids from optimization, not just the \
+            first and last')
 
 args = parser.parse_args()
 assert not (args.exclude_receptor and args.exclude_ligand), "Must optimize at least one of receptor and ligand"
@@ -73,35 +128,36 @@ for f in glob_files:
 if not len(train_files):
     raise OSError("Prefix matches no files")
 
-#check that in the template net:
-#lr_mult==0 for non-data layers 
-#dream==True for molgrid layer
-#also retrieve recmap and ligmap
+#retrieve recmap, ligmap, also batch size if needed
+#added a force_backward option to train.py which should suffice to generate the
+#input diff blob, don't need to worry about setting lr_mult or decay_mult since
+#we aren't using a solver
+#make sure no random translation/rotation is added
+resolution = 0.0
+dimension = 0.0
+recmap = ''
+ligmap = ''
+netparam = NetParameter()
 with open(args.model) as f:
-    netparam = NetParameter()
     prototxt.Merge(f.read(), netparam)
-    for layer in netparam.layer:
-        if layer.type == "MolGridData":
-            assert layer.molgrid_data_param.dream, "molgrid layer must have dream: True"
-            ligmap = layer.molgrid_data_param.ligmap
-            recmap = layer.molgrid_data_param.recmap
-        elif layer.type not in no_param_layers:
-            assert len(layer.param)==2, "must set lr_mult for weights and bias"
-            for i in range(2):
-                assert layer.param[i].lr_mult==0.0, "lr_mult for non-data layers must be 0"
-                assert layer.param[i].decay_mult==0.0, "decay mult for non-data layers must be 0"
+for layer in netparam.layer:
+    if layer.type == "MolGridData":
+        ligmap = layer.molgrid_data_param.ligmap
+        recmap = layer.molgrid_data_param.recmap
+        resolution = layer.molgrid_data_param.resolution
+        dimension = layer.molgrid_data_param.dimension
+        if not args.batch_size:
+            args.batch_size = layer.molgrid_data_param.batch_size
+        layer.molgrid_data_param.random_translate = 0
+        layer.molgrid_data_param.random_rotation = False
+tmpmodel = 'tmp.prototxt'
+with open(tmpmodel, 'w') as f:
+    f.write(str(netparam))
 
-#figure out which channels to exclude from updates if applicable
-#rec channels always come first
-if recmap:
-    nrec_channels = count_lines(recmap)
-else:
-    nrec_channels = 16
-if ligmap:
-    nlig_channels = count_lines(ligmap)
-else:
-    nlig_channels = 19
-
+#we'll process these in batch-sized chunks
+#at the beginning of each batch we'll do a forward pass through the full net
+#after that we'll go forward starting from the second layer until we're done
+#with that batch and start over with the next one
 for train_file in train_files:
     base = os.path.splitext(os.path.basename(train_file))[0]
     if not args.outprefix:
@@ -112,95 +168,129 @@ for train_file in train_files:
         else:
             outname = args.outprefix
     test_model = '%s.prototxt' % outname
-    write_model_file(test_model, args.model, train_file, train_file, args.data_root, True)
+    write_model_file(test_model, tmpmodel, train_file, train_file, args.data_root, True)
 
     #construct net and update weights
     check_file_exists(args.weights)
-    check_file_exists(args.trained_net)
-    trained_net = caffe.Net(args.trained_net, caffe.TRAIN,
-            weights=args.weights)
-    dream_net = caffe.Net(test_model, caffe.TRAIN)
-    for layer in trained_net.params:
-        if layer in dream_net.params:
-            dream_net.params[layer][0].data[...] = trained_net.params[layer][0].data[...]
-            dream_net.params[layer][1].data[...] = trained_net.params[layer][1].data[...]
-   
-    diffs = []
-    #do forward, backward, update input grid for desired number of iters 
-    #(molgrid currently handles grid dumping)
-    #TODO: momentum?
-    all_y_scores = []
-    for i in xrange(args.iterations):
-        res = dream_net.forward()
-        assert 'output' in res, "Network must produce output"
-        all_y_scores.append([float(x[1]) for x in res['output']])
-        #if there's a max pool before the first conv/inner product layer,
-        #switch it to ave pool for backward, then switch it back
-        switched = caffe.toggle_max_to_ave(dream_net)
-        dream_net.backward()
-        if switched:
-            caffe.toggle_ave_to_max(dream_net)
-        current_grid = dream_net.blobs['data'].data
-        grid_diff = dream_net.blobs['data'].diff
-        #TODO: assumes second dim is atom type channel
-        norm = np.linalg.norm(grid_diff)
-        diffs.append(norm)
-        if norm < args.threshold:
-            print "gradient sufficiently converged, terminating early\n"
-            break
-        assert len(current_grid.shape) == 5, "Currently require grids to be NxCxDIMxDIMxDIM"
-        assert len(grid_diff.shape) == 5, "Currently require grids to be NxCxDIMxDIMxDIM"
-        if args.exclude_receptor:
-            current_grid[:,nrec_channels:,:,:,:] -= args.lr * grid_diff[:,nrec_channels:,:,:,:]
-        elif args.exclude_ligand:
-            current_grid[:,:nrec_channels,:,:,:] -= args.lr * grid_diff[:,nrec_channels:,:,:,:]
-        else:
-            current_grid -= args.lr * grid_diff
-        #don't let anything go negative, if desired
-        if not args.allow_negative:
-            current_grid[current_grid < 0] = 0
-        dream_net.blobs['data'].data[...] = current_grid
-    #do final evaluation, write to output files
-    res = dream_net.forward()
-    y_true = []
-    y_score = []
-    y_affinity = []
-    y_predaff = []
-    losses = []
+    check_file_exists(test_model)
+    net = caffe.Net(test_model, caffe.TRAIN, weights=args.weights)
+ 
+    #figure out which channels to exclude from updates if applicable
+    #rec channels always come first
+    channel_list = []
+    if recmap:
+        channel_list += get_channel_list(recmap, "Rec_")
+        nrec_channels = count_lines(recmap)
+    else:
+        channel_list += get_rec_types(net)
+        nrec_channels = len(channel_list)
+    if ligmap:
+        channel_list += get_channel_list(ligmap, "Lig_")
+        nlig_channels = count_lines(ligmap)
+    else:
+        channel_list += get_lig_types(net)
+        nlig_channels = len(channel_list) - nrec_channels
 
-    all_y_scores = [list(i) for i in zip(*all_y_scores)]
-    write_results_file('%s.diffs' % outname, diffs)
-    write_results_file('%s.preds' % outname, *all_y_scores)
+    nexamples = count_lines(train_file)
+    nchunks = math.ceil((float(nexamples)) / args.batch_size)
+    struct_names = get_structure_names(train_file)
+    for chunk in range(nchunks):
+        startline = chunk * args.batch_size
+        diffs = []
+        all_y_scores = []
+        #do forward, backward, update input grid for desired number of iters 
+        #(molgrid currently handles grid dumping)
+        #TODO: momentum? otherwise change the update (switch to BFGS?)
+        for i in xrange(args.iterations):
+            if i == 0:
+                startlayer = 0
+            else:
+                startlayer = 1
+            res = net.forward(start=startlayer)
+            assert 'output' in res, "Network must produce output"
+            all_y_scores.append([float(x[1]) for x in res['output']])
+            #if there's a max pool before the first conv/inner product layer,
+            #switch it to ave pool for backward, then switch it back
+            switched = caffe.toggle_max_to_ave(net)
+            net.backward()
+            if switched:
+                caffe.toggle_ave_to_max(net)
+            current_grid = net.blobs['data'].data
+            grid_diff = net.blobs['data'].diff
+            #TODO: assumes second dim is atom type channel
+            norm = np.linalg.norm(grid_diff)
+            diffs.append(norm)
+            if norm < args.threshold:
+                print "gradient sufficiently converged, terminating early\n"
+                break
+            assert len(current_grid.shape) == 5, "Currently require grids to be NxCxDIMxDIMxDIM"
+            assert len(grid_diff.shape) == 5, "Currently require grids to be NxCxDIMxDIMxDIM"
+            dim = current_grid.shape[-1]
+            if args.exclude_receptor:
+                current_grid[:,nrec_channels:,:,:,:] -= args.lr * grid_diff[:,nrec_channels:,:,:,:]
+            elif args.exclude_ligand:
+                current_grid[:,:nrec_channels,:,:,:] -= args.lr * grid_diff[:,nrec_channels:,:,:,:]
+            else:
+                current_grid -= args.lr * grid_diff
+            #don't let anything go negative, if desired
+            if not args.allow_negative:
+                current_grid[current_grid < 0] = 0
+            #dump a grid at every iteration if desired, otherwise just dump the
+            #first and last time
+            if (i == 0) or (i == (args.iterations-1)) or (args.dump_all):
+                for ex in range(batch_size):
+                    struct = struct_names[startline + ex]
+                    resultname = '%s_iter%d' %(struct, iter)
+                    center = []
+                    for layer in net.layers:
+                        if layer.type == "MolGridData":
+                            center = caffe.get_grid_center(ex)
+                    if not center:
+                        raise ValueError("Unable to determine grid center")
+                    dump_grid_dx(resultname,
+                            net.blobs['data'].data[ex,...], dim, resolution,
+                            dimension, center, channels)
+        #do final evaluation, write to output files
+        res = net.forward(start=1)
+        y_true = []
+        y_score = []
+        y_affinity = []
+        y_predaff = []
+        losses = []
 
-    if 'labelout' in res:
-        y_true = [float(x) for x in res['labelout']]
+        all_y_scores = [list(i) for i in zip(*all_y_scores)]
+        write_results_file('%s.diffs' % outname, diffs)
+        write_results_file('%s.preds' % outname, *all_y_scores)
 
-    if 'output' in res:
-        y_score = [float(x[1]) for x in res['output']]
+        if 'labelout' in res:
+            y_true = [float(x) for x in res['labelout']]
 
-    if 'affout' in res:
-        y_affinity = [float(x) for x in res['affout']]
+        if 'output' in res:
+            y_score = [float(x[1]) for x in res['output']]
 
-    if 'predaff' in res:
-        y_predaff = [float(x) for x in res['predaff']]
+        if 'affout' in res:
+            y_affinity = [float(x) for x in res['affout']]
 
-    if 'loss' in res:
-        print "%s loss: %f\n" %(base, res['loss'])
+        if 'predaff' in res:
+            y_predaff = [float(x) for x in res['predaff']]
 
-    #compute auc
-    if y_true and y_score:
-        if len(np.unique(y_true)) > 1:
-            auc = sklearn.metrics.roc_auc_score(y_true, y_score)
-        else: # may be evaluating all crystal poses?
-            print "Warning: only one unique label"
-            auc = 1.0
-        write_results_file('%s.auc.finaltest' % outname, y_true, y_score,
-                footer='AUC %f\n' % auc)
+        if 'loss' in res:
+            print "%s loss: %f\n" %(base, res['loss'])
 
-    #compute mean squared error (rmsd) of affinity (for actives only)
-    if y_affinity and y_predaff:
-        y_predaff_true = np.array(y_predaff)[np.array(y_affinity)>0]
-        y_aff_true = np.array(y_affinity)[np.array(y_affinity)>0]
-        rmsd = np.sqrt(sklearn.metrics.mean_squared_error(y_aff_true, y_predaff_true))
-        write_results_file('%s.rmsd.finaltest' % outname, y_affinity,
-                y_predaff, footer='RMSD %f\n' % rmsd)
+        #compute auc
+        if y_true and y_score:
+            if len(np.unique(y_true)) > 1:
+                auc = sklearn.metrics.roc_auc_score(y_true, y_score)
+            else: # may be evaluating all crystal poses?
+                print "Warning: only one unique label"
+                auc = 1.0
+            write_results_file('%s.auc.finaltest' % outname, y_true, y_score,
+                    footer='AUC %f\n' % auc)
+
+        #compute mean squared error (rmsd) of affinity (for actives only)
+        if y_affinity and y_predaff:
+            y_predaff_true = np.array(y_predaff)[np.array(y_affinity)>0]
+            y_aff_true = np.array(y_affinity)[np.array(y_affinity)>0]
+            rmsd = np.sqrt(sklearn.metrics.mean_squared_error(y_aff_true, y_predaff_true))
+            write_results_file('%s.rmsd.finaltest' % outname, y_affinity,
+                    y_predaff, footer='RMSD %f\n' % rmsd)
