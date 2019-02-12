@@ -104,8 +104,8 @@ if __name__ == "__main__":
     parser.add_argument('--threshold', type=float, default=1e-5,
             help="Convergence threshold for early termination, default 1e-5")
     parser.add_argument('-an', '--allow_negative', default=False,
-            action='store_true', help="Allow negative density, useful if the"
-            "result is to be used for a similarity search rather than to"
+            action='store_true', help="Allow negative density, useful if the "
+            "result is to be used for a similarity search rather than to "
             "represent a physical molecule")
     parser.add_argument('-a', '--dump_all', default=False, action='store_true',
             help='Dump all intermediate grids from optimization, not just the \
@@ -156,6 +156,7 @@ for layer in netparam.layer:
             args.batch_size = layer.molgrid_data_param.batch_size
         layer.molgrid_data_param.random_translate = 0
         layer.molgrid_data_param.random_rotation = False
+        layer.molgrid_data_param.use_rec_center = True
 tmpmodel = 'tmp.prototxt'
 with open(tmpmodel, 'w') as f:
     f.write(str(netparam))
