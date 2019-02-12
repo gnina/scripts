@@ -46,13 +46,16 @@ for fname in args.fnames:
     for line in open(fname):
         vals = line.split()
         rec = vals[args.col]
-        lig = vals[args.col+1]
+        ligs = vals[args.col+1:]
         
         if rec not in seenrec:
             seenrec.add(rec)
             writemol(args.data_root, rec, recout)
             
-        if lig not in seenlig:
-            seenlig.add(lig)
-            writemol(args.data_root, lig, ligout)
+        for lig in ligs:
+            if lig == '#':
+                break
+            if lig not in seenlig:
+                seenlig.add(lig)
+                writemol(args.data_root, lig, ligout)
     
