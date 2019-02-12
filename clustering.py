@@ -296,9 +296,9 @@ def computeLigandSimilarity(target_names, fname):
         
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='create train/test sets for cross-validation separating by sequence similarity of protein targets')
-    parser.add_argument('--pdbfiles',type=str,help="file with target names and paths to pbdfiles of targets (separated by space)")
-    parser.add_argument('--cpickle',type=str,help="cpickle file for precomputed distance matrix")
+    parser = argparse.ArgumentParser(description='create train/test sets for cross-validation separating by sequence similarity of protein targets and rdkit fingerprint similarity')
+    parser.add_argument('--pdbfiles',type=str,help="file with target names, paths to pbdfiles of targets, paths to ligand smile (separated by space)")
+    parser.add_argument('--cpickle',type=str,help="cpickle file for precomputed distance matrix and ligand similarity matrix")
     parser.add_argument('-i','--input',type=str,help="input .types file to create folds from, it is assumed receptors in pdb named directories")
     parser.add_argument('-o','--output',type=str,default='',help='output name for clustered folds')
     parser.add_argument('-c','--check',type=str,help='input name for folds to check for similarity')
@@ -310,7 +310,7 @@ if __name__ == '__main__':
     parser.add_argument('--posedir',required=False,default='',help='subdir of target dirs where ligand poses are located')
     parser.add_argument('--randomize',required=False,type=int,default=None,help='randomize inputs to get a different split, number is random seed')
     parser.add_argument('-v','--verbose',action='store_true',default=False,help='verbose output')
-    parser.add_argument('--reduce',type=float,default=0.05,help="Fraction to sample by for reduced files")
+    parser.add_argument('--reduce',type=float,default=0.05,help="Fraction to sample by for reduced files. default=0.05")
     args = parser.parse_args()
 
     threshold = 1 - args.similarity #similarity and distance are complementary
