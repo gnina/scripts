@@ -151,7 +151,7 @@ Strategy 2 is to upscale computing the clusters (typically for a supercomputing 
 Note that these scripts assume that the input files point to a relative path from the current working directory.
 
 ### Case 1: Using clustering.py
-'''
+```
 usage: clustering.py [-h] [--pdbfiles PDBFILES] [--cpickle CPICKLE] [-i INPUT]
                      [-o OUTPUT] [-c CHECK] [-n NUMBER] [-s SIMILARITY]
                      [-s2 SIMILARITY_WITH_SIMILAR_LIGAND]
@@ -191,7 +191,7 @@ optional arguments:
                         random seed
   -v, --verbose         verbose output
   --reduce REDUCE       Fraction to sample by for reduced files. default=0.05
-'''
+```
 INPUT is a types file that you want to create clusters for
 
 Either CPICKLE or PDBFILES needs to be input for the script to work.
@@ -210,20 +210,20 @@ A typical usage case would be to create 5 different seeds of 5fold cross-validat
 First, we create seed0, which also will compute the matrices needed. This depends on having
 INPUT a types file that we want to generate clusters for
 PDBFILES (target_name path_to_pdb_file path_to_ligand_smile) for each target in types
-'''
+```
 clustering.py --pdbfiles my_info --input my_types.types --output my_types_cv_seed0_ --randomize 0 --number 5
-'''
+```
 Next we run the following four commands to generate the other 4 seeds
-'''
+```
 clustering.py --cpickle matrix.pickle --input my_types.types --output my_types_cv_seed1_ --randomize 1 --number 5
 clustering.py --cpickle matrix.pickle --input my_types.types --output my_types_cv_seed2_ --randomize 2 --number 5
 clustering.py --cpickle matrix.pickle --input my_types.types --output my_types_cv_seed3_ --randomize 3 --number 5
 clustering.py --cpickle matrix.pickle --input my_types.types --output my_types_cv_seed4_ --randomize 4 --number 5
-'''
+```
 
 ### Case 2: Running compute_*.py pipeline
 First, we will use the compute_seqs.py to generate the needed input files
-'''
+```
 usage: compute_seqs.py [-h] --pdbfiles PDBFILES [--out OUT]
 
 Output the needed input for compute_row. This takes the format of
@@ -235,14 +235,14 @@ optional arguments:
                        and path to smiles file of ligand (separated by space)
   --out OUT            output file (default stdout)
 
-'''
+```
 
 PDBFILES is the same input that would be given to clustering.py.
 
 For the rest of this pipeline, I will consider the output of compute_seqs.py to be comp_seq_out.
 
 Second, we will run compute_row.py for each line in the output of compute_seqs.py
-'''
+```
 usage: compute_row.py [-h] --pdbseqs PDBSEQS -r ROW [--out OUT]
 
 Compute a single row of a distance matrix and ligand similarity matrix from a
@@ -255,22 +255,22 @@ optional arguments:
   -r ROW, --row ROW  row to compute
   --out OUT          output file (default stdout)
 
-'''
+```
 Here PDBSEQS is the output of compute_seqs.py. For example, to compute row zero
 and store the output into the file row0:
-'''
+```
 compute_row.py --pdbseqs comp_seq_out --row 0 --out row0
-'''
+```
 For the next part, I assume that the output of compute_row.py is row[num] where [num] is
 the row that was computed.
 
 Third, we will run combine_rows.py to create the cpickle file needed for input into clustering.py
-'''
+```
 combine_rows.py row*
-'''
+```
 combine_rows.py accepts any number of input files, and outputs matrix.pickle
 
 Lastly, we run clustering.py as follows
-'''
+```
 clustering.py --cpickle matrix.pickle --input my_types.types --output my_types_cv_
-'''
+```
