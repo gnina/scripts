@@ -2,14 +2,18 @@
 
  * train.py - Takes a model template and train/test file(s)
  * predict.py - Takes a model, learned weights, and an input file and outputs probabilities of binding
+ * clustering.py - Takes an input file, and outputs clustered cross-validation train/test file(s) for train.py. Note: take a long time to compute
+ * compute_seqs.py - Takes input file for clustering.py and creates the input for compute_row.py
+ * compute_row.py - Computes 1 row of NxN matrix in clustering.py. This allows for more parallelization of clustering.py
+ * combine_rows.py - Script to take outputs of compute_row.py & combine them to avoid needing to do the computation in clustering.py
 
 ## Dependencies
 
 ```
 sudo pip install matplotlib scipy sklearn scikit-image protobuf psutil numpy seaborn
 export PYTHONPATH=/usr/local/python:$PYTHONPATH
-
 ```
+rdkit -- see installation instructions [here](https://www.rdkit.org/docs/Install.html)
 
 ## Training
 ```
@@ -137,3 +141,136 @@ The GPU to use can be specified with -g.
 Previous training runs can be continued with -c.  The same prefix etc. should be used.
 
 A large number of training hyperparameters are available as options.  The defaults should be pretty reasonable.
+
+## Generating Clustered-Cross Validation splits of data
+
+There are 2 strategies: 1) Running clustering.py directly; 2) Running compute_seqs.py --> compute_row.py --> combine_rows.py.
+Strategy 1 works best when there is a small number of training examples (around 4000), but the process is rather slow.
+Strategy 2 is to upscale computing the clusters (typically for a supercomputing cluster) where each row would correspond to 1 job.
+
+Note that these scripts assume that the input files point to a relative path from the current working directory.
+
+### Case 1: Using clustering.py
+'''
+usage: clustering.py [-h] [--pdbfiles PDBFILES] [--cpickle CPICKLE] [-i INPUT]
+                     [-o OUTPUT] [-c CHECK] [-n NUMBER] [-s SIMILARITY]
+                     [-s2 SIMILARITY_WITH_SIMILAR_LIGAND]
+                     [-l LIGAND_SIMILARITY] [-d DATA_ROOT] [--posedir POSEDIR]
+                     [--randomize RANDOMIZE] [-v] [--reduce REDUCE]
+
+create train/test sets for cross-validation separating by sequence similarity
+of protein targets and rdkit fingerprint similarity
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --pdbfiles PDBFILES   file with target names, paths to pbdfiles of targets,
+                        paths to ligand smile (separated by space)
+  --cpickle CPICKLE     cpickle file for precomputed distance matrix and
+                        ligand similarity matrix
+  -i INPUT, --input INPUT
+                        input .types file to create folds from, it is assumed
+                        receptors in pdb named directories
+  -o OUTPUT, --output OUTPUT
+                        output name for clustered folds
+  -c CHECK, --check CHECK
+                        input name for folds to check for similarity
+  -n NUMBER, --number NUMBER
+                        number of folds to create/check. default=3
+  -s SIMILARITY, --similarity SIMILARITY
+                        what percentage similarity to cluster by. default=0.5
+  -s2 SIMILARITY_WITH_SIMILAR_LIGAND, --similarity_with_similar_ligand SIMILARITY_WITH_SIMILAR_LIGAND
+                        what percentage similarity to cluster by when ligands
+                        are similar default=0.3
+  -l LIGAND_SIMILARITY, --ligand_similarity LIGAND_SIMILARITY
+                        similarity threshold for ligands, default=0.9
+  -d DATA_ROOT, --data_root DATA_ROOT
+                        path to target dirs
+  --posedir POSEDIR     subdir of target dirs where ligand poses are located
+  --randomize RANDOMIZE
+                        randomize inputs to get a different split, number is
+                        random seed
+  -v, --verbose         verbose output
+  --reduce REDUCE       Fraction to sample by for reduced files. default=0.05
+'''
+INPUT is a types file that you want to create clusters for
+
+Either CPICKLE or PDBFILES needs to be input for the script to work.
+
+PDBFILES is a file of target_name, path to pdbfile of target, and path to the ligand smile (separated by space)
+CPICKLE is either the dump from running clustering.py one time, or the output from Case 2 (below) and allows you
+to avoid recomputing the costly protein sequence and ligand similarity matrices needed for clustering.
+
+When running with PDBFILES, the script will output PDBFILES.pickle which contains (distanceMatrix, target_names, ligansim),
+where distanceMatrix is the matrix of cUTDM2 distance between the protein sequences,
+target_names is the list of targets, and ligandsim is the matrix of ligand similarities.
+
+When running with CPICKLE, only the new .types files will be output.
+
+A typical usage case would be to create 5 different seeds of 5fold cross-validation.
+First, we create seed0, which also will compute the matrices needed. This depends on having
+INPUT a types file that we want to generate clusters for
+PDBFILES (target_name path_to_pdb_file path_to_ligand_smile) for each target in types
+'''
+clustering.py --pdbfiles my_info --input my_types.types --output my_types_cv_seed0_ --randomize 0 --number 5
+'''
+Next we run the following four commands to generate the other 4 seeds
+'''
+clustering.py --cpickle matrix.pickle --input my_types.types --output my_types_cv_seed1_ --randomize 1 --number 5
+clustering.py --cpickle matrix.pickle --input my_types.types --output my_types_cv_seed2_ --randomize 2 --number 5
+clustering.py --cpickle matrix.pickle --input my_types.types --output my_types_cv_seed3_ --randomize 3 --number 5
+clustering.py --cpickle matrix.pickle --input my_types.types --output my_types_cv_seed4_ --randomize 4 --number 5
+'''
+
+### Case 2: Running compute_*.py pipeline
+First, we will use the compute_seqs.py to generate the needed input files
+'''
+usage: compute_seqs.py [-h] --pdbfiles PDBFILES [--out OUT]
+
+Output the needed input for compute_row. This takes the format of
+"<target_name> <ligand smile> <target_sequence>" separated by spaces
+
+optional arguments:
+  -h, --help           show this help message and exit
+  --pdbfiles PDBFILES  file with target names, paths to pbdfiles of targets,
+                       and path to smiles file of ligand (separated by space)
+  --out OUT            output file (default stdout)
+
+'''
+
+PDBFILES is the same input that would be given to clustering.py.
+
+For the rest of this pipeline, I will consider the output of compute_seqs.py to be comp_seq_out.
+
+Second, we will run compute_row.py for each line in the output of compute_seqs.py
+'''
+usage: compute_row.py [-h] --pdbseqs PDBSEQS -r ROW [--out OUT]
+
+Compute a single row of a distance matrix and ligand similarity matrix from a
+pdbinfo file.
+
+optional arguments:
+  -h, --help         show this help message and exit
+  --pdbseqs PDBSEQS  file with target names, ligand smile, and sequences
+                     (chains separated by space)
+  -r ROW, --row ROW  row to compute
+  --out OUT          output file (default stdout)
+
+'''
+Here PDBSEQS is the output of compute_seqs.py. For example, to compute row zero
+and store the output into the file row0:
+'''
+compute_row.py --pdbseqs comp_seq_out --row 0 --out row0
+'''
+For the next part, I assume that the output of compute_row.py is row[num] where [num] is
+the row that was computed.
+
+Third, we will run combine_rows.py to create the cpickle file needed for input into clustering.py
+'''
+combine_rows.py row*
+'''
+combine_rows.py accepts any number of input files, and outputs matrix.pickle
+
+Lastly, we run clustering.py as follows
+'''
+clustering.py --cpickle matrix.pickle --input my_types.types --output my_types_cv_
+'''
