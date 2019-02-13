@@ -152,10 +152,12 @@ for layer in netparam.layer:
         recmap = layer.molgrid_data_param.recmap
         resolution = layer.molgrid_data_param.resolution
         dimension = layer.molgrid_data_param.dimension
-        if not args.batch_size:
-            args.batch_size = layer.molgrid_data_param.batch_size
+        if args.batch_size:
+            layer.molgrid_data_param.batch_size = args.batch_size 
         layer.molgrid_data_param.random_translate = 0
         layer.molgrid_data_param.random_rotation = False
+        layer.molgrid_data_param.shuffle = False
+        layer.molgrid_data_param.balanced = False
         layer.molgrid_data_param.use_rec_center = True
 tmpmodel = 'tmp.prototxt'
 with open(tmpmodel, 'w') as f:
@@ -181,16 +183,14 @@ for train_file in train_files:
     check_file_exists(args.weights)
     check_file_exists(test_model)
     net = caffe.Net(test_model, caffe.TRAIN, weights=args.weights)
-    found = 0
+    mgrid = None
     for i,layer in enumerate(net.layers):
         if layer.type == 'MolGridData':
             mgrid = layer
             mgrid_name = net._layer_names[i]
-            found = 1
-        elif found:
+        elif mgrid:
             next_name = net._layer_names[i]
             break
- 
     #figure out which channels to exclude from updates if applicable
     #rec channels always come first
     channel_list = []
