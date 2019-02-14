@@ -45,12 +45,15 @@ def get_structure_names(fname):
             names.append('%s_%s' %(rec,lig))
     return names
 
-def dump_grid_dx(outname, blob, dim, resolution, dimension, center, channels):
+def dump_grid_dx(outname, blob, dim, resolution, dimension, center, channels,
+        selected_channels=[]):
     '''
     For every atom type channel, dump diff in DX format to file with name
-    outname_[channel]
+    outname_[channel]. Optionally only include the indices found in [selection]
     '''
     for chidx,channel in enumerate(channels):
+        if selected_channels and chidx not in selected_channels:
+            continue
         with open('%s_%s.dx' %(outname, str(channel)), 'w') as f:
             f.write('%s %d %d %d\n' %("object 1 class gridpositions counts ",
                 dim, dim, dim))
@@ -110,6 +113,9 @@ if __name__ == "__main__":
     parser.add_argument('-a', '--dump_all', default=False, action='store_true',
             help='Dump all intermediate grids from optimization, not just the \
             first and last')
+    parser.add_argument('--make_dirs', default=False, action='store_true', 
+            help='Make subdirectories to contain the grids for each example in \
+            the batch')
 
 args = parser.parse_args()
 assert not (args.exclude_receptor and args.exclude_ligand), "Must optimize at least one of receptor and ligand"
@@ -210,6 +216,10 @@ for train_file in train_files:
     nexamples = count_lines(train_file)
     nchunks = int(math.ceil((float(nexamples)) / args.batch_size))
     struct_names = get_structure_names(train_file)
+    if args.make_dirs:
+        for struct_name in struct_names:
+            if not os.path.isdir(struct_name):
+                os.mkdir(struct_name)
     for chunk in range(nchunks):
         startline = chunk * args.batch_size
         diffs = []
@@ -241,10 +251,13 @@ for train_file in train_files:
             assert len(current_grid.shape) == 5, "Currently require grids to be NxCxDIMxDIMxDIM"
             assert len(grid_diff.shape) == 5, "Currently require grids to be NxCxDIMxDIMxDIM"
             dim = current_grid.shape[-1]
+            selected_channels = []
             if args.exclude_receptor:
                 current_grid[:,nrec_channels:,:,:,:] -= args.lr * grid_diff[:,nrec_channels:,:,:,:]
+                selected_channels = [chidx+nrec_channels for chidx in range(nlig_channels)]
             elif args.exclude_ligand:
                 current_grid[:,:nrec_channels,:,:,:] -= args.lr * grid_diff[:,nrec_channels:,:,:,:]
+                selected_channels = [chidx for chidx in range(nrec_channels)]
             else:
                 current_grid -= args.lr * grid_diff
             #don't let anything go negative, if desired
@@ -255,7 +268,10 @@ for train_file in train_files:
             if (i == 0) or (i == (args.iterations-1)) or (args.dump_all):
                 for ex in range(args.batch_size):
                     struct = struct_names[startline + ex]
-                    resultname = '%s_iter%d' %(struct, i)
+                    dirname = ''
+                    if args.make_dirs:
+                        dirname = struct + '/'
+                    resultname = '%s%s_iter%d' %(dirname, struct, i)
                     center = []
                     for layer in net.layers:
                         if layer.type == "MolGridData":
@@ -264,7 +280,7 @@ for train_file in train_files:
                         raise ValueError("Unable to determine grid center")
                     dump_grid_dx(resultname,
                             net.blobs['data'].data[ex,...], dim, resolution,
-                            dimension, center, channel_list)
+                            dimension, center, channel_list, selected_channels)
         #do final evaluation, write to output files
         res = net.forward(start=next_name)
         y_true = []
