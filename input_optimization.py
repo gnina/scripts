@@ -216,10 +216,6 @@ for train_file in train_files:
     nexamples = count_lines(train_file)
     nchunks = int(math.ceil((float(nexamples)) / args.batch_size))
     struct_names = get_structure_names(train_file)
-    if args.make_dirs:
-        for struct_name in struct_names:
-            if not os.path.isdir(struct_name):
-                os.mkdir(struct_name)
     for chunk in range(nchunks):
         startline = chunk * args.batch_size
         diffs = []
@@ -236,6 +232,7 @@ for train_file in train_files:
             all_y_scores.append([float(x[1]) for x in res['output']])
             #if there's a max pool before the first conv/inner product layer,
             #switch it to ave pool for backward, then switch it back
+            #TODO: this doesn't work if you're using the cudnn backend
             switched = caffe.toggle_max_to_ave(net)
             net.backward()
             if switched:
@@ -270,6 +267,8 @@ for train_file in train_files:
                     struct = struct_names[startline + ex]
                     dirname = ''
                     if args.make_dirs:
+                        if not os.path.isdir(struct):
+                            os.mkdir(struct)
                         dirname = struct + '/'
                     resultname = '%s%s_iter%d' %(dirname, struct, i)
                     center = []
@@ -290,8 +289,8 @@ for train_file in train_files:
         losses = []
 
         all_y_scores = [list(i) for i in zip(*all_y_scores)]
-        write_results_file('%s.diffs' % outname, diffs)
-        write_results_file('%s.preds' % outname, *all_y_scores)
+        write_results_file('%s.chunk%s.diffs' % outname, chunk, diffs)
+        write_results_file('%s.chunk%s.preds' % outname, chunk, *all_y_scores)
 
         if 'labelout' in res:
             y_true = [float(x) for x in res['labelout']]
