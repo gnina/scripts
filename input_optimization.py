@@ -119,6 +119,9 @@ if __name__ == "__main__":
     parser.add_argument('--make_dirs', default=False, action='store_true', 
             help='Make subdirectories to contain the grids for each example in \
             the batch')
+    parser.add_argument('--use_rec_center', default=False, action='store_true', 
+            help='Use rec to set grid center, useful e.g. if dreaming from the'
+            ' pocket and ligand is none')
 
 args = parser.parse_args()
 assert not (args.exclude_receptor and args.exclude_ligand), "Must optimize at least one of receptor and ligand"
@@ -167,7 +170,8 @@ for layer in netparam.layer:
         layer.molgrid_data_param.random_rotation = False
         layer.molgrid_data_param.shuffle = False
         layer.molgrid_data_param.balanced = False
-        layer.molgrid_data_param.use_rec_center = True
+        if args.use_rec_center:
+            layer.molgrid_data_param.use_rec_center = True
 tmpmodel = 'tmp.prototxt'
 with open(tmpmodel, 'w') as f:
     f.write(str(netparam))
