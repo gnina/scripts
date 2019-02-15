@@ -45,6 +45,7 @@ def get_structure_names(fname):
             names.append('%s_%s' %(rec,lig))
     return names
 
+#TODO: switch to OpenDX instead
 def dump_grid_dx(outname, blob, dim, resolution, dimension, center, channels,
         selected_channels=[]):
     '''
@@ -79,6 +80,8 @@ def dump_grid_dx(outname, blob, dim, resolution, dimension, center, channels,
                         else:
                             f.write(' ')
 
+#TODO: make it possible to start from NDimData so we can restart optimization
+#already in progress (probably trivial...)
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Optimize gnina input grid a"
     " la DeepDream")
@@ -289,8 +292,8 @@ for train_file in train_files:
         losses = []
 
         all_y_scores = [list(i) for i in zip(*all_y_scores)]
-        write_results_file('%s.chunk%s.diffs' % outname, chunk, diffs)
-        write_results_file('%s.chunk%s.preds' % outname, chunk, *all_y_scores)
+        write_results_file('%s.chunk%s.diffs' % (outname, chunk), diffs)
+        write_results_file('%s.chunk%s.preds' % (outname, chunk), *all_y_scores)
 
         if 'labelout' in res:
             y_true = [float(x) for x in res['labelout']]
