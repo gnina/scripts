@@ -224,7 +224,7 @@ for train_file in train_files:
         diffs = []
         all_y_scores = []
         #do forward, backward, update input grid for desired number of iters 
-        #TODO: momentum? otherwise change the update (switch to BFGS?)
+        #TODO: momentum? otherwise change the update (switch to BFGS)?
         for i in xrange(args.iterations):
             if i == 0:
                 startlayer = mgrid_name
@@ -265,7 +265,7 @@ for train_file in train_files:
                 current_grid[current_grid < 0] = 0
             #dump a grid at every iteration if desired, otherwise just dump the
             #first and last time
-            if (i == 0) or (i == (args.iterations-1)) or (args.dump_all):
+            if (args.dump_all) or (i == 0) or (i == (args.iterations-1)):
                 for ex in range(args.batch_size):
                     struct = struct_names[startline + ex]
                     dirname = ''
