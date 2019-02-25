@@ -101,7 +101,7 @@ def write_model_file(model_file, template_file, train_file, test_file, root_fold
 
 
 def write_solver_file(solver_file, train_model, test_models, type, base_lr, momentum, weight_decay,
-                      lr_policy, gamma, power, random_seed, max_iter, clip_gradients, snapshot_prefix):
+                      lr_policy, gamma, power, random_seed, max_iter, clip_gradients, snapshot_prefix,display=0):
     '''Writes a solver prototxt file with parameters set to the
     corresponding argument values. In particular, the train_net
     parameter is set to train_model, and a test_net parameter is
@@ -119,7 +119,7 @@ def write_solver_file(solver_file, train_model, test_models, type, base_lr, mome
     param.lr_policy = lr_policy
     param.gamma = gamma
     param.power = power
-    param.display = 0 #don't print solver iterations
+    param.display = display #don't print solver iterations unless requested
     param.random_seed = random_seed
     param.max_iter = max_iter
     if clip_gradients > 0:
@@ -403,7 +403,7 @@ def train_and_test_model(args, files, outname, cont=0):
     #write solver prototxt
     solverf = 'solver.%d.prototxt' % pid
     write_solver_file(solverf, test_models[0], test_models, args.solver, args.base_lr, args.momentum, args.weight_decay,
-                      args.lr_policy, args.gamma, args.power, args.seed, iterations+cont, args.clip_gradients, outname)
+                      args.lr_policy, args.gamma, args.power, args.seed, iterations+cont, args.clip_gradients, outname, args.display_iter)
 
     #set up solver in caffe
     if args.gpu >= 0:
@@ -742,6 +742,7 @@ def parse_args(argv=None):
     parser.add_argument('--test_only',action='store_true',default=False,help="Don't train, just evaluate test nets once")
     parser.add_argument('--clip_gradients',type=float,default=10.0,help="Clip gradients threshold (default 10)")
     parser.add_argument('--skip_full',action='store_true',default=False,help='Use reduced testset on final evaluation, requires passing --reduced')
+    parser.add_argument('--display_iter',type=int,default=0,help='Print out network outputs every so many iterations')
     args = parser.parse_args(argv)
     
     argdict = vars(args)
