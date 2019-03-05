@@ -10,6 +10,7 @@ import scipy.stats
 import seaborn as sns
 import seaborn.utils, seaborn.palettes
 from seaborn.palettes import blend_palette
+from sklearn.utils.fixes import signature
 
 def makejoint(x,y,color,title):
     '''Plot x vs y where x are experimental values and y are predictions'''
@@ -79,6 +80,23 @@ def plot_roc_curve(plot_file, fpr, tpr, auc, txt):
     plt.axes().set_aspect('equal')
     plt.tick_params(axis='both', which='major', labelsize=16)
     plt.text(.05, -.25, txt, fontsize=22)
+    plt.savefig(plot_file, bbox_inches='tight')
+
+def plot_prc(plot_file, y_test, y_score, average_precision, txt):
+    precision, recall, _ = sklearn.metrics.precision_recall_curve(y_test, y_score)
+    step_kwargs = ({'step': 'post'}
+                   if 'step' in signature(plt.fill_between).parameters
+                   else {})
+    plt.step(recall, precision, color='b', alpha=0.2,
+             where='post')
+    plt.fill_between(recall, precision, alpha=0.2, color='b', **step_kwargs)
+    plt.xlabel('Recall')
+    plt.ylabel('Precision')
+    plt.ylim([0.0, 1.05])
+    plt.xlim([0.0, 1.0])
+    plt.title('{0}  AP={1:0.2f}'.format(txt,
+              average_precision))
+    plt.axes().set_aspect('equal')
     plt.savefig(plot_file, bbox_inches='tight')
 
 
@@ -275,6 +293,7 @@ def combine_fold_results(test_metrics, train_metrics, test_labels, test_preds, t
             precscore = sklearn.metrics.average_precision_score(test_labels, test_preds)
             write_results_file('%s.auc.finaltest%s' % (outprefix, two), test_labels, test_preds, footer='AUC, precision score %f %f\n' % (auc,precscore))
             plot_roc_curve('%s_roc_test%s.pdf' % (outprefix, two), fpr, tpr, auc, txt)
+            plot_prc('%s_prc_test%s.pdf' % (outprefix, two),test_labels, test_preds, precscore, '%s.auc.finaltest%s' % (outprefix, two))
 
         if len(np.unique(train_labels)) > 1:
             last_iters = 1000
@@ -285,7 +304,7 @@ def combine_fold_results(test_metrics, train_metrics, test_labels, test_preds, t
             precscore = sklearn.metrics.average_precision_score(train_labels, train_preds)
             write_results_file('%s.auc.finaltrain%s' % (outprefix, two), train_labels, train_preds, footer='AUC, precision score %f %f\n' % (auc,precscore))
             plot_roc_curve('%s_roc_train%s.pdf' % (outprefix, two), fpr, tpr, auc, txt)
-
+            plot_prc('%s_prc_train%s.pdf' % (outprefix, two),train_labels, train_preds, precscore, '%s.auc.finaltrain%s' % (outprefix, two))
 
 
 def parse_args(argv=None):
