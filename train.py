@@ -967,29 +967,23 @@ if __name__ == '__main__':
 
         if any(test_aucs):
             combine_fold_results(test_aucs, train_aucs, test_y_true, test_y_score, train_y_true, train_y_score,
-                                 outprefix, args.test_interval, affinity=False, second_data_source=False)
+                                 outprefix, args.test_interval, 'pose', second_data_source=False)
 
         if any(test_rmsds):
             combine_fold_results(test_rmsds, train_rmsds, test_y_aff, test_y_predaff, train_y_aff, train_y_predaff,
-                                 outprefix, args.test_interval, affinity=True, second_data_source=False,
+                                 outprefix, args.test_interval, 'affinity', second_data_source=False,
                                  filter_actives_test=test_y_true, filter_actives_train=train_y_true)
-
-        if any(test_rmsds):
-            combine_fold_results(test_rmsds, train_rmsds, test_y_aff, test_y_predaff, train_y_aff, train_y_predaff,
-                                 outprefix, args.test_interval, affinity=True, second_data_source=False,
-                                 filter_actives_test=test_y_true, filter_actives_train=train_y_true)
-
 
         if any(test_rmsd_rmses):
             combine_fold_results(test_rmsd_rmses, train_rmsd_rmses, test_rmsd_true, test_rmsd_pred, train_rmsd_true, train_rmsd_pred,
-                                 outprefix, args.test_interval, affinity=True, second_data_source=False)
+                                 outprefix, args.test_interval, 'rmsd', second_data_source=False)
                                  
                                  
         if any(test2_aucs):
             combine_fold_results(test2_aucs, train2_aucs, test2_y_true, test2_y_score, train2_y_true, train2_y_score,
-                                 outprefix, args.test_interval, affinity=False, second_data_source=True)
+                                 outprefix, args.test_interval, 'pose', second_data_source=True)
 
         if any(test2_rmsds):
             combine_fold_results(test2_rmsds, train2_rmsds, test2_y_aff, test2_y_predaff, train2_y_aff, train2_y_predaff,
-                                 outprefix, args.test_interval, affinity=True, second_data_source=True,
+                                 outprefix, args.test_interval, 'affinity', second_data_source=True,
                                  filter_actives_test=test2_y_true, filter_actives_train=train2_y_true)
