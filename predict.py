@@ -36,7 +36,7 @@ def predict(args):
     test_net = caffe.Net(test_model, args.weights, caffe.TEST)
     with open(args.input, 'r') as f:
         lines = f.readlines()
-    result = evaluate_test_net(test_net, len(lines), args.rotations, 0)
+    result = evaluate_test_net(test_net, len(lines), args.rotations)
     auc = result.auc
     y_true = result.y_true
     y_score = result.y_score
