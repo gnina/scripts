@@ -246,6 +246,31 @@ def evaluate_test_net(test_net, n_tests, n_rotations):
 def count_lines(file):
     return sum(1 for line in open(file, 'r'))
 
+def check_improvement(testval, ratio, gold, gold_i, current_i, want_bigger):
+    '''Function that computes if training has improved.
+
+    Returns a tuple: (best_val, i, to_snap)'''
+
+    #indicators that we are at the first testing iteration and just need to return.
+    if gold==np.inf or gold==0:
+        return (testval, current_i, True)
+
+    best_val=gold
+    i=gold_i
+    to_snap=False
+
+    if want_bigger:
+        if (testval-gold) / gold > ratio:
+            best_val=testval
+            i=current_i
+            to_snap=True
+    else:
+        if (gold-testval) / gold > ratio:
+            best_val=testval
+            i=current_i
+            to_snap=True
+
+    return (best_val, i, to_snap)
 
 def train_and_test_model(args, files, outname, cont=0):
     '''Train caffe model for iterations steps using provided model template
@@ -537,49 +562,54 @@ def train_and_test_model(args, files, outname, cont=0):
         if training:
             row = []            
 
-            #check for improvement
+            #check for AUC improvement
             if result.auc is not None:
                 test_auc = test.aucs[-1]
                 train_auc = train.aucs[-1]
                 train_loss = train.losses[-1]
                 row += [test_auc,train_auc,train_loss]
-                if test_auc > bests['test_auc']:
-                    bests['test_auc'] = test_auc
-                    if args.keep_best:
-                        keepsnap = True
-                        print "Writing snapshot because auc is better"
-                        solver.snapshot() #a bit too much - gigabytes of data
-                if train_loss < bests['train_loss']:
-                    bests['train_loss'] = train_loss
-                    best_train_interval = i
-                    
-            row += [solver.get_base_lr()]                    
+
+                #check if we improved on the test set, if so write a snapshot
+                bests['test_auc'], _ , to_snap = check_improvement(test_auc, args.update_ratio, bests['test_auc'], best_train_interval, i, True)
+                if args.keep_best and to_snap:
+                    keepsnap = True
+                    print "Writing snapshot because auc is better"
+                    solver.snapshot() #a bit too much - gigabytes of data
+
+                #check if training imrproved and update
+                bests['train_loss'], best_train_interval, to_snap = check_improvement(train_loss, args.update_ratio, bests['train_loss'], best_train_interval, i, False)
+
+            row += [solver.get_base_lr()]
+
             #check for rmsd improvement
             if result.rmsd is not None:
                 test_rmsd = test.rmsds[-1]
                 train_rmsd = train.rmsds[-1]
-                if test_rmsd < bests['test_rmsd']:
-                    bests['test_rmsd'] = test_rmsd
-                    if args.keep_best:
-                        keepsnap = True
-                        print "Writing snapshot because rmsd is better"
-                        solver.snapshot() #a bit too much - gigabytes of data     
-                        
-                if train_rmsd < bests['train_rmsd']:
-                    bests['train_rmsd'] = train_rmsd
-                    best_train_interval = i #note updated for both pose and aff    
+
+                #check if we improved on the test set, if so write a snapshot
+                bests['test_rmsd'], _ , to_snap = check_improvement(test_rmsd, args.update_ratio, bests['test_rmsd'], best_train_interval, i, False)
+                if args.keep_best and to_snap:
+                    keepsnap = True
+                    print "Writing snapshot because rmsd is better"
+                    solver.snapshot() #a bit too much - gigabytes of data     
+                
+                #check if training improved and update
+                bests['train_rmsd'], best_train_interval, to_snap = check_improvement(train_rmsd, args.update_ratio, bests['train_rmsd'], best_train_interval, i, False)
+
                 row += [test_rmsd, train_rmsd]
                     
             #check for rmse improvement
             if result.rmsd_rmse is not None:
                 test_rmsd_rmse = test.rmsd_rmses[-1]
                 train_rmsd_rmse = train.rmsd_rmses[-1]
-                if test_rmsd_rmse < bests['test_rmsd_rmse']:
-                    bests['test_rmsd_rmse'] = test_rmsd_rmse
-                    if args.keep_best:
-                        keepsnap = True
-                        print "Writing snapshot because rmsd_rmse is better"
-                        solver.snapshot() #a bit too much - gigabytes of data  
+
+                #checking if test rmsd_rmse has improved
+                bests['test_rmsd_rmse'], _ , to_snap = check_improvement(test_rmsd_rmse, args.update_ratio, bests['test_rmsd_rmse'], best_train_interval, i, False)
+                if args.keep_best and to_snap:
+                    keepsnap = True
+                    print "Writing snapshot because rmsd_rmse is better"
+                    solver.snapshot() #a bit too much - gigabytes of data
+
                 row += [test_rmsd_rmse, train_rmsd_rmse]                            
                                                  
             if args.prefix2:  #blah
@@ -743,6 +773,7 @@ def parse_args(argv=None):
     parser.add_argument('--clip_gradients',type=float,default=10.0,help="Clip gradients threshold (default 10)")
     parser.add_argument('--skip_full',action='store_true',default=False,help='Use reduced testset on final evaluation, requires passing --reduced')
     parser.add_argument('--display_iter',type=int,default=0,help='Print out network outputs every so many iterations')
+    parser.add_argument('--update_ratio',type=float,default=0.001,help="Improvements during training need to be better than this ratio. IE (best-current)/best > update_ratio. Defaults to 0.001")
     args = parser.parse_args(argv)
     
     argdict = vars(args)
@@ -837,6 +868,13 @@ if __name__ == '__main__':
     if args.skip_full and (not args.reduced and not args.percent_reduced):
         print "error: --skip_full requires --reduced OR --percent_reduced. Neither was not passed"
         sys.exit(1)
+
+    if not (0<args.update_ratio<1):
+        print "error: --update_ratio is out of possible values: (0,1)"
+        sys.exit(1)
+
+    if args.update_ratio > 0.01:
+        print "warning: --update_ratio > 0.01, this may cause earlier termination that desired."
     
     for i in train_test_files:
         for key in sorted(train_test_files[i], key=len):
