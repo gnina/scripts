@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 '''Takes a bunch of types training files. First argument is what index the receptor starts on
 (ligand is assumed to be right after).  Reads in the gninatypes files specified in these types 

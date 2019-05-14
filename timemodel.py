@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 '''quick script for generating a real model and caffe time command'''
 import argparse,sys

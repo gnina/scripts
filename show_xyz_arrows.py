@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 '''Adds show_arrows command to pymol, which takes an xyz file'''
 
 import sys

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 '''Takes a bunch of types training files. First argument is what index the receptor starts on
 (ligands are assumed to be right after).  Reads in the gninatypes files specified in these types 
@@ -9,7 +9,7 @@ first followed by dense storage of values (coordinates and types).
 '''
 
 import os, sys
-import struct, argparse
+import struct, argparse, traceback
 
 
 def writemol(fname, out):
@@ -18,12 +18,13 @@ def writemol(fname, out):
         with open(fname,'rb') as gninatype:
             data = gninatype.read()
             assert(len(data) % 16 == 0)
-            natoms = len(data)/16
+            natoms = len(data)//16
             out.write(struct.pack('i',natoms))
             out.write(data)            
     except Exception as e:
         print(fname)
         print(e)
+        traceback.print_exc()
                 
 def create_cache2(molfiles, data_root, outfile):
     '''Create an outfile molcache2 file from the list molfiles stored at data_root.'''
@@ -46,7 +47,7 @@ def create_cache2(molfiles, data_root, outfile):
         if len(mol) > 255:
             print("Skipping",mol,"since filename is too long")
             continue
-        s = bytes(mol)
+        s = bytes(mol, encoding='UTF-8')
         out.write(struct.pack('B',len(s)))
         out.write(s)
         out.write(struct.pack('L',offsets[mol]))

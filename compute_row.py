@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 '''Compute a single row of a distance matrix from a pdbinfo file.  
 This allows for distributed processing'''

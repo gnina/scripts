@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 '''Combine the output of compute_rows.py into a pickle file for clustering.py'''
 
