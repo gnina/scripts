@@ -14,7 +14,7 @@ import google.protobuf.text_format as prototxt
 import time
 import datetime
 import psutil
-import cPickle, signal
+import pickle, signal
 from combine_fold_results import write_results_file, combine_fold_results
 
 
@@ -125,7 +125,7 @@ def write_solver_file(solver_file, train_model, test_models, type, base_lr, mome
     if clip_gradients > 0:
         param.clip_gradients = clip_gradients
     param.snapshot_prefix = snapshot_prefix
-    print "WRITING",solver_file
+    print("WRITING",solver_file)
     with open(solver_file,'w') as f:
         f.write(str(param))
 
@@ -145,12 +145,12 @@ def evaluate_test_net(test_net, n_tests, n_rotations):
     Net parameters should be set so that data access is sequential.'''
 
     #evaluate each example with each rotation
-    y_true     = [-1 for _ in xrange(n_tests)]
-    y_scores   = [[] for _ in xrange(n_tests)]
-    y_affinity = [-1 for _ in xrange(n_tests)]
-    y_predaffs = [[] for _ in xrange(n_tests)]
-    rmsd_true = [-1 for _ in xrange(n_tests)]
-    rmsd_pred = [[] for _ in xrange(n_tests)]
+    y_true     = [-1 for _ in range(n_tests)]
+    y_scores   = [[] for _ in range(n_tests)]
+    y_affinity = [-1 for _ in range(n_tests)]
+    y_predaffs = [[] for _ in range(n_tests)]
+    rmsd_true = [-1 for _ in range(n_tests)]
+    rmsd_pred = [[] for _ in range(n_tests)]
     
     losses = []
 
@@ -159,8 +159,8 @@ def evaluate_test_net(test_net, n_tests, n_rotations):
     rmsd_loss_blob = test_net.blobs.get('rmsd_loss')
 
     res = None
-    for r in xrange(n_rotations):
-        for x in xrange(n_tests):
+    for r in range(n_rotations):
+        for x in range(n_tests):
 
             if not res or i >= batch_size:
                 res = test_net.forward()
@@ -206,7 +206,7 @@ def evaluate_test_net(test_net, n_tests, n_rotations):
 
     #average the scores from each rotation
     if any(y_scores):
-        for x in xrange(n_tests):
+        for x in range(n_tests):
             result.y_score.append(np.mean(y_scores[x]))
 
     if any(y_predaffs):
@@ -223,7 +223,7 @@ def evaluate_test_net(test_net, n_tests, n_rotations):
         if len(np.unique(result.y_true)) > 1:
             result.auc = sklearn.metrics.roc_auc_score(result.y_true, result.y_score)
         else: # may be evaluating all crystal poses?
-            print "Warning: only one unique label"
+            print("Warning: only one unique label")
             result.auc = 1.0
 
     #compute mean squared error (rmsd) of affinity (for actives only)
@@ -286,10 +286,10 @@ def train_and_test_model(args, files, outname, cont=0):
         net = solver.net
         if net.clearblobs:
             #solver will need values in output blobs
-            for (bname, blob) in net.blobs.iteritems():
+            for (bname, blob) in net.blobs.items():
                 if bname not in net.outputs:
                     blob.clear()
-            for k in test_nets.iterkeys():
+            for k in test_nets.keys():
                 test_nets[k][0].clearblobs()
 
         
@@ -303,16 +303,16 @@ def train_and_test_model(args, files, outname, cont=0):
         test.rmsd_true = result.rmsd_true
         test.rmsd_pred = result.rmsd_pred
         if result.auc is not None:
-            print "%s AUC: %f" % (name,result.auc)
+            print("%s AUC: %f" % (name,result.auc))
             test.aucs.append(result.auc)
         if result.loss:
-            print "%s loss: %f" % (name,result.loss)
+            print("%s loss: %f" % (name,result.loss))
             test.losses.append(result.loss)
         if result.rmsd is not None:
-            print "%s RMSD: %f" % (name,result.rmsd)
+            print("%s RMSD: %f" % (name,result.rmsd))
             test.rmsds.append(result.rmsd)
         if result.rmsd_rmse is not None:
-            print "%s rmsd_rmse: %f" % (name,result.rmsd_rmse)
+            print("%s rmsd_rmse: %f" % (name,result.rmsd_rmse))
             test.rmsd_rmses.append(result.rmsd_rmse)
                 
                     
@@ -446,32 +446,32 @@ def train_and_test_model(args, files, outname, cont=0):
     if args.checkpoint:
         checkname = '%s.CHECKPOINT'%outname
         if os.path.exists(checkname):
-            print checkname
-            checkdata = cPickle.load(open(checkname))
+            print(checkname)
+            checkdata = pickle.load(open(checkname))
             (dontremove, training, prevsnap,train,test,bests,best_train_interval,prevlr, step_reduce_cnt) = checkdata
             
             if not training:
-                print "Fold %s already completed"%outname
+                print("Fold %s already completed"%outname)
                 return test, train
 
-            print "Restoring",prevsnap
+            print("Restoring",prevsnap)
 
             solver.restore(prevsnap)
-            print "Testall"
+            print("Testall")
             solver.testall()            
             solver.set_base_lr(prevlr) #this isn't saved in solver state!
             #figure out iteration 
             m = re.search(r'_iter_(\d+)\.solverstate',prevsnap)
             cont = int(m.group(1))
             iterations = args.iterations-cont
-            print "Continuing checkpoint from",cont
+            print("Continuing checkpoint from",cont)
                 
     if args.weights:
         check_file_exists(args.weights)
         solver.net.copy_from(args.weights) #TODO this doesn't actually set the necessary weights...
 
     test_nets = {}
-    for key, test_file in files.items():
+    for key, test_file in list(files.items()):
         idx = test_idxs[key]
         if args.percent_reduced and 'reduced' in key:
             test_nets[key] = solver.test_nets[idx], max(int(count_lines(test_file)*args.percent_reduced/100),1)
@@ -484,7 +484,7 @@ def train_and_test_model(args, files, outname, cont=0):
 
 
     last_test = False # indicator we should test full set
-    for i in xrange(iterations/test_interval):
+    for i in range(iterations/test_interval):
         if i == (int(iterations/test_interval) - 1):
             last_test = True
 
@@ -493,8 +493,8 @@ def train_and_test_model(args, files, outname, cont=0):
         if training:
             #train
             solver.step(test_interval)
-            print "\nIteration %d" % (cont + (i+1)*test_interval)
-            print "Train time: %f" % (time.time()-start)
+            print("\nIteration %d" % (cont + (i+1)*test_interval))
+            print("Train time: %f" % (time.time()-start))
 
         if not test_on_train:
             #evaluate test set
@@ -507,7 +507,7 @@ def train_and_test_model(args, files, outname, cont=0):
             freemem()
             result = evaluate_test_net(test_net, n_tests, rotations)
             test_nets[key] = test_net, n_tests  #why doing this?
-            print "Eval test time: %f" % (time.time()-start)
+            print("Eval test time: %f" % (time.time()-start))
 
             update_from_result("Test", test, result)
 
@@ -522,7 +522,7 @@ def train_and_test_model(args, files, outname, cont=0):
                 freemem()
                 result = evaluate_test_net(test_net, n_tests, rotations)
                 test_nets[key] = test_net, n_tests
-                print "Eval test2 time: %f" % (time.time()-start)
+                print("Eval test2 time: %f" % (time.time()-start))
 
                 update_from_result("Test2", test2, result)
 
@@ -536,7 +536,7 @@ def train_and_test_model(args, files, outname, cont=0):
         freemem()
         result = evaluate_test_net(test_net, n_tests, rotations)
         test_nets[key] = test_net, n_tests
-        print "Eval train time: %f" % (time.time()-start)
+        print("Eval train time: %f" % (time.time()-start))
 
         update_from_result("Train", train, result)
 
@@ -551,7 +551,7 @@ def train_and_test_model(args, files, outname, cont=0):
             freemem()
             result = evaluate_test_net(test_net, n_tests, rotations)
             test_nets[key] = test_net, n_tests
-            print "Eval train2 time: %f" % (time.time()-start)
+            print("Eval train2 time: %f" % (time.time()-start))
 
             if i > 0 and not (args.reduced and last_test): #check alignment
                 assert np.all(result.y_true == train2.y_true)
@@ -573,7 +573,7 @@ def train_and_test_model(args, files, outname, cont=0):
                 bests['test_auc'], _ , to_snap = check_improvement(test_auc, args.update_ratio, bests['test_auc'], best_train_interval, i, True)
                 if args.keep_best and to_snap:
                     keepsnap = True
-                    print "Writing snapshot because auc is better"
+                    print("Writing snapshot because auc is better")
                     solver.snapshot() #a bit too much - gigabytes of data
 
                 #check if training imrproved and update
@@ -590,7 +590,7 @@ def train_and_test_model(args, files, outname, cont=0):
                 bests['test_rmsd'], _ , to_snap = check_improvement(test_rmsd, args.update_ratio, bests['test_rmsd'], best_train_interval, i, False)
                 if args.keep_best and to_snap:
                     keepsnap = True
-                    print "Writing snapshot because rmsd is better"
+                    print("Writing snapshot because rmsd is better")
                     solver.snapshot() #a bit too much - gigabytes of data     
                 
                 #check if training improved and update
@@ -607,7 +607,7 @@ def train_and_test_model(args, files, outname, cont=0):
                 bests['test_rmsd_rmse'], _ , to_snap = check_improvement(test_rmsd_rmse, args.update_ratio, bests['test_rmsd_rmse'], best_train_interval, i, False)
                 if args.keep_best and to_snap:
                     keepsnap = True
-                    print "Writing snapshot because rmsd_rmse is better"
+                    print("Writing snapshot because rmsd_rmse is better")
                     solver.snapshot() #a bit too much - gigabytes of data
 
                 row += [test_rmsd_rmse, train_rmsd_rmse]                            
@@ -631,13 +631,13 @@ def train_and_test_model(args, files, outname, cont=0):
 
             #check for a stuck network (same prediction for everything)
             if len(result.y_score) > 1 and len(np.unique(result.y_score)) == 1:
-                print "Identical scores in test, bailing early"
+                print("Identical scores in test, bailing early")
                 break
             if len(result.y_predaff) > 1 and len(np.unique(result.y_predaff)) == 1:
-                print "Identical affinities in test, bailing early"
+                print("Identical affinities in test, bailing early")
                 break
             if len(result.rmsd_pred) and len(np.unique(result.rmsd_pred)) == 1:
-                print "Identical rmsd rmses in test, bailing early"
+                print("Identical rmsd rmses in test, bailing early")
                 break
                 
             #update learning rate if necessary
@@ -669,13 +669,13 @@ def train_and_test_model(args, files, outname, cont=0):
         i_left = iterations/test_interval - (i+1)
         time_left = i_time_avg * i_left
         time_str = str(datetime.timedelta(seconds=time_left))
-        print "Loop time: %f (%s left)" % (i_time, time_str)
+        print("Loop time: %f (%s left)" % (i_time, time_str))
 
         mem = psutil.Process(os.getpid()).memory_info().rss
         freemem()
-        print "Memory usage: %.3fgb (%d)" % (mem/1073741824., mem)
+        print("Memory usage: %.3fgb (%d)" % (mem/1073741824., mem))
         
-        print "Best test AUC/RMSD: %f %f   Best train loss: %f"%(bests['test_auc'],bests['test_rmsd'],bests['train_loss'])
+        print("Best test AUC/RMSD: %f %f   Best train loss: %f"%(bests['test_auc'],bests['test_rmsd'],bests['train_loss']))
         sys.stdout.flush()
         
         if args.checkpoint:
@@ -685,7 +685,7 @@ def train_and_test_model(args, files, outname, cont=0):
             checkname = '%s.CHECKPOINT'%outname
             #read previous snap
             if os.path.exists(checkname):
-              (dontremove,_,prevsnap) = cPickle.load(open(checkname))[:3]
+              (dontremove,_,prevsnap) = pickle.load(open(checkname))[:3]
             else:
               dontremove = True
               prevsnap = None
@@ -693,18 +693,18 @@ def train_and_test_model(args, files, outname, cont=0):
             with DelayedInterrupt([signal.SIGTERM, signal.SIGINT]):
                 #write new snap
                 checkout = open(checkname,'w')         
-                cPickle.dump((keepsnap, training, snapname,train,test,bests,best_train_interval,solver.get_base_lr(), step_reduce_cnt), checkout)
+                pickle.dump((keepsnap, training, snapname,train,test,bests,best_train_interval,solver.get_base_lr(), step_reduce_cnt), checkout)
                 checkout.flush()
                 checkout.close()
                 if prevsnap != snapname: #not sure why this would happen, but be on the safe side
                     try:
                         if not dontremove:
-                            print "Removing",prevsnap
+                            print("Removing",prevsnap)
                             os.remove(prevsnap)
                             prevsnap = prevsnap.replace('solverstate','caffemodel')
                             os.remove(prevsnap)
                     except Exception as e:
-                        print e
+                        print(e)
 
         if args.skip_full and use_reduced: #we flagged that we want to skip the last test evaluation
             if last_test: #we indicated we are done
@@ -715,15 +715,15 @@ def train_and_test_model(args, files, outname, cont=0):
                     training = False
                 else: #training is false, we've done the last test
                     break
-    print "Writing final snapshot"
+    print("Writing final snapshot")
     out.close()
     solver.snapshot()
 
     if not args.keep:
-        print "REMOVING",solverf
+        print("REMOVING",solverf)
         os.remove(solverf)
         for test_model in test_models:
-            print "REMOVING",test_model
+            print("REMOVING",test_model)
             os.remove(test_model)
 
     if args.prefix2:
@@ -778,7 +778,7 @@ def parse_args(argv=None):
     
     argdict = vars(args)
     line = ''
-    for (name,val) in argdict.items():
+    for (name,val) in list(argdict.items()):
         if val != parser.get_default(name):
             line += ' --%s=%s' %(name,val)
 
@@ -838,7 +838,7 @@ def get_train_test_files(prefix, foldnums, allfolds, reduced, prefix2, percent_r
             elif reduced:
                 files[i]['reduced_train2'] = files[i]['reduced_test2'] = '%sreduced.types' % prefix2
     for i in files:
-        for file in files[i].values():
+        for file in list(files[i].values()):
             check_file_exists(file)
     return files
 
@@ -850,35 +850,35 @@ if __name__ == '__main__':
     try:
         train_test_files = get_train_test_files(args.prefix, args.foldnums, args.allfolds, args.reduced, args.prefix2, args.percent_reduced)
     except OSError as e:
-        print "error: %s" % e
+        print("error: %s" % e)
         sys.exit(1)
 
     if len(train_test_files) == 0:
-        print "error: missing train/test files"
+        print("error: missing train/test files")
         sys.exit(1)
 
     if args.percent_reduced < 0 or args.percent_reduced >= 100:
-        print "error: percent_reduced must be greater than 0 and less than 100"
+        print("error: percent_reduced must be greater than 0 and less than 100")
         sys.exit(1)
 
     if args.reduced and args.percent_reduced:
-        print "error: can't use reduced and percent_reduced together"
+        print("error: can't use reduced and percent_reduced together")
         sys.exit(1)
 
     if args.skip_full and (not args.reduced and not args.percent_reduced):
-        print "error: --skip_full requires --reduced OR --percent_reduced. Neither was not passed"
+        print("error: --skip_full requires --reduced OR --percent_reduced. Neither was not passed")
         sys.exit(1)
 
     if not (0<args.update_ratio<1):
-        print "error: --update_ratio is out of possible values: (0,1)"
+        print("error: --update_ratio is out of possible values: (0,1)")
         sys.exit(1)
 
     if args.update_ratio > 0.01:
-        print "warning: --update_ratio > 0.01, this may cause earlier termination that desired."
+        print("warning: --update_ratio > 0.01, this may cause earlier termination that desired.")
     
     for i in train_test_files:
         for key in sorted(train_test_files[i], key=len):
-            print str(i).rjust(3), key.rjust(14), train_test_files[i][key]
+            print(str(i).rjust(3), key.rjust(14), train_test_files[i][key])
 
     outprefix = args.outprefix
     if outprefix == '':
@@ -910,8 +910,8 @@ if __name__ == '__main__':
             #figure out where we were
             oldline = open(cmdcheckname).read()
             if oldline != cmdline:
-                print oldline
-                print "Previous commandline from checkpoint does not match current.  Cannot restore checkpoint."
+                print(oldline)
+                print("Previous commandline from checkpoint does not match current.  Cannot restore checkpoint.")
                 sys.exit(1)
         
         outcheck = open(cmdcheckname,'w')

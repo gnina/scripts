@@ -61,13 +61,13 @@ if __name__ == '__main__':
 			predictions.append(line)
 		
 	all_aucs=[]
-	for _ in xrange(args.iterations):
+	for _ in range(args.iterations):
 		sample = np.random.choice(predictions,len(predictions), replace=True)
 		all_aucs.append(calc_auc(sample))
 	mean=np.mean(all_aucs)
 	std_dev = np.std(all_aucs)
 	txt = 'mean: %.2f standard deviation: %.2f'%(mean,std_dev)
-	print txt
+	print(txt)
 	output = open(output, 'w')
 	output.writelines('%.2f\n' %auc for auc in all_aucs)
 	output.write(txt)

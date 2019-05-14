@@ -18,7 +18,7 @@ for prefix in prefixes:
                 prefix = m.group(1)
                 i = int(m.group(2))
                 files[prefix].append((i,fname))
-        for (k,files) in files.items():
+        for (k,files) in list(files.items()):
             toremove = sorted(files,reverse=True)[1:]
             for (i,fname) in toremove:
                 print (fname)

@@ -42,8 +42,8 @@ def read_results_file(file):
         for line in f:
             line = line.split('#', 1)[0].strip()
             if line:
-                rows.append(map(float, line.split(' ')))
-    return zip(*rows)
+                rows.append(list(map(float, line.split(' '))))
+    return list(zip(*rows))
 
 
 def write_results_file(file, *columns, **kwargs):
@@ -185,7 +185,7 @@ def get_results_files(prefix, foldnums, two_data_sources):
                 files[i]['rmsd_rmse_finaltest2'] = '%s.%d.rmsd_rmse.finaltest2' % (prefix, i)
                 files[i]['rmsd_rmse_finaltrain2'] = '%s.%d.rmsd_rmse.finaltrain2' % (prefix, i)
     for i in files:
-        for file in files[i].values():
+        for file in list(files[i].values()):
             check_file_exists(file)
     return files
 
@@ -322,16 +322,16 @@ if __name__ == '__main__':
     try:
         results_files = get_results_files(args.outprefix, args.foldnums, args.two_data_sources)
     except OSError as e:
-        print "error: %s" % e
+        print("error: %s" % e)
         sys.exit(1)
 
     if len(results_files) == 0:
-        print "error: missing results files"
+        print("error: missing results files")
         sys.exit(1)
 
     for i in results_files:
         for key in sorted(results_files[i], key=len):
-            print str(i).rjust(3), key.rjust(15), results_files[i][key]
+            print(str(i).rjust(3), key.rjust(15), results_files[i][key])
 
     test_aucs, train_aucs = [], []
     test_rmsd_rmses, train_rmsd_rmses = [], []

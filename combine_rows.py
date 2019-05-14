@@ -2,7 +2,7 @@
 
 '''Combine the output of compute_rows.py into a pickle file for clustering.py'''
 
-import cPickle, sys, collections
+import pickle, sys, collections
 import numpy as np
 
 target_names = []
@@ -26,8 +26,8 @@ lm = np.empty((l,l))
 m[:] = np.NAN
 lm[:] = np.NAN
 
-for t1 in values.iterkeys():
-    for t2 in values[t1].iterkeys():
+for t1 in values.keys():
+    for t2 in values[t1].keys():
         i = targets[t1]
         j = targets[t2]
         m[i][j] = values[t1][t2][0]
@@ -35,13 +35,13 @@ for t1 in values.iterkeys():
     
 #check throws a key error if a key is missing in targets
 #      or prints the sentence if NAN is present
-for i in xrange(l):
-    for j in xrange(l):
+for i in range(l):
+    for j in range(l):
         if not np.isfinite(m[i][j]):
-            print "Missing distance for",targets[i],targets[j]
+            print("Missing distance for",targets[i],targets[j])
 
         if not np.isfinite(lm[i][j]):
-            print "Missing ligand_sim for",targets[i],targets[j]
+            print("Missing ligand_sim for",targets[i],targets[j])
 
     
-cPickle.dump((m, target_names, lm), open('matrix.pickle','w'),-1)
+pickle.dump((m, target_names, lm), open('matrix.pickle','w'),-1)
