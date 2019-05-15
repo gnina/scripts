@@ -480,12 +480,12 @@ def train_and_test_model(args, files, outname, cont=0):
 
     if training: #outfile is training progress, don't write if we're not training
         outfile = '%s.out' % outname
-        out = open(outfile, 'a' if cont else 'w', 0) #unbuffered
+        out = open(outfile, 'a' if cont else 'w', 1) #buffer by line
 
 
     last_test = False # indicator we should test full set
-    for i in range(iterations/test_interval):
-        if i == (int(iterations/test_interval) - 1):
+    for i in range(iterations//test_interval):
+        if i == (int(iterations//test_interval) - 1):
             last_test = True
 
         i_start = start = time.time()
