@@ -588,7 +588,7 @@ def train_and_test_model(args, files, outname, cont=0):
 
                 #check if we improved on the test set, if so write a snapshot
                 bests['test_rmsd'], _ , to_snap = check_improvement(test_rmsd, args.update_ratio, bests['test_rmsd'], best_train_interval, i, False)
-                if args.keep_best and to_snap:
+                if args.keep_best and to_snap and not keepsnap: #don't write if already written
                     keepsnap = True
                     print("Writing snapshot because rmsd is better")
                     solver.snapshot() #a bit too much - gigabytes of data     
@@ -605,7 +605,7 @@ def train_and_test_model(args, files, outname, cont=0):
 
                 #checking if test rmsd_rmse has improved
                 bests['test_rmsd_rmse'], _ , to_snap = check_improvement(test_rmsd_rmse, args.update_ratio, bests['test_rmsd_rmse'], best_train_interval, i, False)
-                if args.keep_best and to_snap:
+                if args.keep_best and to_snap and not keepsnap:
                     keepsnap = True
                     print("Writing snapshot because rmsd_rmse is better")
                     solver.snapshot() #a bit too much - gigabytes of data
