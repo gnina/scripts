@@ -19,4 +19,4 @@ for (name,vals) in sorted(opts.items()):
 
 create += ');'
 
-print create
+print(create)

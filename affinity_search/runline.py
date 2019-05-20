@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 '''Read a line formated like a spearmint results.dat line,
 construct the corresponding model, run the model with cross validation,
@@ -41,7 +41,7 @@ linevals = args.line.split()[2:]
 opts = makemodel.getoptions()
 
 if len(linevals) != len(opts):
-    print "Wrong number of options in line (%d) compared to options (%d)" %(len(linevals),len(opts))
+    print("Wrong number of options in line (%d) compared to options (%d)" %(len(linevals),len(opts)))
 
 params = dict()
 for (i,(name,vals)) in enumerate(sorted(opts.items())):
@@ -98,7 +98,7 @@ trainargs = train.parse_args(['--seed',str(args.seed),'--prefix',prefix,'--data_
 
 train_test_files = train.get_train_test_files(prefix=prefix, foldnums=None, allfolds=False, reduced=True, prefix2=None)
 if len(train_test_files) == 0:
-    print "error: missing train/test files",prefix
+    print("error: missing train/test files",prefix)
     sys.exit(1)
 
 
@@ -112,16 +112,16 @@ for i in train_test_files:
     test, trainres = results
 
     if not np.isfinite(np.sum(trainres.y_score)):
-        print "Non-finite trainres score"
+        print("Non-finite trainres score")
         sys.exit(-1)
     if not np.isfinite(np.sum(test.y_score)):
-        print "Non-finite test score"
+        print("Non-finite test score")
         sys.exit(-1)
     if not np.isfinite(np.sum(trainres.y_predaff)):
-        print "Non-finite trainres aff"
+        print("Non-finite trainres aff")
         sys.exit(-1)
     if not np.isfinite(np.sum(test.y_predaff)):
-        print "Non-finite test aff"
+        print("Non-finite test aff")
         sys.exit(-1)                        
 
 #once all folds are trained, test and evaluate them
@@ -138,7 +138,7 @@ for i in train_test_files:
             lasti = inum
             caffemodel = model
     if lasti == -1:
-        print "Couldn't find valid caffemodel file %s.%d_iter_*.caffemodel"%(outprefix,i)
+        print("Couldn't find valid caffemodel file %s.%d_iter_*.caffemodel"%(outprefix,i))
         sys.exit(-1)
         
     testresults += evaluate_fold(train_test_files[i]['test'], caffemodel, 'model.model',trainargs.data_root)
@@ -146,5 +146,5 @@ for i in train_test_files:
 
 (rmse, R, S, aucpose, aucaff, top) = analyze_results(testresults,'%s.summary'%outprefix,'pose')
 
-print d, R, rmse, aucpose, top
+print(d, R, rmse, aucpose, top)
 

@@ -20,7 +20,7 @@ for line in open(sys.argv[1]):
     vals = line.rstrip().split()
     rec = vals[2]
     if vals[3] == bestlig[rec] or float(vals[1]) < 0:
-        print line.rstrip()
+        print(line.rstrip())
     else:
-        print vals[0],-float(vals[1]),' '.join(vals[2:])
+        print(vals[0],-float(vals[1]),' '.join(vals[2:]))
     

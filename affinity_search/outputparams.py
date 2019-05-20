@@ -9,4 +9,4 @@ import makemodel, argparse
 #extract from arguments to makemodel
 opts = makemodel.getoptions()
 for (name,vals) in sorted(opts.items()):
-    print name,vals
+    print(name,vals)

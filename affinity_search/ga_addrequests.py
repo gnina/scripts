@@ -38,7 +38,7 @@ def getcursor(host,passwd,db):
 def cleanparams(p):
     '''standardize params that do not matter'''
     modeldefaults = makemodel.getdefaults()
-    for i in xrange(1,6):
+    for i in range(1,6):
         if p['conv%d_width'%i] == 0:
             for suffix in ['func', 'init', 'norm', 'size', 'stride', 'width']:
                 name = 'conv%d_%s'%(i,suffix)
@@ -74,7 +74,7 @@ def randParam(param, choices):
 def randomIndividual():
     ret = dict()
     options = makemodel.getoptions()
-    for (param,choices) in options.iteritems():
+    for (param,choices) in options.items():
         ret[param] = randParam(param, choices)
     
     return cleanparams(ret)
@@ -86,7 +86,7 @@ def evaluateIndividual(ind):
 def mutateIndividual(ind, indpb=0.05):
     '''for each param, with prob indpb randomly sample another choice'''
     options = makemodel.getoptions()
-    for (param,choices) in options.iteritems():
+    for (param,choices) in options.items():
         if np.random.rand() < indpb:
             ind[param] = randParam(param, choices)
     return (ind,)
@@ -94,7 +94,7 @@ def mutateIndividual(ind, indpb=0.05):
 def crossover(ind1, ind2, indpdb=0.5):
     '''swap choices with probability indpb'''
     options = makemodel.getoptions()
-    for (param,choices) in options.iteritems():
+    for (param,choices) in options.items():
         if np.random.rand() < indpdb:
             tmp = ind1[param]
             ind1[param] = ind2[param]
@@ -111,7 +111,7 @@ def runGA(pop):
     stats.register("max", np.max)
     best = 0
     pop = toolbox.clone(pop)
-    for i in xrange(40):
+    for i in range(40):
         pop, log = algorithms.eaMuPlusLambda(pop, toolbox, mu=300, lambda_=300, cxpb=0.5, mutpb=0.2, ngen=25, 
                                        stats=stats, halloffame=hof, verbose=True)
         newmax = log[-1]['max']
@@ -126,14 +126,14 @@ def addrows(config,host,db,password):
     conn = MySQLdb.connect (host = host,user = "opter",passwd=password,db=db)
     cursor = conn.cursor()
 
-    items = config.items()
+    items = list(config.items())
     names = ','.join([str(n) for (n,v) in items])
     values = ','.join(['%s' for (n,v) in items])
     names += ',id'
     values += ',"REQUESTED"'
     
     #do five variations
-    for split in xrange(5):
+    for split in range(5):
         seed = np.random.randint(0,100000)
         n = names + ',split,seed'
         v = values + ',%d,%d' % (split,seed) 
@@ -157,7 +157,7 @@ args = parser.parse_args()
 cursor = getcursor(args.host,args.password,args.db)
 cursor.execute('SELECT COUNT(*) FROM params WHERE id = "REQUESTED"')
 rows = cursor.fetchone()
-pending = rows.values()[0]
+pending = list(rows.values())[0]
 #print "Pending jobs:",pending
 sys.stdout.write('%d '%pending)
 sys.stdout.flush()
@@ -187,9 +187,9 @@ y = data.Rtop
 
 dictvec = DictVectorizer()
 #standardize meaningless params
-Xv = dictvec.fit_transform(map(cleanparams,X.to_dict(orient='records')))
+Xv = dictvec.fit_transform(list(map(cleanparams,X.to_dict(orient='records'))))
 
-print "\nTraining %d\n"%Xv.shape[0]
+print("\nTraining %d\n"%Xv.shape[0])
 #train model
 rf = RandomForestRegressor(n_estimators=20)
 rf.fit(Xv,y)
@@ -215,7 +215,7 @@ initpop = [ creator.Individual(cleanparams(x)) for x in  X.to_dict('records')]
 evals = pool.map(toolbox.evaluate, initpop)
 top = sorted([l[0] for l in evals],reverse=True)[0]
 
-print "Best in training set: %f"%top
+print("Best in training set: %f"%top)
 
 seen = set(map(frozendict,initpop))
 #include some random individuals
@@ -226,9 +226,9 @@ pop = runGA(initpop+randpop)
 #make sure sorted
 pop = sorted(pop,key=lambda x: -x.fitness.values[0])
 #remove already evaluated configs
-pop = filter(lambda p: frozendict(p) not in seen, pop)
+pop = [p for p in pop if frozendict(p) not in seen]
 
-print "Best recommended: %f"%pop[0].fitness.values[0]
+print("Best recommended: %f"%pop[0].fitness.values[0])
 
 uniquified = []
 for config in pop:
@@ -238,7 +238,7 @@ for config in pop:
         seen.add(fr)
         uniquified.append(config)
         
-print len(uniquified),len(pop)        
+print(len(uniquified),len(pop))        
 
 for config in uniquified[:args.num_configs]:
     addrows(config, args.host,args.db,args.password)

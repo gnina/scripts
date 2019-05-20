@@ -29,10 +29,10 @@ def get_script_path():
     
 def rm(inprogressname):
     try:
-        print "Removing",inprogressname
+        print("Removing",inprogressname)
         os.remove(inprogressname)
     except OSError:
-        print "Error removing",inprogressname
+        print("Error removing",inprogressname)
         pass
         
 sys.path.append(get_script_path())
@@ -55,9 +55,9 @@ def getgpuid():
         if m:
             gpuid = m.group(1)
     except Exception as e:
-        print e.output
-        print e
-        print "Error accessing gpu"
+        print(e.output)
+        print(e)
+        print("Error accessing gpu")
         sys.exit(1)
     return gpuid
 
@@ -71,12 +71,12 @@ configs = None  #map from name to value
 
 # check for an in progress file
 inprogressname = '%s-%s-INPROGRESS' % (host,getgpuid())
-print inprogressname
+print(inprogressname)
 
 if os.path.isfile(inprogressname):
     config = json.load(open(inprogressname))
     d = config['msg']    
-    print "Retrying with config: %s" % json.dumps(config)
+    print("Retrying with config: %s" % json.dumps(config))
 else:
 #are there any requested configurations?  if so select one
     cursor.execute('SELECT * FROM params WHERE id = "REQUESTED"')
@@ -101,7 +101,7 @@ else:
 
 
 if not config:
-    print "Nothing requested"
+    print("Nothing requested")
     sys.exit(2)  # there was nothing to do, perhaps we should shutdown?
     
 #at this point have a configuration
@@ -113,7 +113,7 @@ cmdline = '%s/runline.py --prefix %s --data_root "%s" --seed %d --split %d --dir
         (get_script_path(), args.prefix,args.data_root,config['seed'],config['split'], config['msg'], ' '.join(values))
 if(args.ligmap): cmdline += " --ligmap %s"%args.ligmap
 if(args.recmap): cmdline += " --recmap %s"%args.recmap
-print cmdline
+print(cmdline)
 
 #call runline to insulate ourselves from catestrophic failure (caffe)
 try:
@@ -130,11 +130,11 @@ except Exception as e:
     out.write(output)
     cursor = getcursor()
     cursor.execute('UPDATE params SET id = "ERROR", msg = %s WHERE serial = %s',(str(pid),config['serial']))
-    print "Error"
-    print output
+    print("Error")
+    print(output)
     if re.search(r'out of memory',output) and (host.startswith('gnina') ):
         #host migration restarts don't seem to bring the gpu up in agood state
-        print "REBOOTING"
+        print("REBOOTING")
         os.system("sudo reboot")
     rm(inprogressname)    
     sys.exit(0)  #we tried
@@ -153,7 +153,7 @@ serial = config['serial']
 del config['serial']
 sql = 'UPDATE params SET {} WHERE serial = {}'.format(', '.join('{}=%s'.format(k) for k in config),serial)
 cursor = getcursor()
-cursor.execute(sql, config.values())
+cursor.execute(sql, list(config.values()))
 
 rm(inprogressname)
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env python 
+#!/usr/bin/env python3 
 
 '''Take a prefix, model name and output and generate predictions for
 a cross-docked formatted dataset.  Will use the last model
@@ -42,7 +42,7 @@ def reduce_results(results, index, which):
             elif res[key][index] < r[index]:
                 res[key] = r
                     
-    return res.values()
+    return list(res.values())
 
 def analyze_cross_results(results,outname,uniquify):
     '''Compute error metrics from resulst.  
@@ -102,7 +102,7 @@ def analyze_cross_results(results,outname,uniquify):
 
 if __name__ == '__main__':
     if len(sys.argv) <= 4:
-        print "Need data root, caffemodel prefix,  modelname, output prefix and test prefix(es)"
+        print("Need data root, caffemodel prefix,  modelname, output prefix and test prefix(es)")
         sys.exit(1)
         
     datadir = sys.argv[1]
@@ -118,7 +118,7 @@ if __name__ == '__main__':
     last = None
     #for each test dataset
     for testprefix in sys.argv[5:]:
-        print testprefix        
+        print(testprefix)        
         #find the relevant models for each fold
         
         testresults = []
@@ -136,7 +136,7 @@ if __name__ == '__main__':
             testresults += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,lastm), modelname, datadir, True)
             
         if len(testresults) == 0:
-            print "Missing data with",testprefix
+            print("Missing data with",testprefix)
         assert(len(testresults[0]) == 7)
         
         allresults.append( (testname,'pose') + analyze_cross_results(testresults,sys.argv[4]+'_pose','pose'))

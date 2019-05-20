@@ -18,7 +18,7 @@ def makejson():
 	for (name,vals) in sorted(opts.items()):
 		paramsize=1
 		if type(vals) == tuple:
-			options=map(str,vals)
+			options=list(map(str,vals))
 			paramtype="enum"
 			data=OrderedDict([("name",name), ("type", paramtype), ("size", paramsize),("options",options)])
 		elif isinstance(vals, makemodel.Range):
@@ -27,7 +27,7 @@ def makejson():
 			paramtype="float"
 			data=OrderedDict([("name",name), ("type", paramtype), ("min", parammin), ("max", parammax), ("size", paramsize)])
 		else:
-			print "Unknown type"
+			print("Unknown type")
 			sys.exit(-1)
 		d[name]=data
 	return d

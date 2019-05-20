@@ -76,5 +76,5 @@ rmse = np.sqrt(sklearn.metrics.mean_squared_error(expaffs,predaffs))
 auc = sklearn.metrics.roc_auc_score(labels, scores)
 top = 0 #calctop.find_top_ligand(topresults,1)/100.0
 
-print args.dir, R, rmse, auc, top
+print(args.dir, R, rmse, auc, top)
 

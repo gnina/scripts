@@ -60,7 +60,7 @@ args = parser.parse_args()
 cursor = getcursor()
 cursor.execute('SELECT COUNT(*) FROM params WHERE id = "REQUESTED"')
 rows = cursor.fetchone()
-pending = rows.values()[0]
+pending = list(rows.values())[0]
 
 #get options
 options = sorted(makemodel.getoptions().items())
@@ -100,7 +100,7 @@ defaultparams = metrics['Rtop'].idxmax()  #this is in priority order
 bestRtop = metrics['Rtop'].max()
 
 
-print "Best",bestRtop
+print("Best",bestRtop)
 #figure out what param we are on
 if os.path.exists(args.info):
     #info file has what iteration we are on and the previous best when we moved to that iteration
@@ -179,8 +179,8 @@ for (i,row) in data.iterrows():
 resf.close()
         
 gseed = len(uniqconfigs) #not clear this actually makes sense in our context..
-print "Uniq configs:",gseed
-print "Evaled configs:",len(evalconfigs)
+print("Uniq configs:",gseed)
+print("Evaled configs:",len(evalconfigs))
 
 #a very generous threshold - multiply by level rather than keep track of number of uniq models in this level
 threshold = (level+1)*args.model_threshold
@@ -198,13 +198,13 @@ if len(evalconfigs) > threshold:
 # run spearmint-light, set the seed to the number of unique configurations
 spearargs = ['python',args.spearmint, '--method=GPEIOptChooser', '--grid-size=20000', 
         'gnina-spearmint-incremental', '--n=%d'%args.num_configs, '--grid-seed=%d' % gseed]
-print ' '.join(spearargs)
+print(' '.join(spearargs))
 
 subprocess.call(spearargs)
 #get the generated lines from the file
 lines = open('gnina-spearmint-incremental/results.dat').readlines()
 newlines = np.unique(lines[validrows:])
-print len(newlines),args.num_configs
+print(len(newlines),args.num_configs)
 assert(len(newlines) > 0)
 out = open('gnina-spearmint-incremental/newrows.dat','w')
 for line in newlines:
@@ -220,7 +220,7 @@ for line in newlines:
     assert(pos == len(vals))
     out.write(' '.join(outrow))
     out.write('\n')
-    print ' '.join(outrow)
+    print(' '.join(outrow))
 out.close()
 #add to database as REQUESTED jobs
 

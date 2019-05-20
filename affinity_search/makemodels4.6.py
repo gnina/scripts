@@ -226,7 +226,7 @@ def create_unit(num, filler, fraction):
 def makemodel(filler, fraction, ranklossm, rankneg):
     m = modelstart
     depth = 3
-    for i in xrange(1,depth+1):
+    for i in range(1,depth+1):
         m += create_unit(i, filler, fraction)
     m += endmodel.replace('LASTCONV','unit%d_conv1'%depth).replace('RANKLOSS',str(ranklossm)).replace('RANKNEG',str(rankneg))
     
@@ -256,4 +256,4 @@ for ranklossm in [0, 0.01,0.1,1]:
 for m in models:
     for baselr in [0.01, 0.001]:
         for solver in ['SGD','Adam']:
-            print "train.py -m %s -p ../types/all_0.5_0_  --keep_best -t 1000 -i 100000 --solver %s --base_lr %f --reduced -o all_%s_%s_%.3f"%(m,solver, baselr, m.replace('.model',''),solver,baselr)
+            print("train.py -m %s -p ../types/all_0.5_0_  --keep_best -t 1000 -i 100000 --solver %s --base_lr %f --reduced -o all_%s_%s_%.3f"%(m,solver, baselr, m.replace('.model',''),solver,baselr))
