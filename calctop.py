@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import numpy as np
 import os, sys
@@ -22,7 +22,7 @@ def evaluate_fold(testfile, caffemodel, modelname,root_folder):
     ''' 
     caffe.set_mode_gpu()
     test_model = ('predict.%d.prototxt' % os.getpid())
-    print ("test_model:" + test_model)
+    print(("test_model:" + test_model))
     train.write_model_file(test_model, modelname, testfile, testfile, root_folder)
     test_net = caffe.Net(test_model, caffemodel, caffe.TEST)
     lines = open(testfile).readlines()
@@ -62,7 +62,7 @@ def evaluate_fold(testfile, caffemodel, modelname,root_folder):
         #extract ligand/receptor for input file
         tokens = line.split()
         linelabel = int(tokens[0])
-        for t in xrange(len(tokens)):
+        for t in range(len(tokens)):
             if tokens[t].endswith('gninatypes'):
                 receptor = tokens[t]
                 ligand = tokens[t+1]
@@ -75,7 +75,7 @@ def evaluate_fold(testfile, caffemodel, modelname,root_folder):
             ret.append((correct, prediction, receptor, ligand, label, posescore))
             
         if int(label) != linelabel: #sanity check
-            print "Mismatched labels in calctop:",(label,linelabel,correct, prediction, receptor, ligand)
+            print("Mismatched labels in calctop:",(label,linelabel,correct, prediction, receptor, ligand))
             sys.exit(-1)
         i += 1 #batch index
         
@@ -93,7 +93,7 @@ def find_top_ligand(results, topnum):
             #negate the label so that ties are always broken unfavorably
             targets[rec].append((r[5], -r[4])) #posescore and label
             if r[5] == None:
-                print ("Error: Posescore does not exist for "+r[2])
+                print(("Error: Posescore does not exist for "+r[2]))
                 exit()
         else:
             targets[rec] = [(r[5], -r[4])]      
@@ -151,7 +151,7 @@ if __name__ == '__main__':
             
         caffemodel='%s.%d_iter_%d.caffemodel' % (args.caffemodel, f, iterations)
         if (os.path.isfile(caffemodel) == False):
-            print ('Error: Caffemodel %s does not exist. Check --caffemodel, --iterations, and --folds arguments.'%caffemodel)
+            print(('Error: Caffemodel %s does not exist. Check --caffemodel, --iterations, and --folds arguments.'%caffemodel))
         testfile = (args.prefix + "train" + str(f) + ".types")
         results += evaluate_fold(testfile, caffemodel, modelname, args.data_root)
     

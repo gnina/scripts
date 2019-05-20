@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import numpy as np
 import matplotlib
@@ -36,7 +36,7 @@ def predict(args):
     test_net = caffe.Net(test_model, args.weights, caffe.TEST)
     with open(args.input, 'r') as f:
         lines = f.readlines()
-    result, _ = evaluate_test_net(test_net, len(lines), args.rotations, 0)
+    result = evaluate_test_net(test_net, len(lines), args.rotations)
     auc = result.auc
     y_true = result.y_true
     y_score = result.y_score
@@ -54,7 +54,7 @@ def predict(args):
         for (l,a) in zip(lines,y_affinity):
             lval = float(l.split()[1])
             if abs(lval-a) > 0.001:
-                print "Mismatching values",a,l
+                print("Mismatching values",a,l)
                 sys.exit(-1)
 
     if rmsd != None and auc != None:
@@ -140,7 +140,7 @@ def maxLigandScore(lines, useaff):
             rec_path = data[4].strip()
             pose_path = data[5].strip()
         else:
-            print line
+            print(line)
 
         key = get_ligand_key(rec_path, pose_path)
         if key not in ligands or score > ligands[key][0]:

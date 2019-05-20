@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import numpy as np
 import matplotlib
@@ -12,8 +12,9 @@ import caffe
 from caffe.proto.caffe_pb2 import NetParameter, SolverParameter
 import google.protobuf.text_format as prototxt
 import time
+import datetime
 import psutil
-import cPickle, signal
+import pickle, signal
 from combine_fold_results import write_results_file, combine_fold_results
 
 
@@ -53,7 +54,7 @@ At the end graphs are made.'''
 
 
 def write_model_file(model_file, template_file, train_file, test_file, root_folder, avg_rotations=False,
-                     train_file2=None, ratio=None, root_folder2=None, test_root_folder=None):
+                     percent_reduc=False,train_file2=None, ratio=None, root_folder2=None, test_root_folder=None):
     '''Writes a model prototxt file based on a provided template file
     with certain placeholders replaced in each MolGridDataLayer.
     For the source parameter, "TRAINFILE" is replaced with train_file
@@ -93,12 +94,14 @@ def write_model_file(model_file, template_file, train_file, test_file, root_fold
         if avg_rotations and 'TEST' in str(layer):
             param.rotate = 24 #TODO axial rotations aren't working
             #layer.molgrid_data_param.random_rotation = True
+        if percent_reduc and 'TEST' in str(layer) and 'reduced' in model_file:#only shuffle test set for reduced & if percent_reduc was passed
+            param.shuffle = True
     with open(model_file, 'w') as f:
         f.write(str(netparam))
 
 
 def write_solver_file(solver_file, train_model, test_models, type, base_lr, momentum, weight_decay,
-                      lr_policy, gamma, power, random_seed, max_iter, clip_gradients, snapshot_prefix):
+                      lr_policy, gamma, power, random_seed, max_iter, clip_gradients, snapshot_prefix,display=0):
     '''Writes a solver prototxt file with parameters set to the
     corresponding argument values. In particular, the train_net
     parameter is set to train_model, and a test_net parameter is
@@ -116,13 +119,13 @@ def write_solver_file(solver_file, train_model, test_models, type, base_lr, mome
     param.lr_policy = lr_policy
     param.gamma = gamma
     param.power = power
-    param.display = 0 #don't print solver iterations
+    param.display = display #don't print solver iterations unless requested
     param.random_seed = random_seed
     param.max_iter = max_iter
     if clip_gradients > 0:
         param.clip_gradients = clip_gradients
     param.snapshot_prefix = snapshot_prefix
-    print "WRITING",solver_file
+    print("WRITING",solver_file)
     with open(solver_file,'w') as f:
         f.write(str(param))
 
@@ -133,7 +136,7 @@ class Namespace():
         self.__dict__.update(kwargs)
 
 
-def evaluate_test_net(test_net, n_tests, n_rotations, offset):
+def evaluate_test_net(test_net, n_tests, n_rotations):
     '''Evaluate a test network and return the results. The number of
     examples in the file the test_net reads from must equal n_tests,
     otherwise output will be misaligned. Can optionally take the average
@@ -142,12 +145,12 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
     Net parameters should be set so that data access is sequential.'''
 
     #evaluate each example with each rotation
-    y_true     = [-1 for _ in xrange(n_tests)]
-    y_scores   = [[] for _ in xrange(n_tests)]
-    y_affinity = [-1 for _ in xrange(n_tests)]
-    y_predaffs = [[] for _ in xrange(n_tests)]
-    rmsd_true = [-1 for _ in xrange(n_tests)]
-    rmsd_pred = [[] for _ in xrange(n_tests)]
+    y_true     = [-1 for _ in range(n_tests)]
+    y_scores   = [[] for _ in range(n_tests)]
+    y_affinity = [-1 for _ in range(n_tests)]
+    y_predaffs = [[] for _ in range(n_tests)]
+    rmsd_true = [-1 for _ in range(n_tests)]
+    rmsd_pred = [[] for _ in range(n_tests)]
     
     losses = []
 
@@ -156,9 +159,8 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
     rmsd_loss_blob = test_net.blobs.get('rmsd_loss')
 
     res = None
-    for r in xrange(n_rotations):
-        for x in xrange(n_tests):
-            x = (x + offset) % n_tests
+    for r in range(n_rotations):
+        for x in range(n_tests):
 
             if not res or i >= batch_size:
                 res = test_net.forward()
@@ -198,16 +200,13 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
                 
             i += 1
 
-    #get index of test example that will be at start of next batch
-    offset = (x + 1 + batch_size - i) % n_tests
-
     result = Namespace(auc=None, y_true=y_true, y_score=[], loss=None,
                        rmsd=None, y_aff=y_affinity, rmsd_true=rmsd_true,
                        rmsd_pred=[],rmsd_rmse=None, y_predaff=[])
 
     #average the scores from each rotation
     if any(y_scores):
-        for x in xrange(n_tests):
+        for x in range(n_tests):
             result.y_score.append(np.mean(y_scores[x]))
 
     if any(y_predaffs):
@@ -224,7 +223,7 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
         if len(np.unique(result.y_true)) > 1:
             result.auc = sklearn.metrics.roc_auc_score(result.y_true, result.y_score)
         else: # may be evaluating all crystal poses?
-            print "Warning: only one unique label"
+            print("Warning: only one unique label")
             result.auc = 1.0
 
     #compute mean squared error (rmsd) of affinity (for actives only)
@@ -241,12 +240,37 @@ def evaluate_test_net(test_net, n_tests, n_rotations, offset):
     if losses:
         result.loss = np.mean(losses)
 
-    return result, offset
+    return result
 
 
 def count_lines(file):
     return sum(1 for line in open(file, 'r'))
 
+def check_improvement(testval, ratio, gold, gold_i, current_i, want_bigger):
+    '''Function that computes if training has improved.
+
+    Returns a tuple: (best_val, i, to_snap)'''
+
+    #indicators that we are at the first testing iteration and just need to return.
+    if gold==np.inf or gold==0:
+        return (testval, current_i, True)
+
+    best_val=gold
+    i=gold_i
+    to_snap=False
+
+    if want_bigger:
+        if (testval-gold) / gold > ratio:
+            best_val=testval
+            i=current_i
+            to_snap=True
+    else:
+        if (gold-testval) / gold > ratio:
+            best_val=testval
+            i=current_i
+            to_snap=True
+
+    return (best_val, i, to_snap)
 
 def train_and_test_model(args, files, outname, cont=0):
     '''Train caffe model for iterations steps using provided model template
@@ -262,10 +286,10 @@ def train_and_test_model(args, files, outname, cont=0):
         net = solver.net
         if net.clearblobs:
             #solver will need values in output blobs
-            for (bname, blob) in net.blobs.iteritems():
+            for (bname, blob) in net.blobs.items():
                 if bname not in net.outputs:
                     blob.clear()
-            for k in test_nets.iterkeys():
+            for k in test_nets.keys():
                 test_nets[k][0].clearblobs()
 
         
@@ -279,16 +303,16 @@ def train_and_test_model(args, files, outname, cont=0):
         test.rmsd_true = result.rmsd_true
         test.rmsd_pred = result.rmsd_pred
         if result.auc is not None:
-            print "%s AUC: %f" % (name,result.auc)
+            print("%s AUC: %f" % (name,result.auc))
             test.aucs.append(result.auc)
         if result.loss:
-            print "%s loss: %f" % (name,result.loss)
+            print("%s loss: %f" % (name,result.loss))
             test.losses.append(result.loss)
         if result.rmsd is not None:
-            print "%s RMSD: %f" % (name,result.rmsd)
+            print("%s RMSD: %f" % (name,result.rmsd))
             test.rmsds.append(result.rmsd)
         if result.rmsd_rmse is not None:
-            print "%s rmsd_rmse: %f" % (name,result.rmsd_rmse)
+            print("%s rmsd_rmse: %f" % (name,result.rmsd_rmse))
             test.rmsd_rmses.append(result.rmsd_rmse)
                 
                     
@@ -296,6 +320,7 @@ def train_and_test_model(args, files, outname, cont=0):
     test_interval = args.test_interval
     iterations = args.iterations-cont
     training = not args.test_only
+    use_reduced = bool(args.reduced or args.percent_reduced)
 
     if args.test_only:
         test_interval = iterations = 1
@@ -314,41 +339,59 @@ def train_and_test_model(args, files, outname, cont=0):
     test_models = ['traintest.%d.prototxt' % pid]
     test_files = [files['test']]
     test_roots = [args.data_root] #which data_root to use
-    if args.reduced:
+    counter=0#for dic below
+    #dic mapping <key>:counter  where key is one of ['test','reducedtest','test2','reducedtest2','train','reducedtrain','train2','reducedtrain2']
+    test_idxs={'test':counter}
+
+    if use_reduced:
         test_models += ['trainreducedtest.%d.prototxt' % pid]
         test_files += [files['reduced_test']]
         test_roots += [args.data_root]
+        counter+=1
+        test_idxs['reduced_test']=counter
     if args.prefix2:
         test_models += ['traintest2.%d.prototxt' % pid]
         test_files += [files['test2']]
         test_roots += [args.data_root2]
-        if args.reduced:
+        counter+=1
+        test_idxs['test2']=counter
+        if use_reduced:
             test_models += ['trainreducedtest2.%d.prototxt' % pid]
             test_files += [files['reduced_test2']]
             test_roots += [args.data_root2]
+            counter+=1
+            test_idxs['reduced_test2']=counter
     if not test_on_train:
         test_models += ['traintrain.%d.prototxt' % pid]
         test_files += [files['train']]
         test_roots += [args.data_root]
-        if args.reduced:
+        counter+=1
+        test_idxs['train']=counter
+        if use_reduced:
             test_models += ['trainreducedtrain.%d.prototxt' % pid]
             test_files += [files['reduced_train']]
             test_roots += [args.data_root]
+            counter+=1
+            test_idxs['reduced_train']=counter
         if args.prefix2:
             test_models += ['traintrain2.%d.prototxt' % pid]
             test_files += [files['train2']]
             test_roots += [args.data_root2]
-            if args.reduced:
+            counter+=1
+            test_idxs['train2']=counter
+            if use_reduced:
                 test_models += ['trainreducedtrain2.%d.prototxt' % pid]
                 test_files += [files['reduced_train2']]
                 test_roots += [args.data_root2]
+                counter+=1
+                test_idxs['reduced_train2']+=counter
 
     for test_model, test_file, test_root in zip(test_models, test_files, test_roots):
         if args.prefix2:
-            write_model_file(test_model, template, files['train'], test_file, args.data_root, args.avg_rotations,
+            write_model_file(test_model, template, files['train'], test_file, args.data_root, args.avg_rotations, args.percent_reduced,
                              files['train2'], args.data_ratio, args.data_root2, test_root)
         else:
-            write_model_file(test_model, template, files['train'], test_file, args.data_root, args.avg_rotations)
+            write_model_file(test_model, template, files['train'], test_file, args.data_root, args.avg_rotations, args.percent_reduced)
 
 
     #initialize variables
@@ -385,7 +428,7 @@ def train_and_test_model(args, files, outname, cont=0):
     #write solver prototxt
     solverf = 'solver.%d.prototxt' % pid
     write_solver_file(solverf, test_models[0], test_models, args.solver, args.base_lr, args.momentum, args.weight_decay,
-                      args.lr_policy, args.gamma, args.power, args.seed, iterations+cont, args.clip_gradients, outname)
+                      args.lr_policy, args.gamma, args.power, args.seed, iterations+cont, args.clip_gradients, outname, args.display_iter)
 
     #set up solver in caffe
     if args.gpu >= 0:
@@ -403,43 +446,46 @@ def train_and_test_model(args, files, outname, cont=0):
     if args.checkpoint:
         checkname = '%s.CHECKPOINT'%outname
         if os.path.exists(checkname):
-            print checkname
-            checkdata = cPickle.load(open(checkname))
+            print(checkname)
+            checkdata = pickle.load(open(checkname))
             (dontremove, training, prevsnap,train,test,bests,best_train_interval,prevlr, step_reduce_cnt) = checkdata
             
             if not training:
-                print "Fold %s already completed"%outname
+                print("Fold %s already completed"%outname)
                 return test, train
 
-            print "Restoring",prevsnap
+            print("Restoring",prevsnap)
 
             solver.restore(prevsnap)
-            print "Testall"
+            print("Testall")
             solver.testall()            
             solver.set_base_lr(prevlr) #this isn't saved in solver state!
             #figure out iteration 
             m = re.search(r'_iter_(\d+)\.solverstate',prevsnap)
             cont = int(m.group(1))
             iterations = args.iterations-cont
-            print "Continuing checkpoint from",cont
+            print("Continuing checkpoint from",cont)
                 
     if args.weights:
         check_file_exists(args.weights)
         solver.net.copy_from(args.weights) #TODO this doesn't actually set the necessary weights...
-                
+
     test_nets = {}
-    for key, test_file in files.items():
-        idx = test_files.index(test_file)
-        test_nets[key] = solver.test_nets[idx], count_lines(test_file), 0
+    for key, test_file in list(files.items()):
+        idx = test_idxs[key]
+        if args.percent_reduced and 'reduced' in key:
+            test_nets[key] = solver.test_nets[idx], max(int(count_lines(test_file)*args.percent_reduced/100),1)
+        else:
+            test_nets[key] = solver.test_nets[idx], count_lines(test_file)
 
     if training: #outfile is training progress, don't write if we're not training
         outfile = '%s.out' % outname
-        out = open(outfile, 'a' if cont else 'w', 0) #unbuffered
+        out = open(outfile, 'a' if cont else 'w', 1) #buffer by line
 
 
     last_test = False # indicator we should test full set
-    for i in xrange(iterations/test_interval):
-        if i == (int(iterations/test_interval) - 1):
+    for i in range(iterations//test_interval):
+        if i == (int(iterations//test_interval) - 1):
             last_test = True
 
         i_start = start = time.time()
@@ -447,65 +493,65 @@ def train_and_test_model(args, files, outname, cont=0):
         if training:
             #train
             solver.step(test_interval)
-            print "\nIteration %d" % (cont + (i+1)*test_interval)
-            print "Train time: %f" % (time.time()-start)
+            print("\nIteration %d" % (cont + (i+1)*test_interval))
+            print("Train time: %f" % (time.time()-start))
 
         if not test_on_train:
             #evaluate test set
             start = time.time()
-            if args.reduced and not last_test:
+            if use_reduced and (not last_test or args.skip_full):
                 key = 'reduced_test'
             else:
                 key = 'test'
-            test_net, n_tests, offset = test_nets[key]
+            test_net, n_tests = test_nets[key]
             freemem()
-            result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
-            test_nets[key] = test_net, n_tests, offset  #why doing this?
-            print "Eval test time: %f" % (time.time()-start)
+            result = evaluate_test_net(test_net, n_tests, rotations)
+            test_nets[key] = test_net, n_tests  #why doing this?
+            print("Eval test time: %f" % (time.time()-start))
 
             update_from_result("Test", test, result)
 
             if args.prefix2:
                 #evaluate test set 2
                 start = time.time()
-                if args.reduced and not last_test:
+                if use_reduced and (not last_test or args.skip_full):
                     key = 'reduced_test2'
                 else:
                     key = 'test2'
-                test_net, n_tests, offset = test_nets[key]
+                test_net, n_tests = test_nets[key]
                 freemem()
-                result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
-                test_nets[key] = test_net, n_tests, offset
-                print "Eval test2 time: %f" % (time.time()-start)
+                result = evaluate_test_net(test_net, n_tests, rotations)
+                test_nets[key] = test_net, n_tests
+                print("Eval test2 time: %f" % (time.time()-start))
 
                 update_from_result("Test2", test2, result)
 
         #evaluate train set
         start = time.time()
-        if args.reduced and not last_test:
+        if use_reduced and (not last_test or args.skip_full):
             key = 'reduced_train'
         else:
             key = 'train'
-        test_net, n_tests, offset = test_nets[key]
+        test_net, n_tests = test_nets[key]
         freemem()
-        result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
-        test_nets[key] = test_net, n_tests, offset
-        print "Eval train time: %f" % (time.time()-start)
+        result = evaluate_test_net(test_net, n_tests, rotations)
+        test_nets[key] = test_net, n_tests
+        print("Eval train time: %f" % (time.time()-start))
 
         update_from_result("Train", train, result)
 
         if args.prefix2:
             #evaluate train set 2
             start = time.time()
-            if args.reduced and not last_test:
+            if use_reduced and (not last_test or args.skip_full):
                 key = 'reduced_train2'
             else:
                 key = 'train2'
-            test_net, n_tests, offset = test_nets[key]
+            test_net, n_tests = test_nets[key]
             freemem()
-            result, offset = evaluate_test_net(test_net, n_tests, rotations, offset)
-            test_nets[key] = test_net, n_tests, offset
-            print "Eval train2 time: %f" % (time.time()-start)
+            result = evaluate_test_net(test_net, n_tests, rotations)
+            test_nets[key] = test_net, n_tests
+            print("Eval train2 time: %f" % (time.time()-start))
 
             if i > 0 and not (args.reduced and last_test): #check alignment
                 assert np.all(result.y_true == train2.y_true)
@@ -516,49 +562,54 @@ def train_and_test_model(args, files, outname, cont=0):
         if training:
             row = []            
 
-            #check for improvement
+            #check for AUC improvement
             if result.auc is not None:
                 test_auc = test.aucs[-1]
                 train_auc = train.aucs[-1]
                 train_loss = train.losses[-1]
                 row += [test_auc,train_auc,train_loss]
-                if test_auc > bests['test_auc']:
-                    bests['test_auc'] = test_auc
-                    if args.keep_best:
-                        keepsnap = True
-                        print "Writing snapshot because auc is better"
-                        solver.snapshot() #a bit too much - gigabytes of data
-                if train_loss < bests['train_loss']:
-                    bests['train_loss'] = train_loss
-                    best_train_interval = i
-                    
-            row += [solver.get_base_lr()]                    
+
+                #check if we improved on the test set, if so write a snapshot
+                bests['test_auc'], _ , to_snap = check_improvement(test_auc, args.update_ratio, bests['test_auc'], best_train_interval, i, True)
+                if args.keep_best and to_snap:
+                    keepsnap = True
+                    print("Writing snapshot because auc is better")
+                    solver.snapshot() #a bit too much - gigabytes of data
+
+                #check if training imrproved and update
+                bests['train_loss'], best_train_interval, to_snap = check_improvement(train_loss, args.update_ratio, bests['train_loss'], best_train_interval, i, False)
+
+            row += [solver.get_base_lr()]
+
             #check for rmsd improvement
             if result.rmsd is not None:
                 test_rmsd = test.rmsds[-1]
                 train_rmsd = train.rmsds[-1]
-                if test_rmsd < bests['test_rmsd']:
-                    bests['test_rmsd'] = test_rmsd
-                    if args.keep_best:
-                        keepsnap = True
-                        print "Writing snapshot because rmsd is better"
-                        solver.snapshot() #a bit too much - gigabytes of data     
-                        
-                if train_rmsd < bests['train_rmsd']:
-                    bests['train_rmsd'] = train_rmsd
-                    best_train_interval = i #note updated for both pose and aff    
+
+                #check if we improved on the test set, if so write a snapshot
+                bests['test_rmsd'], _ , to_snap = check_improvement(test_rmsd, args.update_ratio, bests['test_rmsd'], best_train_interval, i, False)
+                if args.keep_best and to_snap and not keepsnap: #don't write if already written
+                    keepsnap = True
+                    print("Writing snapshot because rmsd is better")
+                    solver.snapshot() #a bit too much - gigabytes of data     
+                
+                #check if training improved and update
+                bests['train_rmsd'], best_train_interval, to_snap = check_improvement(train_rmsd, args.update_ratio, bests['train_rmsd'], best_train_interval, i, False)
+
                 row += [test_rmsd, train_rmsd]
                     
             #check for rmse improvement
             if result.rmsd_rmse is not None:
                 test_rmsd_rmse = test.rmsd_rmses[-1]
                 train_rmsd_rmse = train.rmsd_rmses[-1]
-                if test_rmsd_rmse < bests['test_rmsd_rmse']:
-                    bests['test_rmsd_rmse'] = test_rmsd_rmse
-                    if args.keep_best:
-                        keepsnap = True
-                        print "Writing snapshot because rmsd_rmse is better"
-                        solver.snapshot() #a bit too much - gigabytes of data  
+
+                #checking if test rmsd_rmse has improved
+                bests['test_rmsd_rmse'], _ , to_snap = check_improvement(test_rmsd_rmse, args.update_ratio, bests['test_rmsd_rmse'], best_train_interval, i, False)
+                if args.keep_best and to_snap and not keepsnap:
+                    keepsnap = True
+                    print("Writing snapshot because rmsd_rmse is better")
+                    solver.snapshot() #a bit too much - gigabytes of data
+
                 row += [test_rmsd_rmse, train_rmsd_rmse]                            
                                                  
             if args.prefix2:  #blah
@@ -580,13 +631,13 @@ def train_and_test_model(args, files, outname, cont=0):
 
             #check for a stuck network (same prediction for everything)
             if len(result.y_score) > 1 and len(np.unique(result.y_score)) == 1:
-                print "Identical scores in test, bailing early"
+                print("Identical scores in test, bailing early")
                 break
             if len(result.y_predaff) > 1 and len(np.unique(result.y_predaff)) == 1:
-                print "Identical affinities in test, bailing early"
+                print("Identical affinities in test, bailing early")
                 break
             if len(result.rmsd_pred) and len(np.unique(result.rmsd_pred)) == 1:
-                print "Identical rmsd rmses in test, bailing early"
+                print("Identical rmsd rmses in test, bailing early")
                 break
                 
             #update learning rate if necessary
@@ -617,14 +668,14 @@ def train_and_test_model(args, files, outname, cont=0):
         i_time_avg = (i*i_time_avg + i_time)/(i+1)
         i_left = iterations/test_interval - (i+1)
         time_left = i_time_avg * i_left
-        time_str = time.strftime('%H:%M:%S', time.gmtime(time_left))
-        print "Loop time: %f (%s left)" % (i_time, time_str)
+        time_str = str(datetime.timedelta(seconds=time_left))
+        print("Loop time: %f (%s left)" % (i_time, time_str))
 
         mem = psutil.Process(os.getpid()).memory_info().rss
         freemem()
-        print "Memory usage: %.3fgb (%d)" % (mem/1073741824., mem)
+        print("Memory usage: %.3fgb (%d)" % (mem/1073741824., mem))
         
-        print "Best test AUC/RMSD: %f %f   Best train loss: %f"%(bests['test_auc'],bests['test_rmsd'],bests['train_loss'])
+        print("Best test AUC/RMSD: %f %f   Best train loss: %f"%(bests['test_auc'],bests['test_rmsd'],bests['train_loss']))
         sys.stdout.flush()
         
         if args.checkpoint:
@@ -634,7 +685,7 @@ def train_and_test_model(args, files, outname, cont=0):
             checkname = '%s.CHECKPOINT'%outname
             #read previous snap
             if os.path.exists(checkname):
-              (dontremove,_,prevsnap) = cPickle.load(open(checkname))[:3]
+              (dontremove,_,prevsnap) = pickle.load(open(checkname))[:3]
             else:
               dontremove = True
               prevsnap = None
@@ -642,20 +693,20 @@ def train_and_test_model(args, files, outname, cont=0):
             with DelayedInterrupt([signal.SIGTERM, signal.SIGINT]):
                 #write new snap
                 checkout = open(checkname,'w')         
-                cPickle.dump((keepsnap, training, snapname,train,test,bests,best_train_interval,solver.get_base_lr(), step_reduce_cnt), checkout)
+                pickle.dump((keepsnap, training, snapname,train,test,bests,best_train_interval,solver.get_base_lr(), step_reduce_cnt), checkout)
                 checkout.flush()
                 checkout.close()
                 if prevsnap != snapname: #not sure why this would happen, but be on the safe side
                     try:
                         if not dontremove:
-                            print "Removing",prevsnap
+                            print("Removing",prevsnap)
                             os.remove(prevsnap)
                             prevsnap = prevsnap.replace('solverstate','caffemodel')
                             os.remove(prevsnap)
                     except Exception as e:
-                        print e
-        
-        if args.skip_full and args.reduced: #we flagged that we want to skip the last test evaluation
+                        print(e)
+
+        if args.skip_full and use_reduced: #we flagged that we want to skip the last test evaluation
             if last_test: #we indicated we are done
                 break
         else:
@@ -664,15 +715,15 @@ def train_and_test_model(args, files, outname, cont=0):
                     training = False
                 else: #training is false, we've done the last test
                     break
-    print "Writing final snapshot"
+    print("Writing final snapshot")
     out.close()
     solver.snapshot()
 
     if not args.keep:
-        print "REMOVING",solverf
+        print("REMOVING",solverf)
         os.remove(solverf)
         for test_model in test_models:
-            print "REMOVING",test_model
+            print("REMOVING",test_model)
             os.remove(test_model)
 
     if args.prefix2:
@@ -695,7 +746,8 @@ def parse_args(argv=None):
     parser.add_argument('-g','--gpu',type=int,help='Specify GPU to run on',default=-1)
     parser.add_argument('-c','--cont',type=int,help='Continue a previous simulation from the provided iteration (snapshot must exist)',default=0)
     parser.add_argument('-k','--keep',action='store_true',default=False,help="Don't delete prototxt files")
-    parser.add_argument('-r', '--reduced', action='store_true',default=False,help="Use a reduced file for model evaluation if exists(<prefix>[reducedtrain|reducedtest][num].types)")
+    parser.add_argument('-r', '--reduced', action='store_true',default=False,help="Use a reduced file for model evaluation if exists(<prefix>[reducedtrain|reducedtest][num].types). Incompatible with --percent_reduced")
+    parser.add_argument('--percent_reduced',type=float,default=0,help='Create a reduced set on the fly based on types file, using the given percentage: to use 10 percent pass 10. Range (0,100). Incompatible with --reduced')
     parser.add_argument('--avg_rotations', action='store_true',default=False, help="Use the average of the testfile's 24 rotations in its evaluation results")
     parser.add_argument('--checkpoint', action='store_true',default=False,help="Enable automatic checkpointing")
     #parser.add_argument('-v,--verbose',action='store_true',default=False,help='Verbose output')
@@ -720,11 +772,13 @@ def parse_args(argv=None):
     parser.add_argument('--test_only',action='store_true',default=False,help="Don't train, just evaluate test nets once")
     parser.add_argument('--clip_gradients',type=float,default=10.0,help="Clip gradients threshold (default 10)")
     parser.add_argument('--skip_full',action='store_true',default=False,help='Use reduced testset on final evaluation, requires passing --reduced')
+    parser.add_argument('--display_iter',type=int,default=0,help='Print out network outputs every so many iterations')
+    parser.add_argument('--update_ratio',type=float,default=0.001,help="Improvements during training need to be better than this ratio. IE (best-current)/best > update_ratio. Defaults to 0.001")
     args = parser.parse_args(argv)
     
     argdict = vars(args)
     line = ''
-    for (name,val) in argdict.items():
+    for (name,val) in list(argdict.items()):
         if val != parser.get_default(name):
             line += ' --%s=%s' %(name,val)
 
@@ -736,7 +790,7 @@ def check_file_exists(file):
         raise OSError('%s does not exist' % file)
 
 
-def get_train_test_files(prefix, foldnums, allfolds, reduced, prefix2):
+def get_train_test_files(prefix, foldnums, allfolds, reduced, prefix2, percent_reduced):
     files = {}
     if foldnums is None:
         foldnums = set()
@@ -754,27 +808,37 @@ def get_train_test_files(prefix, foldnums, allfolds, reduced, prefix2):
         files[i] = {}
         files[i]['train'] = '%strain%d.types' % (prefix, i)
         files[i]['test'] = '%stest%d.types' % (prefix, i)
-        if reduced:
+        if percent_reduced:
+            files[i]['reduced_train'] = '%strain%d.types' % (prefix, i)
+            files[i]['reduced_test'] = '%stest%d.types' % (prefix, i)
+        elif reduced:
             files[i]['reduced_train'] = '%sreducedtrain%d.types' % (prefix, i)
             files[i]['reduced_test'] = '%sreducedtest%d.types' % (prefix, i)
         if prefix2:
             files[i]['train2'] = '%strain%d.types' % (prefix2, i)
             files[i]['test2'] = '%stest%d.types' % (prefix2, i)
-            if reduced:
+            if percent_reduced:
+                files[i]['reduced_train2'] = '%strain%d.types' % (prefix2, i)
+                files[i]['reduced_test2'] = '%stest%d.types' % (prefix2, i)
+            elif reduced:
                 files[i]['reduced_train2'] = '%sreducedtrain%d.types' % (prefix2, i)
                 files[i]['reduced_test2'] = '%sreducedtest%d.types' % (prefix2, i)
     if allfolds:
         i = 'all'
         files[i] = {}
         files[i]['train'] = files[i]['test'] = '%s.types' % prefix
-        if reduced:
+        if percent_reduced:
+            files[i]['reduced_train'] = files[i]['reduced_test'] = '%s.types' % prefix
+        elif reduced:
             files[i]['reduced_train'] = files[i]['reduced_test'] = '%sreduced.types' % prefix
         if prefix2:
             files[i]['train2'] = files[i]['test2'] = '%s.types' % prefix2
-            if reduced:
+            if percent_reduced:
+                files[i]['reduced_train2'] = files[i]['reduced_test2'] = '%s.types' % prefix2
+            elif reduced:
                 files[i]['reduced_train2'] = files[i]['reduced_test2'] = '%sreduced.types' % prefix2
     for i in files:
-        for file in files[i].values():
+        for file in list(files[i].values()):
             check_file_exists(file)
     return files
 
@@ -784,21 +848,37 @@ if __name__ == '__main__':
 
     #identify all train/test pairs
     try:
-        train_test_files = get_train_test_files(args.prefix, args.foldnums, args.allfolds, args.reduced, args.prefix2)
+        train_test_files = get_train_test_files(args.prefix, args.foldnums, args.allfolds, args.reduced, args.prefix2, args.percent_reduced)
     except OSError as e:
-        print "error: %s" % e
+        print("error: %s" % e)
         sys.exit(1)
 
     if len(train_test_files) == 0:
-        print "error: missing train/test files"
+        print("error: missing train/test files")
         sys.exit(1)
-    
-    if args.skip_full and not args.reduced:
-        print "WARNING: ignoring --skip_full since --reduced was not passed"
+
+    if args.percent_reduced < 0 or args.percent_reduced >= 100:
+        print("error: percent_reduced must be greater than 0 and less than 100")
+        sys.exit(1)
+
+    if args.reduced and args.percent_reduced:
+        print("error: can't use reduced and percent_reduced together")
+        sys.exit(1)
+
+    if args.skip_full and (not args.reduced and not args.percent_reduced):
+        print("error: --skip_full requires --reduced OR --percent_reduced. Neither was not passed")
+        sys.exit(1)
+
+    if not (0<args.update_ratio<1):
+        print("error: --update_ratio is out of possible values: (0,1)")
+        sys.exit(1)
+
+    if args.update_ratio > 0.01:
+        print("warning: --update_ratio > 0.01, this may cause earlier termination that desired.")
     
     for i in train_test_files:
         for key in sorted(train_test_files[i], key=len):
-            print str(i).rjust(3), key.rjust(14), train_test_files[i][key]
+            print(str(i).rjust(3), key.rjust(14), train_test_files[i][key])
 
     outprefix = args.outprefix
     if outprefix == '':
@@ -830,8 +910,8 @@ if __name__ == '__main__':
             #figure out where we were
             oldline = open(cmdcheckname).read()
             if oldline != cmdline:
-                print oldline
-                print "Previous commandline from checkpoint does not match current.  Cannot restore checkpoint."
+                print(oldline)
+                print("Previous commandline from checkpoint does not match current.  Cannot restore checkpoint.")
                 sys.exit(1)
         
         outcheck = open(cmdcheckname,'w')
@@ -925,30 +1005,23 @@ if __name__ == '__main__':
 
         if any(test_aucs):
             combine_fold_results(test_aucs, train_aucs, test_y_true, test_y_score, train_y_true, train_y_score,
-                                 outprefix, args.test_interval, affinity=False, second_data_source=False)
+                                 outprefix, args.test_interval, 'pose', second_data_source=False)
 
         if any(test_rmsds):
             combine_fold_results(test_rmsds, train_rmsds, test_y_aff, test_y_predaff, train_y_aff, train_y_predaff,
-                                 outprefix, args.test_interval, affinity=True, second_data_source=False,
+                                 outprefix, args.test_interval, 'affinity', second_data_source=False,
                                  filter_actives_test=test_y_true, filter_actives_train=train_y_true)
-
-        if any(test_rmsds):
-            combine_fold_results(test_rmsds, train_rmsds, test_y_aff, test_y_predaff, train_y_aff, train_y_predaff,
-                                 outprefix, args.test_interval, affinity=True, second_data_source=False,
-                                 filter_actives_test=test_y_true, filter_actives_train=train_y_true)
-
 
         if any(test_rmsd_rmses):
             combine_fold_results(test_rmsd_rmses, train_rmsd_rmses, test_rmsd_true, test_rmsd_pred, train_rmsd_true, train_rmsd_pred,
-                                 outprefix, args.test_interval, affinity=True, second_data_source=False)
+                                 outprefix, args.test_interval, 'rmsd', second_data_source=False)
                                  
                                  
         if any(test2_aucs):
             combine_fold_results(test2_aucs, train2_aucs, test2_y_true, test2_y_score, train2_y_true, train2_y_score,
-                                 outprefix, args.test_interval, affinity=False, second_data_source=True)
+                                 outprefix, args.test_interval, 'pose', second_data_source=True)
 
         if any(test2_rmsds):
             combine_fold_results(test2_rmsds, train2_rmsds, test2_y_aff, test2_y_predaff, train2_y_aff, train2_y_predaff,
-                                 outprefix, args.test_interval, affinity=True, second_data_source=True,
+                                 outprefix, args.test_interval, 'affinity', second_data_source=True,
                                  filter_actives_test=test2_y_true, filter_actives_train=train2_y_true)
-
