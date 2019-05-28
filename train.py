@@ -692,7 +692,7 @@ def train_and_test_model(args, files, outname, cont=0):
 
             with DelayedInterrupt([signal.SIGTERM, signal.SIGINT]):
                 #write new snap
-                checkout = open(checkname,'w')         
+                checkout = open(checkname,'wb')         
                 pickle.dump((keepsnap, training, snapname,train,test,bests,best_train_interval,solver.get_base_lr(), step_reduce_cnt), checkout)
                 checkout.flush()
                 checkout.close()
