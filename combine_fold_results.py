@@ -10,7 +10,7 @@ import scipy.stats
 import seaborn as sns
 import seaborn.utils, seaborn.palettes
 from seaborn.palettes import blend_palette
-from sklearn.utils.fixes import signature
+from inspect import signature
 
 def makejoint(x,y,color,title):
     '''Plot x vs y where x are experimental values and y are predictions'''
