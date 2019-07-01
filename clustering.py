@@ -318,7 +318,7 @@ if __name__ == '__main__':
     ligand_threshold = args.ligand_similarity #this actually is a sim
 
     if args.cpickle:
-        with open(args.cpickle, 'r') as file:
+        with open(args.cpickle, 'rb') as file:
             (distanceMatrix, target_names,ligandsim) = pickle.load(file)
     elif args.pdbfiles:
         if args.verbose: print("reading pdbs...")
@@ -326,7 +326,7 @@ if __name__ == '__main__':
         if args.verbose: print("calculating distance matrix...")
         distanceMatrix = calcDistanceMatrix(targets)
         ligandsim = computeLigandSimilarity(target_names, args.pdbfiles) #returns similarity matrix indexed according to target_names
-        pickle.dump((distanceMatrix, target_names, ligandsim), open(args.pdbfiles+'.pickle','w'),-1)
+        pickle.dump((distanceMatrix, target_names, ligandsim), open(args.pdbfiles+'.pickle','wb'),-1)
     else:
         exit('error: need --cpickle or --pdbfiles to compute target distance matrix')
     if args.verbose: print('Number of targets: {}'.format(len(target_names)))

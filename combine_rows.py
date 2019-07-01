@@ -44,4 +44,4 @@ for i in range(l):
             print("Missing ligand_sim for",targets[i],targets[j])
 
     
-pickle.dump((m, target_names, lm), open('matrix.pickle','w'),-1)
+pickle.dump((m, target_names, lm), open('matrix.pickle','wb'),-1)
