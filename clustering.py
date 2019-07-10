@@ -1,6 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-from __future__ import print_function
+
 from Bio.PDB.PDBParser import PDBParser
 from Bio.PDB.Polypeptide import three_to_one
 from Bio.PDB.Polypeptide import is_aa
@@ -10,7 +10,7 @@ from functools import partial
 import scipy.cluster.hierarchy
 import numpy as np
 import sys, argparse, bisect, re, os, fnmatch
-import cPickle, collections
+import pickle, collections
 from rdkit.Chem import AllChem as Chem
 from rdkit.Chem import AllChem
 from rdkit.DataStructs import FingerprintSimilarity as fs
@@ -127,7 +127,7 @@ def createFolds(cluster_groups, numfolds, target_lines, randomize):
             else: #weighted selection, prefer spots with more free space
                 choice = np.random.choice(tot)
                 tot = 0
-                for i in xrange(len(space)):
+                for i in range(len(space)):
                     tot += space[i]
                     if choice < tot:
                         minfold = i
@@ -159,7 +159,7 @@ def crossvalidatefiles(folds, outname, numfolds, target_lines,reduce):
     testfiles = [(open('{}test{}.types'.format(outname, i), 'w'),open('{}reducedtest{}.types'.format(outname, i), 'w')) for i in range(numfolds)]
     target_set = set(sum(folds, []))
     
-    for target in target_lines.iterkeys():
+    for target in target_lines.keys():
         for i in range(numfolds):
             if target in folds[i]:
                 out = testfiles[i]
@@ -286,8 +286,8 @@ def computeLigandSimilarity(target_names, fname):
         fingerprints[targ] = fp
     n = len(target_names)
     sims = np.zeros((n,n))
-    for i in xrange(n):
-        for j in xrange(i+1):
+    for i in range(n):
+        for j in range(i+1):
             fpi = fingerprints[target_names[i]]
             fpj = fingerprints[target_names[j]]
             sim = fs(fpi,fpj)
@@ -318,15 +318,15 @@ if __name__ == '__main__':
     ligand_threshold = args.ligand_similarity #this actually is a sim
 
     if args.cpickle:
-        with open(args.cpickle, 'r') as file:
-            (distanceMatrix, target_names,ligandsim) = cPickle.load(file)
+        with open(args.cpickle, 'rb') as file:
+            (distanceMatrix, target_names,ligandsim) = pickle.load(file)
     elif args.pdbfiles:
         if args.verbose: print("reading pdbs...")
         target_names, targets = readPDBfiles(args.pdbfiles)
         if args.verbose: print("calculating distance matrix...")
         distanceMatrix = calcDistanceMatrix(targets)
         ligandsim = computeLigandSimilarity(target_names, args.pdbfiles) #returns similarity matrix indexed according to target_names
-        cPickle.dump((distanceMatrix, target_names, ligandsim), open(args.pdbfiles+'.pickle','w'),-1)
+        pickle.dump((distanceMatrix, target_names, ligandsim), open(args.pdbfiles+'.pickle','wb'),-1)
     else:
         exit('error: need --cpickle or --pdbfiles to compute target distance matrix')
     if args.verbose: print('Number of targets: {}'.format(len(target_names)))

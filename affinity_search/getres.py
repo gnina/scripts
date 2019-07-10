@@ -27,4 +27,4 @@ cursor = getcursor()
 cursor.execute('SELECT serial,top,R,auc,rmse FROM params WHERE rmse IS NOT NULL')
 rows = cursor.fetchall()
 for row in rows:
-    print '%d %f %f %f %f' % row
+    print('%d %f %f %f %f' % row)

@@ -4,7 +4,7 @@ modeldefaults = makemodel.getdefaults()
 
 def cleanparams(p):
     '''standardize params that do not matter'''
-    for i in xrange(1,6):
+    for i in range(1,6):
         if p['conv%d_width'%i] == 0:
             for suffix in ['func', 'init', 'norm', 'size', 'stride', 'width']:
                 name = 'conv%d_%s'%(i,suffix)
@@ -29,7 +29,7 @@ def cleanparams(p):
         p['fc_affinity_hidden2'] = modeldefaults['fc_affinity_hidden2']
         p['fc_affinity_func2'] = modeldefaults['fc_affinity_func2']        
         
-    for (name,val) in p.iteritems():
+    for (name,val) in p.items():
         if 'item' in dir(val):
             p[name] = np.asscalar(val)
         if type(p[name]) == int:

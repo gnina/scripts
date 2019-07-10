@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 '''quick script for generating a real model and caffe time command'''
 import argparse,sys
@@ -18,5 +18,5 @@ model = model.replace('DATA_ROOT',args.data_root)
 
 out = open(args.output,'w')
 out.write(model)
-print "caffe time -gpu 0 -model %s"%args.output
+print("caffe time -gpu 0 -model %s"%args.output)
 

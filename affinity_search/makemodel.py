@@ -266,7 +266,7 @@ layer {
     lastlayer = 'data'
     zeroseen = False
     vargs = vars(args)
-    for i in xrange(1,6):
+    for i in range(1,6):
         poolsize = vargs['pool%d_size'%i]
         pooltype = vargs['pool%d_type'%i]
         if poolsize > 0:
@@ -279,7 +279,7 @@ layer {
             zeroseen = True
         elif convwidth > 0:
             if zeroseen:
-                print "Invalid convolutional widths - non-zero layer after zero layer"
+                print("Invalid convolutional widths - non-zero layer after zero layer")
                 sys.exit(-1)
             convlayer = 'unit%d_conv'%i
             ksize = vargs['conv%d_size'%i]
@@ -310,7 +310,7 @@ layer {{
     # pose
     
     if args.fc_pose_hidden == 0 and args.fc_pose_hidden2 != 0:
-        print "Invalid pose hidden units"
+        print("Invalid pose hidden units")
         sys.exit(1)
         
     fcinfo = [] #tuples of name,numoutput
@@ -330,7 +330,7 @@ layer {{
     # affinity
     
     if args.fc_affinity_hidden == 0 and args.fc_affinity_hidden2 != 0:
-        print "Invalid affinity hidden units"
+        print("Invalid affinity hidden units")
         sys.exit(1)
         
     fcinfo = [] #tuples of name,numoutput

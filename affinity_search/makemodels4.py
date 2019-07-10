@@ -228,7 +228,7 @@ def create_unit(num, ksize, width, double):
 
 def makemodel(depth, width, double, ksize):
     m = modelstart
-    for i in xrange(1,depth+1):
+    for i in range(1,depth+1):
         m += create_unit(i, ksize, width, double)
     m += endmodel.replace('LASTCONV','unit%d_conv1'%depth)
     
@@ -247,4 +247,4 @@ for depth in [4,3,2]:
                 out.write(model)
             
 for m in models:
-    print "train.py -m %s -p ../types/all_0.5_0_  --keep_best -t 1000 -i 100000 --reduced -o all_%s"%(m,m.replace('.model',''))
+    print("train.py -m %s -p ../types/all_0.5_0_  --keep_best -t 1000 -i 100000 --reduced -o all_%s"%(m,m.replace('.model','')))

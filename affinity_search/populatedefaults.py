@@ -18,7 +18,7 @@ params = makemodel.getdefaults()
 params['id'] = 'REQUESTED'
 
 #do 5 variations
-for split in xrange(5):
+for split in range(5):
     params['split'] = split
     params['seed'] = np.random.randint(0,100000)
     data = pd.DataFrame([params])

@@ -18,7 +18,7 @@ def getcursor(host,passwd,db):
     
 def __my_flatten_cols(self, how="_".join, reset_index=True):
     how = (lambda iter: list(iter)[-1]) if how == "last" else how
-    self.columns = [how(filter(None, map(str, levels))) for levels in self.columns.values] \
+    self.columns = [how([_f for _f in map(str, levels) if _f]) for levels in self.columns.values] \
                     if isinstance(self.columns, pd.MultiIndex) else self.columns
     return self.reset_index() if reset_index else self
 pd.DataFrame.my_flatten_cols = __my_flatten_cols
@@ -65,6 +65,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     metrics = getres(**vars(args))
-    print metrics.to_csv(sep='\t',index_label='index')
+    print(metrics.to_csv(sep='\t',index_label='index'))
 
 

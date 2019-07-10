@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 '''Compute a single row of a distance matrix from a pdbinfo file.  
 This allows for distributed processing'''
@@ -55,8 +55,8 @@ if __name__ == '__main__':
     if r < len(target_names):
         name = target_names[r]
         row = []
-        for i in xrange(len(target_names)):
-            print target_names[i]
+        for i in range(len(target_names)):
+            print(target_names[i])
             (a, b, mindist) = clustering.cUTDM2(targets, (r,i))
             (la, lb, lig_sim) = compute_ligand_similarity(smiles, (r,i))
             #sanity checks
@@ -67,4 +67,4 @@ if __name__ == '__main__':
         for (n, dist, lsim) in row:
             args.out.write('%s %s %f %f\n'%(name, n, dist, lsim))
     else:
-        print "Invalid row",r,"with only",len(target_names),"targets"
+        print("Invalid row",r,"with only",len(target_names),"targets")

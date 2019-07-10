@@ -1,4 +1,4 @@
-#!/usr/bin/env python 
+#!/usr/bin/env python3 
 
 '''Take a prefix and model name run predictions, and generate evaluations for crystal, bestonly, 
 and all test sets (take max affinity; if pose score is available also consider
@@ -28,7 +28,7 @@ def evaluate_fold(testfile, caffemodel, modelname, datadir='../..',hasrmsd=False
     label and posescore are only provided is trained on pose data
     '''
     if not os.path.exists(modelname):
-       print modelname,"does not exist"
+       print(modelname,"does not exist")
         
     caffe.set_mode_gpu()
     test_model = 'predict.%d.prototxt' % os.getpid()
@@ -72,7 +72,7 @@ def evaluate_fold(testfile, caffemodel, modelname, datadir='../..',hasrmsd=False
         #extract ligand/receptor for input file
         tokens = line.split()
         rmsd = -1
-        for t in xrange(len(tokens)):
+        for t in range(len(tokens)):
             if tokens[t].endswith('gninatypes'):
                 receptor = tokens[t]
                 ligand = tokens[t+1]
@@ -104,7 +104,7 @@ def reduce_results(results, index):
             res[name] = r
         elif res[name][index] < r[index]:
             res[name] = r
-    return res.values()
+    return list(res.values())
 
 def analyze_results(results, outname, uniquify=None):
     '''Compute error metrics from resuls.  RMSE, Pearson, Spearman.
@@ -152,7 +152,7 @@ def analyze_results(results, outname, uniquify=None):
 
 if __name__ == '__main__':
     if len(sys.argv) <= 4:
-        print "Need caffemodel prefix,  modelname, output name and test prefixes (which should include _<slicenum>_ at end)"
+        print("Need caffemodel prefix,  modelname, output name and test prefixes (which should include _<slicenum>_ at end)")
         sys.exit(1)
         
     name = sys.argv[1]
@@ -164,9 +164,9 @@ if __name__ == '__main__':
     #for each test dataset
     for testprefix in sys.argv[4:]:
         m = re.search('([^/ ]*)_(\d+)_$', testprefix)
-        print m,testprefix
+        print(m,testprefix)
         if not m:
-            print testprefix,"does not end in slicenum"
+            print(testprefix,"does not end in slicenum")
         slicenum = int(m.group(2))
         testname = m.group(1)
         #find the relevant models for each fold
@@ -201,7 +201,7 @@ if __name__ == '__main__':
             if lastm > 0: testresults['last'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,lastm), modelname)
 
             
-        for n in testresults.keys():
+        for n in list(testresults.keys()):
             if len(testresults[n]) == 0:
                 continue
             if len(testresults[n][0]) == 6:

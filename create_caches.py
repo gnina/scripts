@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 '''Takes a bunch of types training files. First argument is what index the receptor starts on
 (ligand is assumed to be right after).  Reads in the gninatypes files specified in these types 
@@ -14,7 +14,7 @@ def writemol(root, mol, out):
     try:
         with open(fname,'rb') as gninatype:
             if len(fname) > 255:
-                print "Skipping",mol,"since filename is too long"
+                print("Skipping",mol,"since filename is too long")
                 return
             s = bytes(mol)
             out.write(struct.pack('b',len(s)))
@@ -25,8 +25,8 @@ def writemol(root, mol, out):
             out.write(struct.pack('i',natoms))
             out.write(data)            
     except Exception as e:
-        print mol
-        print e
+        print(mol)
+        print(e)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-c', '--col', required=True,type=int,help='Column receptor starts on')

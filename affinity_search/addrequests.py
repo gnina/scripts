@@ -41,10 +41,10 @@ opts = makemodel.getoptions()
 cursor = getcursor()
 cursor.execute('SELECT COUNT(*) FROM params WHERE id = "REQUESTED"')
 rows = cursor.fetchone()
-pending = rows.values()[0]
+pending = list(rows.values())[0]
 cursor.close()
 
-print "Pending jobs:",pending
+print("Pending jobs:",pending)
 
 #if more than pending_threshold, quit
 if pending > args.pending_threshold:
@@ -89,14 +89,14 @@ for metric in ['top','R']:
     # run spearmint-light, set the seed to the number of unique configurations
     subprocess.call(['python',args.spearmint, '--method=GPEIOptChooser', '--grid-size=20000', 
             'gnina-spearmint', '--n=%d'%args.num_configs, '--grid-seed=%d' % gseed])
-    print ['python',args.spearmint, '--method=GPEIOptChooser', '--grid-size=20000',
-                        'gnina-spearmint', '--n=%d'%args.num_configs, '--grid-seed=%d' % gseed]
+    print(['python',args.spearmint, '--method=GPEIOptChooser', '--grid-size=20000',
+                        'gnina-spearmint', '--n=%d'%args.num_configs, '--grid-seed=%d' % gseed])
     #get the generated lines from the file
     lines = open('gnina-spearmint/results.dat').readlines()
     newlines = lines[len(rows):]
-    print len(newlines),args.num_configs
+    print(len(newlines),args.num_configs)
     assert(len(newlines) > 0)
-    print newlines
+    print(newlines)
     #add to database as REQUESTED jobs
     addrows('gnina-spearmint/results.dat',args.host,args.db,args.password,start=len(rows))
 

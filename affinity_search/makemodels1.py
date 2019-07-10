@@ -243,7 +243,7 @@ layer {
 
 def makemodel(**kwargs):
     m = basemodel
-    for (k,v) in kwargs.iteritems():
+    for (k,v) in kwargs.items():
         m = m.replace(k,str(v))
     return m
     
@@ -284,4 +284,4 @@ for i in ['all','besty','posonly','crystal','bestonly']:
         if i in single:
             if '_rec1' in m: continue #only one per receptor, not much point
 
-        print "train.py -m %s -p ../types/%s_0.5_0_ --keep_best -t 1000 -i 100000 --reduced -o %s_%s"%(m,i,i,m.replace('.model',''))
+        print("train.py -m %s -p ../types/%s_0.5_0_ --keep_best -t 1000 -i 100000 --reduced -o %s_%s"%(m,i,i,m.replace('.model','')))
