@@ -81,7 +81,7 @@ def make_types(atom, root, receptor):
 	filename=root+receptor.split('/')[-1].split('_0.gnina')[0]+'_'+atom+'.types'
 	with open(filename,'w') as out:
 		for g in gninatypes:
-			out.write('1 3.0 '+receptor+' '+g+'\n')
+			out.write('1 3.0 0.00 '+receptor+' '+g+'\n')
 
 	return filename
 
