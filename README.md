@@ -6,7 +6,9 @@
  * compute_seqs.py - Takes input file for clustering.py and creates the input for compute_row.py
  * compute_row.py - Computes 1 row of NxN matrix in clustering.py. This allows for more parallelization of clustering.py
  * combine_rows.py - Script to take outputs of compute_row.py & combine them to avoid needing to do the computation in clustering.py
-
+ * simple_grid_visualization.py - Script to evaluate 2-D single ligatom+receptor atom systems to visualize how CNN score changes with distance between atoms.
+ * grid_visualization.py - Script to evaluate a box of single atoms around a receptor of interest to visualize how CNN scores ligand contexts
+ 
 ## Dependencies
 
 ```
@@ -274,3 +276,177 @@ Lastly, we run clustering.py as follows
 ```
 clustering.py --cpickle matrix.pickle --input my_types.types --output my_types_cv_
 ```
+## Using visualization script
+There are two scripts to help you visualize how the model scores atoms: 1) simple_grid_visualization.py; 2) grid_visualization.py 
+
+Script 1 fixes a single receptor atom, & places a lig atom along specified points on the Xaxis & score them.
+This gives insight into how the model behaves in a simplified 2D coordinate system.
+
+Script 2 creates a cube of single atom points around a specified receptor, which are all scored.
+This gives insight into how the model behaves in a simplified 3D system. A glycine tripeptide is included
+in this directory as a starting point.
+
+Note: both of these scripts need to be run twice in order to complete their entire function.
+### Case 1: Using simple_grid_visualization.py
+```
+usage: simple_grid_visualization.py [-h] -r RECATOMS -l LIGATOMS [-o OUTNAME]
+                                    [-t TYPESROOT] -m MODEL -w WEIGHTS
+                                    [-n NUM_POINTS] [-i INCREMENT]
+                                    [-b BOX_SIZE] [--plot] [-d DATAROOT]
+
+Script for generating the jobs that need to be run for simple visualization.
+Generates types files & a text file that needs to be run. This results in
+separating atoms along the x-axis. Can then graph the results.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -r RECATOMS, --recatoms RECATOMS
+                        File containing Receptor atom types of your modelfile
+                        (1 per line)
+  -l LIGATOMS, --ligatoms LIGATOMS
+                        File containing Ligand atom types of your modelfile (1
+                        per line)
+  -o OUTNAME, --outname OUTNAME
+                        File containing commands to be evaluated to predict
+                        grid points. Note: Requires GNINASCRIPTSDIR to be set
+                        environment variable. (default:
+                        simplegrid_predicts.txt)
+  -t TYPESROOT, --typesroot TYPESROOT
+                        Root folder for gninatypes data generated from script.
+                        (default: simpletypes/)
+  -m MODEL, --model MODEL
+                        Model file that predictions will be made with. Must
+                        end in .model
+  -w WEIGHTS, --weights WEIGHTS
+                        Weights for the model file that the predictions will
+                        be made with.
+  -n NUM_POINTS, --num_points NUM_POINTS
+                        Number of points. Defaults are reasonable. (default:
+                        200)
+  -i INCREMENT, --increment INCREMENT
+                        increment (Angstroms) between points. Combines with
+                        num_points multiplicitavely. Defaults for both result
+                        in 200 points spanning 20 angstroms (default: 0.1)
+  -b BOX_SIZE, --box_size BOX_SIZE
+                        Size of the box. Used for sanity check that you are
+                        not trying to predict outside of box for gnina. MUST
+                        MATCH BOX OF MODEL. Defaults are default grid size for
+                        gnina (default: 24)
+  --plot                Flag to make 1 large plot from the data. Assumes
+                        job(s) have completed. Requires Hydrogen to be a vaild
+                        receptor. Saves pdf called simple_vis.pdf in the
+                        current working directory (default: False)
+  -d DATAROOT, --dataroot DATAROOT
+                        Root folder of data resulting from output of running
+                        the OUTNAME file (default: simpledata/)
+```
+
+The workflow for this script is the following: 1) Generate OUTNAME, 2) run each command present in OUTNAME, 3) Plot
+
+As an example, I will use the default values of the script, RECATOMS=my_recatoms.txt, LIGATOMS=my_ligatoms.txt, 
+MODEL=my_model.model, and WEIGHTS=my_modelweights.caffemodel.
+
+First, we need to generate the commands to run with gnina. (this is OUTNAME, which will be simplegrid_predicts.txt)
+```
+python simple_grid_visualization.py -m my_model.model -w my_modelweights.caffemodel -r my_recatoms.txt -l my_ligatoms.txt
+```
+
+This will generate 2 new directories: simpledata (empty) and simpletypes. Simpleteypes should have a directory for every
+unique rec and lig atom. Additionally there will be a .types file for every rec+lig atom combination. Each types file 
+should be NUM_POINTS lines (200 in this case).
+
+Additionally, in the current working directory, there should be a new file called OUTNAME (simplegrid_predicts.txt).
+It will have 1 line per rec and lig atom combination.
+
+Now we need to set the GNINASCRIPTSDIR environment variable. This would correspond to where this repo is installed.
+```
+export GNINASCRIPTSDIR=~/git/gnina/scripts
+```
+
+Third, we need to evaluate each line in simplegrid_predicts.txt. Note: this could take a fair amount of time on one machine,
+as this CANNOT be parallelized due to each job requiring the use of the GPU.
+```
+sh simplegrid_predicts.txt
+```
+
+After the above command has completed, simpledata should now be populated with <recatom>_rec_<ligatom>_lig_<modelname>_predictscores files. 
+These files can be utilized to make graphs now.
+```
+python simple_grid_visualization.py -m my_model.model -w my_modelweights.caffemodel -r my_recatoms.txt -l my_ligatoms.txt --plot
+```
+This will make 1 large pdf containing all the plots, simple_vis.pdf.
+
+### Case 2: Using grid_visualization.py
+```
+usage: grid_visualization.py [-h] -r RECATOMS -l LIGATOMS [-o OUTNAME]
+                             [-t TYPESROOT] -m MODEL -w WEIGHTS [-p TEST_PDB]
+                             [-c CUBE_LENGTH] [-n NUM_POINTS] [--make_dx]
+                             [-d DATAROOT]
+
+Script for generating the jobs that need to be run for visualization.
+Generates types files & a text file that needs to be run. Can make a DX file
+for visualization
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -r RECATOMS, --recatoms RECATOMS
+                        File containing Receptor atom types of your modelfile (1 per line)
+  -l LIGATOMS, --ligatoms LIGATOMS
+                        File containing Ligand atom types of your modelfile (1 per line)
+  -o OUTNAME, --outname OUTNAME
+                        File containing commands to be evaluated to predict
+                        grid points. Note: Requires GNINASCRIPTSDIR to be a
+                        set environment variable. (default: grid_predicts.txt)
+  -t TYPESROOT, --typesroot TYPESROOT
+                        Root folder for gninatypes data generated from script.
+                        (default: types/)
+  -m MODEL, --model MODEL
+                        Model file that predictions will be made with. Must
+                        end in .model
+  -w WEIGHTS, --weights WEIGHTS
+                        Weights for the model file that the predictions will
+                        be made with.
+  -p TEST_PDB, --test_pdb TEST_PDB
+                        pdbfile of receptor, centered at the origin for
+                        visualization (default: gly_gly_gly.pdb)
+  -c CUBE_LENGTH, --cube_length CUBE_LENGTH
+                        Width of cube for grid box of points. Defaults are
+                        reasonable (default: 24.0)
+  -n NUM_POINTS, --num_points NUM_POINTS
+                        Number of points per half of the box (ex 20 means
+                        there will be 39x39x39 points total). Defaults are
+                        reasonable. (default: 20)
+  --make_dx             Flag to make dx files from the data. Assumes job(s)
+                        have completed. (default: False)
+  -d DATAROOT, --dataroot DATAROOT
+                        Root folder of data resulting from output (default:
+                        data/)
+```
+The first run of this script is WITHOUT the `--make_dx` flag. This will produce a file `OUTNAME`
+wherin each line will need to be executed, and `GITSCRIPTSDIR` is a set environment variable which
+points to the location where you have cloned this repository. The `gly_gly_gly.pdb` file is provided
+in this directory, and is 3 connected glycine residues whose center of mass is at (0,0,0).
+
+As before I will be evaluating the defaults of the script with RECATOMS=my_recatoms.txt, LIGATOMS=my_ligatoms.txt, 
+MODEL=my_model.model, and WEIGHTS=my_modelweights.caffemodel. Note: gly_gly_gly.pdb needs to be in the current 
+working directory, and the gninatyper tool needs to be installed on your machine (it is installed alongside gnina).
+
+First we must make the textfile with all of the commands to be run with gnina.
+```
+python grid_visualization.py -m my_model.model -w my_modelweights.caffemodel -r my_recatoms.txt -l my_ligatoms.txt
+```
+
+Next, we need to execute each command in `OUTNAME` (grid_predicts.txt). NOTE: this cannot be parallelized on one machine
+as each commands requires the GPU to be utilized. 
+```
+sh grid_predicts.txt
+```
+
+After all of the lines in `OUTNAME` have been completed, rerun this script with the `--make_dx` flag
+and with the same arguments as before.
+```
+python grid_visualization.py -m my_model.model -w my_modelweights.caffemodel -r my_recatoms.txt -l my_ligatoms.txt --make_dx
+```
+
+`DATAROOT` will now contain the corresponding dx files. In order to visualize load the receptor and a dx file of interest
+via pymol: `pymol TEST_PDB my_dxfile`. Visualizations can be performed by adjusting the volume slider & color of the dx object.
