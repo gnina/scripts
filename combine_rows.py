@@ -10,13 +10,14 @@ targets = dict() # name to index
 values = collections.defaultdict(dict) # indexed by row name, col name
 
 for fname in sys.argv[1:]:
-    for line in open(fname):
-        (t1,t2,dist,lsim) = line.split()
-        dist = float(dist)
-        if t2 not in targets:
-            targets[t2] = len(target_names)
-            target_names.append(t2)
-        values[t1][t2] = (dist,lsim)
+    with open(fname) as file:
+        for line in file:
+            (t1,t2,dist,lsim) = line.split()
+            dist = float(dist)
+            if t2 not in targets:
+                targets[t2] = len(target_names)
+                target_names.append(t2)
+            values[t1][t2] = (dist,lsim)
         
         
 #must have fully filled out matrix
