@@ -5,6 +5,8 @@ import numpy as np
 import pandas as pd
 import pickle
 
+from tqdm import tqdm
+
 # Parse arguments
 parser = ap.ArgumentParser()
 parser.add_argument("files", nargs="+")
@@ -16,17 +18,16 @@ targets = np.loadtxt(args.files[0], usecols=1, dtype="U4")
 n_targets = len(targets)
 print("done")
 
-# Build dataframe
+# Build DataFrame
+# The DF are used to ensure that distances and ligand similarities are inserted at the correct place
 # Initializing the DF with a numpy array is essential for speed at assignment
 print("Allocating DataFrame memory...", end="", flush=True)
-# Protein sequence distance
 df_dist = pd.DataFrame(index=targets, columns=targets, data=-1*np.ones((n_targets,n_targets)))
-# Ligand similarity
 df_lsim = pd.DataFrame(index=targets, columns=targets, data=-1*np.ones((n_targets,n_targets)))
 print("done")
 
 print("Merging data...", end="", flush=True)
-for fname in args.files:
+for fname in tqdm(args.files):
     target = np.loadtxt(fname, usecols=0, dtype="U4")[0]
     ctargets = np.loadtxt(fname, usecols=1, dtype="U4") # Can be removed if targets == ctargets all the time
     dist = np.loadtxt(fname, usecols=2)
@@ -36,24 +37,27 @@ for fname in args.files:
         df_dist.loc[target, ctargets] = dist
     if len(lsim) == n_targets:
         df_lsim.loc[target, ctargets] = lsim
+
+dist = df_dist.values
+lsim = df_lsim.values
+
+dist[dist < 0] = np.nan
+lsim[lsim < 0] = np.nan
 print("done")
 
-print(df_dist.values[:10,:10])
-print(df_lsim.values[:10,:10])
 
-# Check
 print("Checking data...", end="", flush=True)
-for i in range(n_targets):
-    for j in range(n_targets):
 
-        if df_dist.values[i,j] < 0:
-            print("  Missing distance for", targets[i], targets[j])
+# Check distance
+rows, cols = np.where(np.isnan(dist))
+for t1, t2 in zip(df_dist.index.values[rows], df_dist.columns.values[cols]):
+    print(f"Missing distance for {t1} {t2}")
 
-        if df_lsim.values[i,j] < 0:
-            print("  Missing ligand similarity for",targets[i],targets[j])
-
-print("done")
+# Check ligand similarity
+rows, cols = np.where(np.isnan(lsim))
+for t1, t2 in zip(df_dist.index.values[rows], df_dist.columns.values[cols]):
+    print(f"Missing ligand similarity for {t1} {t2}")
 
 print("Dumping pickle object...", end="", flush=True)
-pickle.dump((df_dist.values, targets, df_lsim.values), open('matrix.pickle','wb'),-1)
+pickle.dump((dist, targets, lsim), open('matrix.pickle','wb'),-1)
 print("done")
