@@ -26,7 +26,7 @@ df_dist = pd.DataFrame(index=targets, columns=targets, data=-1*np.ones((n_target
 df_lsim = pd.DataFrame(index=targets, columns=targets, data=-1*np.ones((n_targets,n_targets)))
 print("done")
 
-print("Merging data...", end="", flush=True)
+print("Merging data...", flush=True)
 for fname in tqdm(args.files):
     target = np.loadtxt(fname, usecols=0, dtype="U4")[0]
     ctargets = np.loadtxt(fname, usecols=1, dtype="U4") # Can be removed if targets == ctargets all the time
@@ -43,20 +43,19 @@ lsim = df_lsim.values
 
 dist[dist < 0] = np.nan
 lsim[lsim < 0] = np.nan
-print("done")
 
 
-print("Checking data...", end="", flush=True)
+print("Checking data...", flush=True)
 
 # Check distance
 rows, cols = np.where(np.isnan(dist))
 for t1, t2 in zip(df_dist.index.values[rows], df_dist.columns.values[cols]):
-    print(f"Missing distance for {t1} {t2}")
+    print(f"  Missing distance for {t1} {t2}")
 
 # Check ligand similarity
 rows, cols = np.where(np.isnan(lsim))
 for t1, t2 in zip(df_dist.index.values[rows], df_dist.columns.values[cols]):
-    print(f"Missing ligand similarity for {t1} {t2}")
+    print(f"  Missing ligand similarity for {t1} {t2}")
 
 print("Dumping pickle object...", end="", flush=True)
 pickle.dump((dist, targets, lsim), open('matrix.pickle','wb'),-1)
