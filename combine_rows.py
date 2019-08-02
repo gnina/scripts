@@ -10,8 +10,7 @@ targets = dict() # name to index
 values = collections.defaultdict(dict) # indexed by row name, col name
 
 for fname in sys.argv[1:]:
-    with open(fname) as file:
-        for line in file:
+        for line in open(fname):
             (t1,t2,dist,lsim) = line.split()
             dist = float(dist)
             if t2 not in targets:
