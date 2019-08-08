@@ -33,27 +33,38 @@ for fname in tqdm(args.files):
     dist = np.loadtxt(fname, usecols=2)
     lsim = np.loadtxt(fname, usecols=3)
     
+    # Populate distance matrix
     if len(dist) == n_targets:
         df_dist.loc[target, ctargets] = dist
+    else:
+        print("  Invalid number of distances for {target}")
+
+    # Populate ligand similarity matrix
     if len(lsim) == n_targets:
         df_lsim.loc[target, ctargets] = lsim
+    else:
+        print("  Invalid number of ligand similarities for {target}")
 
 dist = df_dist.values
 lsim = df_lsim.values
 
+# Check properties
+print("Checking matrix properties...", flush=True)
+assert np.allclose(np.diagonal(dist), np.zeros(n_targets))
+assert np.allclose(np.diagonal(lsim), np.ones(n_targets))
+assert np.allclose(dist, dist.T)
+assert np.allclose(lsim, lsim)
+print("done")
+
+# Set NaNs for compatibility with original implementation
 dist[dist < 0] = np.nan
 lsim[lsim < 0] = np.nan
 
-
 print("Checking data...", flush=True)
-
-# Check distance
-rows, cols = np.where(np.isnan(dist))
+rows, cols = np.where(np.isnan(dist)) # Invalid distances
 for t1, t2 in zip(df_dist.index.values[rows], df_dist.columns.values[cols]):
     print(f"  Missing distance for {t1} {t2}")
-
-# Check ligand similarity
-rows, cols = np.where(np.isnan(lsim))
+rows, cols = np.where(np.isnan(lsim)) # Invalid ligand similarities
 for t1, t2 in zip(df_dist.index.values[rows], df_dist.columns.values[cols]):
     print(f"  Missing ligand similarity for {t1} {t2}")
 
