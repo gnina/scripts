@@ -9,7 +9,8 @@ from tqdm import tqdm
 
 # Parse arguments
 parser = ap.ArgumentParser()
-parser.add_argument("files", nargs="+")
+parser.add_argument("files", nargs="+", type=str)
+parser.add_argument("-out", "--output", type=str)
 args = parser.parse_args()
 
 # Open first file to get targets
@@ -68,6 +69,6 @@ rows, cols = np.where(np.isnan(lsim)) # Invalid ligand similarities
 for t1, t2 in zip(df_dist.index.values[rows], df_dist.columns.values[cols]):
     print(f"  Missing ligand similarity for {t1} {t2}")
 
-print("Dumping pickle object...", end="", flush=True)
-pickle.dump((dist, targets, lsim), open('matrix.pickle','wb'),-1)
+print(f"Dumping pickle object {args.out}...", end="", flush=True)
+pickle.dump((dist, targets, lsim), open(f"{args.out}", "wb"),-1)
 print("done")
