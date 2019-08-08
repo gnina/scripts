@@ -23,17 +23,21 @@ print("done")
 # The DF are used to ensure that distances and ligand similarities are inserted at the correct place
 # Initializing the DF with a numpy array is essential for speed at assignment
 print("Allocating DataFrame memory...", end="", flush=True)
-df_dist = pd.DataFrame(index=targets, columns=targets, data=-1*np.ones((n_targets,n_targets)))
-df_lsim = pd.DataFrame(index=targets, columns=targets, data=-1*np.ones((n_targets,n_targets)))
+df_dist = pd.DataFrame(
+    index=targets, columns=targets, data=-1 * np.ones((n_targets, n_targets))
+)
+df_lsim = pd.DataFrame(
+    index=targets, columns=targets, data=-1 * np.ones((n_targets, n_targets))
+)
 print("done")
 
 print("Merging data...", flush=True)
 for fname in tqdm(args.files):
     target = np.loadtxt(fname, usecols=0, dtype="U4")[0]
-    ctargets = np.loadtxt(fname, usecols=1, dtype="U4") # Can be removed if targets == ctargets all the time
+    ctargets = np.loadtxt(fname, usecols=1, dtype="U4")
     dist = np.loadtxt(fname, usecols=2)
     lsim = np.loadtxt(fname, usecols=3)
-    
+
     # Populate distance matrix
     if len(dist) == n_targets:
         df_dist.loc[target, ctargets] = dist
@@ -62,13 +66,13 @@ dist[dist < 0] = np.nan
 lsim[lsim < 0] = np.nan
 
 print("Checking data...", flush=True)
-rows, cols = np.where(np.isnan(dist)) # Invalid distances
+rows, cols = np.where(np.isnan(dist))  # Invalid distances
 for t1, t2 in zip(df_dist.index.values[rows], df_dist.columns.values[cols]):
     print(f"  Missing distance for {t1} {t2}")
-rows, cols = np.where(np.isnan(lsim)) # Invalid ligand similarities
+rows, cols = np.where(np.isnan(lsim))  # Invalid ligand similarities
 for t1, t2 in zip(df_dist.index.values[rows], df_dist.columns.values[cols]):
     print(f"  Missing ligand similarity for {t1} {t2}")
 
 print(f"Dumping pickle object {args.out}...", end="", flush=True)
-pickle.dump((dist, targets, lsim), open(f"{args.out}", "wb"),-1)
+pickle.dump((dist, targets, lsim), open(f"{args.out}", "wb"), -1)
 print("done")
