@@ -6,11 +6,13 @@ import os
 import argparse
 
 
-def write_pymol_arrows(base, atoms, scale, color, radius):
+def write_pymol_arrows(base, atoms, scale, color, radius, threshold):
     pymol_file = base + '_arrows.pymol'
     lines = []
     lines.append('run cgo_arrow.py')
     arrow_objs = []
+    t2 = threshold**2
+    s2 = scale**2
     for i, atom in enumerate(atoms):
         arrow_obj = base + '_arrow_' + str(i)
         arrow_objs.append(arrow_obj)
@@ -25,7 +27,8 @@ def write_pymol_arrows(base, atoms, scale, color, radius):
         if color:
             line += ', color={}'.format(color)
         line += ', name={}'.format(arrow_obj)
-        lines.append(line)
+        if( (dx**2 + dy**2 + dz**2)*s2 > t2 ): # Check threshold
+            lines.append(line)
     arrow_group = base + '_arrows'
     line = 'group {}, {}'.format(arrow_group, ' '.join(arrow_objs))
     lines.append(line)
@@ -94,6 +97,8 @@ def parse_args():
         help='Output a .pdb file where the b-factor is gradient magnitude')
     parser.add_argument('--sum', action='store_true', default=False,
         help='Sum gradient components instead of taking magnitude')
+    parser.add_argument('-t', '--threshold', type=float, default=0,
+        help="Lower thrashold for arrow length (scaled)")
     return parser.parse_args()
 
 
@@ -101,7 +106,7 @@ if __name__ == '__main__':
     args = parse_args()
     atoms = read_xyz_file(args.xyz_file)
     base_name = args.xyz_file.replace('.xyz', '')
-    write_pymol_arrows(base_name, atoms, args.scale, args.color, args.radius)
+    write_pymol_arrows(base_name, atoms, args.scale, args.color, args.radius, args.threshold)
     if args.pdb_file:
         pdb_file = base_name + '.pdb'
         write_pdb_file(pdb_file, atoms, args.sum)
