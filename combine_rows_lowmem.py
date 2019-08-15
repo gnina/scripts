@@ -72,6 +72,6 @@ rows, cols = np.where(np.isnan(lsim))  # Invalid ligand similarities
 for t1, t2 in zip(df_dist.index.values[rows], df_dist.columns.values[cols]):
     print(f"  Missing ligand similarity for {t1} {t2}")
 
-print(f"Dumping pickle object {args.out}...", end="", flush=True)
+print(f"Dumping pickle object {args.output}...", end="", flush=True)
 pickle.dump((dist, targets, lsim), open(f"{args.output}", "wb"), -1)
 print("done")
