@@ -57,15 +57,34 @@ def atom_to_pdb_line(atom, idx, dosum):
            .format('ATOM', idx, '', '', '', '', '', '', x, y, z, 1.0, d, elem.rjust(2), '')
 
 
-def read_xyz_file(xyz_file):
+def read_xyz_file(xyz_file, header_len=2):
+
     with open(xyz_file, 'r') as f:
         lines = f.readlines()
-    n_atoms = int(lines[0])
-    atoms = []
-    for i in range(n_atoms):
-        atom = xyz_line_to_atom(lines[2+i])
-        atoms.append(atom)
-    return atoms
+
+    structs = []
+    struct_start = 0
+    for i, line in enumerate(lines):
+        try:
+            # line index relative to struct start
+            j = i - struct_start
+
+            if j == 0 or j >= header_len + n_atoms:
+                struct_start = i
+                structs.append([])
+                n_atoms = int(lines[i])
+
+            elif j < header_len:
+                continue
+
+            else:
+                atom = xyz_line_to_atom(lines[i])
+                structs[-1].append(atom)
+        except:
+            print('{}:{} {}'.format(xyz_file, i, repr(line)), file=sys.stderr)
+            raise
+
+    return structs
 
 
 def write_pdb_file(pdb_file, atoms, dosum):
@@ -97,9 +116,9 @@ def parse_args():
 
 if __name__ == '__main__':
     args = parse_args()
-    atoms = read_xyz_file(args.xyz_file)
+    structs = read_xyz_file(args.xyz_file)
     base_name = args.xyz_file.replace('.xyz', '')
-    write_pymol_arrows(base_name, atoms, args.scale, args.color, args.radius)
+    write_pymol_arrows(base_name, structs, args.scale, args.color, args.radius)
     if args.pdb_file:
         pdb_file = base_name + '.pdb'
         write_pdb_file(pdb_file, atoms, args.sum)
