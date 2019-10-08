@@ -89,7 +89,8 @@ def evaluate_fold(testfile, caffemodel, modelname, datadir='../..',hasrmsd=False
                     print('Ligand must be formatted: <rec>/<ligfile>.gninatypes')
                     print('Bailing.')
                     sys.exit(1)
-                    
+                break
+                
             elif tokens[t].endswith('gninatypes'):
                 receptor = tokens[t]
                 ligand = tokens[t+1]
