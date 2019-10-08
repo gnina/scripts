@@ -4,26 +4,31 @@ import os
 import argparse
 
 
-def write_pymol_arrows(base, atoms, scale, color, radius):
+def write_pymol_arrows(base, structs, scale, color, radius, hradius, hlength):
     pymol_file = base + '_arrows.pymol'
     lines = []
-    lines.append('run cgo_arrow.py')
-    arrow_objs = []
-    for i, atom in enumerate(atoms):
-        arrow_obj = base + '_arrow_' + str(i)
-        arrow_objs.append(arrow_obj)
-        elem, xi, yi, zi, dx, dy, dz = atom
-        c = 1.725*radius
-        xf = xi + scale*dx + c
-        yf = yi + scale*dy + c
-        zf = zi + scale*dz + c
-        line = 'cgo_arrow [{}, {}, {}], [{}, {}, {}]'.format(xi, yi, zi, xf, yf, zf)
-        if radius:
-            line += ', radius={}'.format(radius)
-        if color:
-            line += ', color={}'.format(color)
-        line += ', name={}'.format(arrow_obj)
-        lines.append(line)
+    arrow_objs = set()
+    for i, struct in enumerate(structs):
+        for j, atom in enumerate(struct):
+            arrow_obj = base + '_arrow_' + str(j)
+            arrow_objs.add(arrow_obj)
+            elem, xi, yi, zi, dx, dy, dz = atom
+            xf = xi + scale*dx
+            yf = yi + scale*dy
+            zf = zi + scale*dz
+            line = 'cgo_arrow [{}, {}, {}], [{}, {}, {}]'.format(xi, yi, zi, xf, yf, zf)
+            if len(structs) > 1:
+                line += ', state={}'.format(i+1)
+            if radius:
+                line += ', radius={}'.format(radius)
+            if hradius > 0:
+                line += ', hradius={}'.format(hradius)
+            if hlength > 0:
+                line += ', hlength={}'.format(hlength)
+            if color:
+                line += ', color={}'.format(color)
+            line += ', name={}'.format(arrow_obj)
+            lines.append(line)
     arrow_group = base + '_arrows'
     line = 'group {}, {}'.format(arrow_group, ' '.join(arrow_objs))
     lines.append(line)
@@ -105,8 +110,10 @@ def parse_args():
         can also create a .pdb file where the b-factor is the gradient magnitude')
     parser.add_argument('xyz_file')
     parser.add_argument('-s', '--scale', type=float, default=1.0)
-    parser.add_argument('-c', '--color', type=str, default='black green')
+    parser.add_argument('-c', '--color', type=str, default='')
     parser.add_argument('-r', '--radius', type=float, default=0.2)
+    parser.add_argument('-hr', '--hradius', type=float, default=-1)
+    parser.add_argument('-hl', '--hlength', type=float, default=-1)
     parser.add_argument('-p', '--pdb_file', action='store_true', default=False,
         help='Output a .pdb file where the b-factor is gradient magnitude')
     parser.add_argument('--sum', action='store_true', default=False,
@@ -118,7 +125,7 @@ if __name__ == '__main__':
     args = parse_args()
     structs = read_xyz_file(args.xyz_file)
     base_name = args.xyz_file.replace('.xyz', '')
-    write_pymol_arrows(base_name, structs, args.scale, args.color, args.radius)
+    write_pymol_arrows(base_name, structs, args.scale, args.color, args.radius, args.hradius, args.hlength)
     if args.pdb_file:
         pdb_file = base_name + '.pdb'
         write_pdb_file(pdb_file, atoms, args.sum)
