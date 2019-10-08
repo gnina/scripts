@@ -83,7 +83,7 @@ def evaluate_fold(testfile, caffemodel, modelname, datadir='../..',hasrmsd=False
                 
                 #Check that the match is not none, and that ligand ends in gninatypes
                 if m is not None:
-                    rec=m.group(1)
+                    receptor=m.group(1)
                 else:
                     print('Error: none receptor detected and ligand is improperly formatted.')
                     print('Ligand must be formatted: <rec>/<ligfile>.gninatypes')
