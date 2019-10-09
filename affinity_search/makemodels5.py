@@ -263,4 +263,4 @@ for widths in [[32,32,32], [64,32,32], [64,32,16], [32,16,16]]:
                 out.write(model)
             
 for m in models:
-    print "train.py -m %s -p ../types/all_0.5_0_  --keep_best -t 1000 -i 100000 --reduced -o all_%s"%(m,m.replace('.model',''))
+    print("train.py -m %s -p ../types/all_0.5_0_  --keep_best -t 1000 -i 100000 --reduced -o all_%s"%(m,m.replace('.model','')))

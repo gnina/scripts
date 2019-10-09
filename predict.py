@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import numpy as np
 import matplotlib
@@ -6,6 +6,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import glob, re, sklearn, collections, argparse, sys, os
 import sklearn.metrics
+import scipy
 import caffe
 from caffe.proto.caffe_pb2 import NetParameter
 import google.protobuf.text_format as prototxt
@@ -26,6 +27,7 @@ def write_model_file(model_file, template_file, test_file, root_folder):
 
 
 def predict(args):
+    '''Return yscore and/or y_predaff with rest of input line for each example'''
     if args.gpu >= 0:
         caffe.set_device(args.gpu)
     caffe.set_mode_gpu()
@@ -34,12 +36,13 @@ def predict(args):
     test_net = caffe.Net(test_model, args.weights, caffe.TEST)
     with open(args.input, 'r') as f:
         lines = f.readlines()
-    result, _ = evaluate_test_net(test_net, len(lines), args.rotations, 0)
+    result = evaluate_test_net(test_net, len(lines), args.rotations)
     auc = result.auc
     y_true = result.y_true
     y_score = result.y_score
     loss = result.loss
     rmsd = result.rmsd
+    pearsonr = None
     y_affinity = result.y_aff
     y_predaff = result.y_predaff
     
@@ -51,46 +54,53 @@ def predict(args):
         for (l,a) in zip(lines,y_affinity):
             lval = float(l.split()[1])
             if abs(lval-a) > 0.001:
-                print "Mismatching values",a,l
+                print("Mismatching values",a,l)
                 sys.exit(-1)
 
     if rmsd != None and auc != None:
-        output_lines = ['%f %f %s' % t for t in zip(y_score, y_predaff, lines)]
+        output_lines = [t for t in zip(y_score, y_predaff, lines)]
     elif rmsd != None:
-        output_lines = ['%f %s' % t for t in zip(y_predaff, lines)]
+        output_lines = [t for t in zip(y_predaff, lines)]
     elif auc != None:
-        output_lines = ['%f %s' % t for t in zip(y_score, lines)]
+        output_lines = [t for t in zip(y_score, lines)]
                         
 
+    #this is all awkward and should be rewritten with a smarter approach than munging strings
     if args.max_score or args.max_affinity:
         output_lines = maxLigandScore(output_lines, args.max_affinity)
-        #have to recalculate RMSD and AUC
-        labelindex = 1
-        if rmsd != None: labelindex = 2
-        affpredindex = 0
-        afflabelindex = 2
-        if auc != None: 
-            affpredindex = 1
-            afflabelindex = 3
+        #have to recalculate RMSD and AUC  
             
         if auc != None:
-            y_true = [float(line.split()[labelindex]) for line in output_lines]
-            y_score = [float(line.split()[0]) for line in output_lines]
+            y_true = [float(line[-1].split()[0]) for line in output_lines]
+            y_score = [line[0] for line in output_lines]
             auc = sklearn.metrics.roc_auc_score(y_true, y_score)
         if rmsd != None:
-            y_affinity = [float(line.split()[afflabelindex]) for line in output_lines]
-            y_predaff = [float(line.split()[affpredindex]) for line in output_lines]
+            y_affinity = [float(line[-1].split()[1]) for line in output_lines]
+            y_predaff = [line[1] for line in output_lines]
             rmsd = np.sqrt(sklearn.metrics.mean_squared_error(np.abs(y_affinity),y_predaff))
-        
-    if rmsd != None:
-        output_lines.append("# RMSD %.5f\n" % rmsd)
-    if auc != None:
-        output_lines.append("# AUC %.5f\n" % auc)
-        
+            pearsonr = scipy.stats.pearsonr(np.abs(y_affinity),y_predaff)[0]
+
     if not args.keep:
         os.remove(test_model)
-    return output_lines
+    return output_lines,auc,rmsd,pearsonr
 
+def predict_lines(args):
+    '''Return previous format of a list of strings corresponding to the output lines of a prediction file'''
+    predictions = predict(args)
+    lines = []
+    for line in predictions[0]:
+        l = ''
+        for val in line[:-1]:
+            l += '%f '%val
+        l += '| %s' % line[-1]
+        lines.append(l)
+    if predictions[1] != None:
+        lines.append('# AUC %f\n'%predictions[1])
+    if predictions[2] != None:
+        lines.append('# rmsd %f\n'%predictions[2])
+    if predictions[3] != None:
+        lines.append('# pearsonr %f\n'%predictions[3])
+    return lines
 
 def get_ligand_key(rec_path, pose_path):
     # no good naming convention, so just use the receptor name
@@ -112,7 +122,8 @@ def maxLigandScore(lines, useaff):
     #output format: score label [affinity] rec_path pose_path
     ligands = {}
     for line in lines:
-        data = line.split('#')[0].split()
+        data = line[2].split('#')[0].split()
+        data = list(line[:2])+data
         if len(data) == 4: #only score present
             score = float(data[0])
             rec_path = data[2].strip()
@@ -129,7 +140,7 @@ def maxLigandScore(lines, useaff):
             rec_path = data[4].strip()
             pose_path = data[5].strip()
         else:
-            print line
+            print(line)
 
         key = get_ligand_key(rec_path, pose_path)
         if key not in ligands or score > ligands[key][0]:
@@ -163,11 +174,12 @@ if __name__ == '__main__':
     if args.seed != None:
         caffe.set_random_seed(args.seed)
     if not args.notcalc_predictions:
-        predictions = predict(args)
+        predictions = predict_lines(args)
     else:
         with open(args.notcalc_predictions, 'r') as f:
             predictions = f.readlines()
         if args.max_score or args.max_affinity:
             predictions = maxLigandScore(predictions, args.max_affinity)
+            
     out.writelines(predictions)
 

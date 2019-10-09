@@ -83,3 +83,4 @@ ARGUMENTS
     cmd.load_cgo(obj, name, state)
 
 cmd.extend('cgo_arrow', cgo_arrow)
+

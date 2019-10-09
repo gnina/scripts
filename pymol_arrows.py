@@ -1,13 +1,17 @@
-from __future__ import print_function
+#!/usr/bin/env python3
+
+
 import sys
 import os
 import argparse
 
 
-def write_pymol_arrows(base, structs, scale, color, radius, hradius, hlength):
+def write_pymol_arrows(base, structs, scale, color, radius, hradius, hlength, threshold):
     pymol_file = base + '_arrows.pymol'
     lines = []
     arrow_objs = set()
+    t2 = threshold**2
+    s2 = scale**2
     for i, struct in enumerate(structs):
         for j, atom in enumerate(struct):
             arrow_obj = base + '_arrow_' + str(j)
@@ -28,7 +32,8 @@ def write_pymol_arrows(base, structs, scale, color, radius, hradius, hlength):
             if color:
                 line += ', color={}'.format(color)
             line += ', name={}'.format(arrow_obj)
-            lines.append(line)
+            if (dx**2 + dy**2 + dz**2)*s2 > t2:
+                lines.append(line)
     arrow_group = base + '_arrows'
     line = 'group {}, {}'.format(arrow_group, ' '.join(arrow_objs))
     lines.append(line)
@@ -109,15 +114,22 @@ def parse_args():
         arrows from an .xyz file containing atom coordinates and gradient components, \
         can also create a .pdb file where the b-factor is the gradient magnitude')
     parser.add_argument('xyz_file')
-    parser.add_argument('-s', '--scale', type=float, default=1.0)
-    parser.add_argument('-c', '--color', type=str, default='')
-    parser.add_argument('-r', '--radius', type=float, default=0.2)
-    parser.add_argument('-hr', '--hradius', type=float, default=-1)
-    parser.add_argument('-hl', '--hlength', type=float, default=-1)
+    parser.add_argument('-s', '--scale', type=float, default=1.0,
+        help='Arrow length scaling factor')
+    parser.add_argument('-c', '--color', type=str, default='',
+        help='Arrow color or pair of colors, e.g. "white black"')
+    parser.add_argument('-r', '--radius', type=float, default=0.2,
+        help='Radius of arrow body')
+    parser.add_argument('-hr', '--hradius', type=float, default=-1,
+        help='Radius of arrow head')
+    parser.add_argument('-hl', '--hlength', type=float, default=-1,
+        help='Length of arrow head')
     parser.add_argument('-p', '--pdb_file', action='store_true', default=False,
         help='Output a .pdb file where the b-factor is gradient magnitude')
     parser.add_argument('--sum', action='store_true', default=False,
         help='Sum gradient components instead of taking magnitude')
+    parser.add_argument('-t', '--threshold', type=float, default=0,
+        help="Gradient threshold for drawing arrows (using scale factor)")
     return parser.parse_args()
 
 
@@ -125,7 +137,7 @@ if __name__ == '__main__':
     args = parse_args()
     structs = read_xyz_file(args.xyz_file)
     base_name = args.xyz_file.replace('.xyz', '')
-    write_pymol_arrows(base_name, structs, args.scale, args.color, args.radius, args.hradius, args.hlength)
+    write_pymol_arrows(base_name, structs, args.scale, args.color, args.radius, args.hradius, args.hlength, args.threshold)
     if args.pdb_file:
         pdb_file = base_name + '.pdb'
         write_pdb_file(pdb_file, atoms, args.sum)

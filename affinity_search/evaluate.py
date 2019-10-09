@@ -1,6 +1,6 @@
-#!/usr/bin/env python 
+#!/usr/bin/env python3 
 
-'''Take a prefix, run predictions, and generate evaluations for crystal, bestonly, 
+'''Take a prefix and model name run predictions, and generate evaluations for crystal, bestonly, 
 and all test sets (take max affinity; if pose score is available also consider
 max pose score).
 Generates graphs and overall CV results.  Takes the prefix and (for now) assumes trial 0.
@@ -9,7 +9,7 @@ Will evaluate 100k model and best model prior to 100k, 50k and 25k
 
 import numpy as np
 import os, sys
-os.environ["GLOG_minloglevel"] = "10"
+#os.environ["GLOG_minloglevel"] = "10"
 sys.path.append("/home/dkoes/git/gninascripts/")
 sys.path.append("/net/pulsar/home/koes/dkoes/git/gninascripts/")
 
@@ -21,39 +21,20 @@ import sklearn.metrics
 import scipy.stats
 
 
-def evaluate_fold(testfile, caffemodel):
+def evaluate_fold(testfile, caffemodel, modelname, datadir='../..',hasrmsd=False):
     '''Evaluate the passed model and the specified test set.
-    Assumes the .model file is named a certain way.
     Returns tuple:
     (correct, prediction, receptor, ligand, label (optional), posescore (optional))
     label and posescore are only provided is trained on pose data
     '''
-    #figure out model name
-    m = re.search(r'_(affinity.*)\.\d_iter_\d+.caffemodel',caffemodel)
-    if not m:
-        print "Couldn't parse:",caffemodel
-    modelname = m.group(1)+".model"
     if not os.path.exists(modelname):
-        m = re.search(r'_(affinity.*)_lr\S+\.\d_iter_\d+.caffemodel',caffemodel)
-        if m:
-           modelname = m.group(1)+".model"
-        if not os.path.exists(modelname):
-           m = re.search(r'_(affinity.*)_(Adam|SGD).*\.\d_iter_\d+.caffemodel',caffemodel)
-           if m:
-              modelname = m.group(1)+".model"
-        if not os.path.exists(modelname): #try stripping off random seed
-            m = re.search(r'(affinity.*)_\d+.model',modelname)
-            if m:
-                modelname = m.group(1)+".model"
-        if not os.path.exists(modelname):
-           print modelname,"does not exist"
+       print(modelname,"does not exist")
         
     caffe.set_mode_gpu()
     test_model = 'predict.%d.prototxt' % os.getpid()
-    train.write_model_file(test_model, modelname, testfile, testfile, '')
+    train.write_model_file(test_model, modelname, testfile, testfile, datadir)
     test_net = caffe.Net(test_model, caffemodel, caffe.TEST)
     lines = open(testfile).readlines()
-
     res = None
     i = 0 #index in batch
     correct = 0
@@ -90,15 +71,37 @@ def evaluate_fold(testfile, caffemodel):
 
         #extract ligand/receptor for input file
         tokens = line.split()
-        for t in xrange(len(tokens)):
-            if tokens[t].endswith('gninatypes'):
+        rmsd = -1
+        for t in range(len(tokens)):
+            if tokens[t].lower()=='none':
+                #Flag that none as the receptor file, for ligand-only models
+                ligand=tokens[t+1]
+                
+                #we assume that ligand is rec/<ligname>
+                #set if correct, bail if not.
+                m=re.search(r'(\S+)/(\S+)gninatypes',ligand)
+                
+                #Check that the match is not none, and that ligand ends in gninatypes
+                if m is not None:
+                    receptor=m.group(1)
+                else:
+                    print('Error: none receptor detected and ligand is improperly formatted.')
+                    print('Ligand must be formatted: <rec>/<ligfile>.gninatypes')
+                    print('Bailing.')
+                    sys.exit(1)
+                break
+                
+            elif tokens[t].endswith('gninatypes'):
                 receptor = tokens[t]
                 ligand = tokens[t+1]
                 break
-        
+        if hasrmsd:
+            rmsd = float(tokens[2])
         #(correct, prediction, receptor, ligand, label (optional), posescore (optional))       
         if posescore < 0:
             ret.append((correct, prediction, receptor, ligand))
+        elif hasrmsd:
+            ret.append((correct, prediction, receptor, ligand, label, posescore, rmsd))            
         else:
             ret.append((correct, prediction, receptor, ligand, label, posescore))
             
@@ -119,7 +122,7 @@ def reduce_results(results, index):
             res[name] = r
         elif res[name][index] < r[index]:
             res[name] = r
-    return res.values()
+    return list(res.values())
 
 def analyze_results(results, outname, uniquify=None):
     '''Compute error metrics from resuls.  RMSE, Pearson, Spearman.
@@ -165,60 +168,64 @@ def analyze_results(results, outname, uniquify=None):
         return (rmse, R, S)
     
 
-
-name = sys.argv[1]
-
-allresults = []
-#for each test dataset
-for testprefix in ['all','crystal','bestonly']:
-    #find the relevant models for each fold
-    testresults = {'best25': [], 'best50': [], 'best100': [], '100k': [] }
-    for fold in [0,1,2]:
-        best25 = 0
-        best50 = 0
-        best100 = 0
-        best250 = 0
-        #identify best iteration models at each cut point for this fold
-        for model in glob.glob('%s.%d_iter_*.caffemodel'%(name,fold)):
-            m = re.search(r'_iter_(\d+).caffemodel', model)
-            inum = int(m.group(1))
-            if inum < 25000 and inum > best25:
-                best25 = inum
-            if inum < 50000 and inum > best50:
-                best50 = inum
-            if inum < 100000 and inum > best100:
-                best100 = inum
-            if inum < 250000 and inum > best250:
-                best250 = inum                
-        #evalute this fold
-        testfile = '../types/%s_0.5_0_test%d.types' % (testprefix,fold)
-        if best25 > 0: testresults['best25'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best25))
-        if best50 > 0: testresults['best50'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best50))
-        if best100 > 0: testresults['best100'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best100))
-        if os.path.exists('%s.%d_iter_%d.caffemodel' % (name,fold,100000)): #100k
-            testresults['100k'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,100000))
-            last = '100k'
-        if os.path.exists('%s.%d_iter_%d.caffemodel' % (name,fold,250000)): #possibility that the 100k model was output even if went to 250k
-            if best250 > 0: testresults['best250'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best250))
-            testresults['250k'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,250000))
-            last = '250k'
+if __name__ == '__main__':
+    if len(sys.argv) <= 4:
+        print("Need caffemodel prefix,  modelname, output name and test prefixes (which should include _<slicenum>_ at end)")
+        sys.exit(1)
         
-    for n in testresults.keys():
-        if len(testresults[n]) != len(testresults[last]) or len(testresults[last]) == 0:
-            print "Missing data with",n
-        if len(testresults[n]) == 0:
-            continue
-        if testprefix == 'all':
-            if len(testresults[n][0]) == 6:
-                allresults.append( ('all_pose', n) + analyze_results(testresults[n],'all_pose_'+name+'_'+n,'pose'))
-            allresults.append( ('all_affinity', n) + analyze_results(testresults[n],'all_affinity_'+name+'_'+n,'affinity'))
-        else:    
-            allresults.append( (testprefix, n) + analyze_results(testresults[n], testprefix+'_'+name+'_'+n) )
-     
-if len(sys.argv) > 2:
-    out = open(sys.argv[2],'w')
-else:
-    out = sys.stdout
+    name = sys.argv[1]
+    modelname = sys.argv[2]
+    out = open(sys.argv[3],'w')
 
-for a in allresults:
-    out.write(' '.join(map(str,a))+'\n')
+    allresults = []
+    last = None
+    #for each test dataset
+    for testprefix in sys.argv[4:]:
+        m = re.search('([^/ ]*)_(\d+)_$', testprefix)
+        print(m,testprefix)
+        if not m:
+            print(testprefix,"does not end in slicenum")
+        slicenum = int(m.group(2))
+        testname = m.group(1)
+        #find the relevant models for each fold
+        testresults = {'best25': [], 'best50': [], 'best100': [], 'last': [], 'best250': [] }
+        for fold in [0,1,2]:
+            best25 = 0
+            best50 = 0
+            best100 = 0
+            best250 = 0
+            lastm = 0
+            #identify best iteration models at each cut point for this fold
+            for model in glob.glob('%s.%d_iter_*.caffemodel'%(name,fold)):
+                m = re.search(r'_iter_(\d+).caffemodel', model)
+                inum = int(m.group(1))
+                if inum < 25000 and inum > best25:
+                    best25 = inum
+                if inum < 50000 and inum > best50:
+                    best50 = inum
+                if inum < 100000 and inum > best100:
+                    best100 = inum
+                if inum < 250000 and inum > best250:
+                    best250 = inum
+                if inum > lastm:
+                    lastm = inum
+            #evalute this fold
+            testfile = '../types/%stest%d.types' % (testprefix,fold)
+            #todo, avoid redundant repetitions
+            if best25 > 0: testresults['best25'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best25), modelname)
+            if best50 > 0: testresults['best50'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best50), modelname)
+            if best100 > 0: testresults['best100'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best100), modelname)
+            if best250 > 0: testresults['best250'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,best250), modelname)
+            if lastm > 0: testresults['last'] += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,lastm), modelname)
+
+            
+        for n in list(testresults.keys()):
+            if len(testresults[n]) == 0:
+                continue
+            if len(testresults[n][0]) == 6:
+                allresults.append( ('%s_pose'%testname, n) + analyze_results(testresults[n],('%s_pose_'%testname)+name+'_'+n,'pose'))
+            allresults.append( ('%s_affinity'%testname, n) + analyze_results(testresults[n],('%s_affinity_'%testname)+name+'_'+n,'affinity'))
+
+         
+    for a in allresults:
+        out.write(' '.join(map(str,a))+'\n')

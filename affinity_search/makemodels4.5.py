@@ -231,7 +231,7 @@ def create_unit(num, ksize, filler, fraction):
 def makemodel(ksize, filler, fraction):
     m = modelstart
     depth = 3
-    for i in xrange(1,depth+1):
+    for i in range(1,depth+1):
         m += create_unit(i, ksize, filler, fraction)
     m += endmodel.replace('LASTCONV','unit%d_conv1'%depth)
     
@@ -254,4 +254,4 @@ for filler in ['radial','gaussian', 'positive_unitball', 'uniform', 'xavier', 'm
         
             
 for m in models:
-    print "train.py -m %s -p ../types/all_0.5_0_  --keep_best -t 1000 -i 100000 --reduced -o all_%s"%(m,m.replace('.model',''))
+    print("train.py -m %s -p ../types/all_0.5_0_  --keep_best -t 1000 -i 100000 --reduced -o all_%s"%(m,m.replace('.model','')))

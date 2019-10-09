@@ -246,7 +246,7 @@ layer {
 
 def makemodel(**kwargs):
     m = basemodel
-    for (k,v) in kwargs.iteritems():
+    for (k,v) in kwargs.items():
         m = m.replace(k,str(v))
     return m
     
@@ -271,4 +271,4 @@ for gap in [0,1,2]:
             out.write(model)
             
 for m in models:
-    print "train.py -m %s -p ../types/all_0.5_0_ --keep_best -t 1000 -i 100000 --reduced -o all_%s"%(m,m.replace('.model',''))
+    print("train.py -m %s -p ../types/all_0.5_0_ --keep_best -t 1000 -i 100000 --reduced -o all_%s"%(m,m.replace('.model','')))

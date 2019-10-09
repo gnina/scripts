@@ -35,7 +35,7 @@ cat pdbbind.train cnnmin.types cnnmin2.types > affinity_search/all.types
 
 #Create new train/test sets:
 
-~/git/gninascripts/compute_seqs.py --pdbfiles pdbinfo --out pdb.seqs
+~/git/gninascripts/compute_seqs.py --q pdbinfo --out pdb.seqs
 # distribute the row computation
 ~/git/gninascripts/compute_row.py --pdbseqs pdb.seqs -r 0 --out seqdist/row.0
 ~/git/gninascripts/combine_rows.py seqrow.*
@@ -143,6 +143,7 @@ train.py -m affinity_g0_p1_rec1_astrat0_b1_h4.model -p extrema_0.5_0_ --keep_bes
 #Plan: 
 # iteration1: vary training approach (training set, poses, rec strat, aff strat)
 # iteration2: build on that (presumably all,p1,rec1,strat0) with loss modifications: h[1,2,4,6], penalty[0,1,2], gap[0,1,2], rankloss??
+
 # iteration3: activation functions and normalizations
 
 cd iteration1
@@ -280,3 +281,396 @@ cp ../iteration2/affinity_g1_p0_h0.model .
 cp ../iteration3/affinity_batch_relu.model .
 cp ../iteration6/affinity_0.250_conv4_pool1_grouped0_func1_swap0.model .
 #cmds only vary seed
+
+#check3
+different training protocols = dynamic fixed seems better
+
+#iteration 7 - want to train a more continuous model, try elu/lrn/no pool/32-32-32 with 3/5/7 conv kernels of stride 2
+
+for w in 32 64; do for sz in 3 5 7; do ../makemodel.py  --pool1_size 0 --pool2_size 0 --pool3_size 0 --conv1_func ELU --conv1_norm LRN --conv1_size $sz --conv1_stride 2 --conv1_width $w  --conv2_func ELU --conv2_norm LRN --conv2_size $sz --conv2_stride 2 --conv2_width $w  --conv3_func ELU --conv3_norm LRN --conv3_size $sz --conv3_stride 2 --conv3_width $w > affinity_${sz}_${w}.model; done; done
+
+for i in *.model; do echo train.py -m $i -p ../types/all_0.5_0_ --keep_best -t 1000 -i 100000 --reduced -d ../.. -o all_${i%.model}; done
+
+
+#check4
+test single changes towards more continuous affinity_batch_relu model
+affinity_batch_elu - replace ReLu with ELU
+affinity_batch_relu_ave - replace max with ave pooling
+affinity_batch_relu_conv5 - replace initial max with strided conv
+affinity_batch_relu_conv5g - replace initial max with strided grouped conv
+
+for m in *.model; do for i in {0..4}; do  echo train.py -m $m -p ../types/all_0.5_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 100000 --reduced -o ${m%.model}_$i --seed $i --dynamic --lr_policy fixed --step_when 5; done; done > cmds
+
+
+#iteration8
+I'm going to rebase around affinity_batch_relu_ave
+***change training regime to use distance filtered poses (ac6) and random translate of 6, max iters of 250k***
+affinity_batch_relu_ave.model - baseline (with new training protocol)
+affinity_relu_ave.model - remove batch
+affinity_batch_relu_allconv5.model - no pooling layers, all ksize5, stride 2 convolutions
+affinity_batch_relu_ave_conv5.model - replace first pool with conv5+relu
+affinity_batch_relu_ave_conv5_64.model - replace first pool with 64 wide conv5+relu
+
+#also experiment more with learning rate
+
+for m in *.model; do for i in {0..4}; do  echo train.py -m $m -p ../types/all_wc6_0.5_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_$i --seed $i --dynamic --lr_policy fixed --step_when 5; done; done > cmds
+for i in {0..4}; do  echo train.py -m affinity_batch_relu_ave.model -p ../types/all_wc6_0.5_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_when10_$i --seed $i --dynamic --lr_policy fixed --step_when 10; done >> cmds
+for i in {0..4}; do  echo train.py -m affinity_batch_relu_ave.model -p ../types/all_wc6_0.5_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_end5_$i --seed $i --dynamic --lr_policy fixed --step_end_cnt 5 --step_when 5 ; done >> cmds
+for i in {0..4}; do  echo train.py -m affinity_batch_relu_ave.model -p ../types/all_wc6_0.5_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_when10_end5_$i --seed $i --dynamic --lr_policy fixed --step_end_cnt 5 --step_when 10 ; done >> cmds
+ sort -n -k17 cmds -o cmds
+
+#
+
+awk '{print "../evaluate.py " $15,$3,$15".summary"}' cmds > evals
+
+
+#conclusions
+Batch normalization is helpful
+--step_when 10 needs longer to train, has best single result, but not all better
+not a big difference with end_cnt 5 vs 3 - in many cases "best" iteration is the same
+allconv5 had best affinity, but bimodal grouping
+both conv5s were better at pose selection
+
+times
+affinity_batch_relu_allconv5.model  Average Forward-Backward: 587.946 ms.
+affinity_batch_relu_ave_conv5_64.model Average Forward-Backward: 1015.44 ms. 
+affinity_batch_relu_ave_conv5.model  Average Forward-Backward: 672.508 ms.
+affinity_batch_relu_ave.model Average Forward-Backward: 193.234 ms.
+affinity_relu_ave.model Average Forward-Backward: 171.448 ms
+
+altnerative conv5 models:
+stride 4: Average Forward-Backward: 127.999 ms
+stride 4, size 7: Average Forward-Backward: 236.682 ms.
+stride 2, size 7: Average Forward-Backward: 1397.7 ms.
+output 16: Average Forward-Backward: 635.351 ms.
+stride 4, size 7, output 64: Average Forward-Backward: 266.208 ms.
+
+#iteration8.5
+based on pulkit's results, evaluate training baseline w/clip_gradients and larger weight_decay
+cp ../iteration8/affinity_batch_relu_ave.model .
+for m in *.model; do for i in {0..4}; do  echo train.py -m $m -p ../types/all_wc6_0.5_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_$i --seed $i --dynamic --lr_policy fixed --step_when 5 ; done; done > cmds
+for m in *.model; do for i in {0..4}; do  echo train.py -m $m -p ../types/all_wc6_0.5_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_cgwd_$i --seed $i --dynamic --lr_policy fixed --step_when 5 --clip_gradients 10 --weight_decay 0.005; done; done >> cmds
+for m in *.model; do for i in {0..4}; do  echo train.py -m $m -p ../types/all_wc6_0.5_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_cg_$i --seed $i --dynamic --lr_policy fixed --step_when 5 --clip_gradients 10 ; done; done >> cmds
+
+
+weight_decay/clip_gradients does not improve median test accuracy (makes it worse, but not statistically sig)
+as expected, train on train gets worse
+surprisingly, in some cases converge to the _exact same values_!!?
+clip_gradients by itself generally improves performance and reduces variance
+
+
+#iteration9
+The goal of this iteration is to figure out if we can get away with a stride 4 convolution
+in the first layer instead of pooling.
+5 vs 7 kernel size
+wider outputs?
+
+for double in 0 1
+do
+for w1 in 16 32 64
+do
+for w in 32 64
+do 
+ for sz in 5 7; #first layer only
+   do ../makemodel.py  --pool1_size 0   --conv1_size $sz --conv1_stride 4 --conv1_width $w1 --conv1_norm BatchNorm \
+    --pool2_type AVE --conv2_norm BatchNorm  --conv2_size 3 --conv2_stride 1 --conv2_width $w \
+    --pool3_type AVE --conv3_norm BatchNorm  --conv3_size 3 --conv3_stride 1 --conv3_width $(($w*($double+1))) \
+    --pool4_type AVE --conv4_norm BatchNorm  --conv4_size 3 --conv4_stride 1 --conv4_width $(($w*($double+1)*($double+1))) \
+     > affinity_${sz}_${w1}_${w}_${double}.model
+   done; 
+done
+done
+done
+cp ../iteration8/affinity_batch_relu_ave.model .  #rerun baseline
+
+
+#default is now step_when 5 and clip_gradients 10
+for m in *.model; do for i in {0..4}; do  echo train.py -m $m -d ../.. -p ../types/all_wc6_0.5_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_$i --seed $i --dynamic --lr_policy fixed ; done; done > cmds
+
+
+bate_relu_ave  does much better at pose selectio (significantly so), with less variance
+definite trend that models with more parameters do better at pose selection
+less clear trend with affinity prediciton - nothing significantly (p < 0.001) better, 
+but almost all the new models would probably be better if they could drop the worse point
+seed 0 is always worse with the new models??  are the other splits not as conservative??
+
+looking only at the worse performer (seed 0 presumably), the best affinity prediciton models are (R > 0.57)
+5_32_64_1
+batch_relue_ave
+5_32_32_0
+5_16_64_0
+5_32_32_1
+5_16_32_0
+
+
+the best models by top are the 7 kernels, or 5_64, but the are 62-64% vs batch_relue_ave's 71.7%
+5_32_32_1  is the best (61.8%) of the good affinity models
+seems like striding by 4 hurts pose selection - need good resolution
+These models have one additional round of dimensionality reduction, need evaluate that effect
+Also want to try dropout.
+D'OH!  makemodel files had different affinitylyaer parames AND different random translate
+
+#iteration 9.1
+
+Reevalute above with random_translate at 6 and using the same affinity loss params
+Evaluate batch_relu with alt affinity loss params
+Skip some values.
+Note I modify makemodel to random_translate 6
+
+sz=5
+for double in 0 1
+do
+for w1 in 32 64
+do
+for w in 32 64
+do 
+    ../makemodel.py  --pool1_size 0   --conv1_size $sz --conv1_stride 4 --conv1_width $w1 --conv1_norm BatchNorm \
+    --pool2_type AVE --conv2_norm BatchNorm  --conv2_size 3 --conv2_stride 1 --conv2_width $w \
+    --pool3_type AVE --conv3_norm BatchNorm  --conv3_size 3 --conv3_stride 1 --conv3_width $(($w*($double+1))) \
+    --pool4_type AVE --conv4_norm BatchNorm  --conv4_size 3 --conv4_stride 1 --conv4_width $(($w*($double+1)*($double+1))) \
+    --loss_pseudohuber 0 --loss_gap 1 \
+     > affinity_phg_${sz}_${w1}_${w}_${double}.model
+done
+done
+done
+
+#the following should match affinity_batch_relue
+../makemodel.py --conv1_norm BatchNorm --conv2_norm BatchNorm --conv3_norm BatchNorm --pool1_type AVE --pool2_type AVE --pool3_type AVE --conv1_width 32 --conv2_width 32 --conv3_width 32 --loss_pseudohuber 0 --loss_gap 1  > relu_batch.model
+#with default affinity loss
+../makemodel.py --conv1_norm BatchNorm --conv2_norm BatchNorm --conv3_norm BatchNorm --pool1_type AVE --pool2_type AVE --pool3_type AVE --conv1_width 32 --conv2_width 32 --conv3_width 32 > relu_batch_nphg.model
+cp relu_batch.model relu_batch_t2.model  #edit to random_translate 2
+
+
+The different affinity parameters don't seem to matter much - maybe a bit more variance. 
+Slightly better affinity prediction with translate=2
+stride 4 definitely hurts pose selection
+Not a lot of different on the conv models - 32_32_0 might be weaker, but also less prone to overfitting?
+
+==========================
+CREATE NEW TRAINING SPLITS TAKING LIGAND SIM INTO ACCOUNT
+for i in {0..4}
+ do
+ ~/git/gninascripts/clustering.py -i types/all_wc6_all.types  -s 0.5 -v -d .. -o types/all_wlig_${i}_ --cpickle pdbinfowlig.pickle --randomize $i
+done
+
+#in iteration9.1, for comparison
+for m in relu_batch.model  affinity_phg_5_32_32_1.model ; do for i in {0..4}; do  echo train.py -m $m -d ../.. -p ../types/all_wlig_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_wlig_$i --seed $i --dynamic --lr_policy fixed ; done; done >> cmds
+
+
+
+====================
+FOR CYRING OUT LOUD - I was always evaluationg using slice 0
+
+
+ITERATION 10
+
+Will explore with 5_32_32_1.  
+-Try removing pool into first 3^3 conv layer
+-set to stride 2
+-use pseudohuber false, gap1
+
+Regular batch_relu
+-use pseudohuber true, gap 0, delta 4
+
+w1=32
+sz=5
+w=32
+double=1
+../makemodel.py  --pool1_size 0   --conv1_size $sz --conv1_stride 4 --conv1_width $w1 --conv1_norm BatchNorm \
+    --pool2_size 0 --conv2_norm BatchNorm  --conv2_size 3 --conv2_stride 1 --conv2_width $w \
+    --pool3_type AVE --conv3_norm BatchNorm  --conv3_size 3 --conv3_stride 1 --conv3_width $(($w*($double+1))) \
+    --pool4_type AVE --conv4_norm BatchNorm  --conv4_size 3 --conv4_stride 1 --conv4_width $(($w*($double+1)*($double+1))) \
+     > affinity_${sz}_${w1}_${w}_${double}_nopool.model
+     
+../makemodel.py  --pool1_size 0   --conv1_size $sz --conv1_stride 4 --conv1_width $w1 --conv1_norm BatchNorm \
+    --pool2_type AVE --conv2_norm BatchNorm  --conv2_size 3 --conv2_stride 1 --conv2_width $w \
+    --pool3_type AVE --conv3_norm BatchNorm  --conv3_size 3 --conv3_stride 1 --conv3_width $(($w*($double+1))) \
+    --pool4_type AVE --conv4_norm BatchNorm  --conv4_size 3 --conv4_stride 1 --conv4_width $(($w*($double+1)*($double+1))) \
+     > affinity_${sz}_${w1}_${w}_${double}.model
+          
+../makemodel.py  --pool1_size 0   --conv1_size $sz --conv1_stride 2 --conv1_width $w1 --conv1_norm BatchNorm \
+    --pool2_type AVE --conv2_norm BatchNorm  --conv2_size 3 --conv2_stride 1 --conv2_width $w \
+    --pool3_type AVE --conv3_norm BatchNorm  --conv3_size 3 --conv3_stride 1 --conv3_width $(($w*($double+1))) \
+    --pool4_type AVE --conv4_norm BatchNorm  --conv4_size 3 --conv4_stride 1 --conv4_width $(($w*($double+1)*($double+1))) \
+     > affinity_${sz}_s2_${w1}_${w}_${double}.model     
+     
+../makemodel.py --conv1_norm BatchNorm --conv2_norm BatchNorm --conv3_norm BatchNorm  > default_batch.model
+../makemodel.py --conv1_norm BatchNorm --conv2_norm BatchNorm --conv3_norm BatchNorm  --loss_gap 1 > default_batchgap.model
+
+for m in *.model  
+do 
+ for i in {0..4}
+    do  
+     echo train.py -m $m -d ../.. -p ../types/all_wlig_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_wlig_$i --seed $i --dynamic --lr_policy fixed ; 
+     done; 
+done > cmds
+awk '{print "../evaluate.py " $17,$3,$17".summary",$7}' cmds > evals
+
+
+s2 does the best for pose (but only slightly better than default), 5_32_32_1 does poorly with pose - basically need more resolution?
+for affinity, all pretty similar, gap may result in more variability?
+5_32_32_1 had both best and worse affinity point
+defaults are generaly better for affinity
+
+
+ITERATION 11
+
+Stick with defaults, evaluate jitter, different atom type maps
+../makemodel.py --conv1_norm BatchNorm --conv2_norm BatchNorm --conv3_norm BatchNorm  > default_batch.model
+../makemodel.py --conv1_norm BatchNorm --conv2_norm BatchNorm --conv3_norm BatchNorm --jitter 0.1 > jitter_0.1.model
+../makemodel.py --conv1_norm BatchNorm --conv2_norm BatchNorm --conv3_norm BatchNorm --jitter 1.0 > jitter_1.model  #this should be too big?
+
+../makemodel.py --conv1_norm BatchNorm --conv2_norm BatchNorm --conv3_norm BatchNorm  > default_newmap.model
+#manually edit
+default_newrec.model  - rec only
+default_newlig.model  - lig only
+
+../makemodel.py --conv1_norm BatchNorm --conv2_norm BatchNorm --conv3_norm BatchNorm --ligmap simplelig --recmap simplerec > default_simplemap.model
+
+
+for m in *.model  ; do   for i in {0..4};     do        echo train.py -m $m -d ../.. -p ../types/all_wlig_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_wlig_$i --seed $i --dynamic --lr_policy fixed ;       done;  done > cmds
+awk '{print "../evaluate.py " $17,$3,$17".summary",$7}' cmds > evals
+
+
+ITERATION 12
+
+Based off single axis grid search, it looks like pose scoring would like a higher capacity model
+ - less pooling
+ - wider convolutional outputs
+The affinity model doesn't seem to benefit from these.  In fact, it prefers smaller widths, but larger kernels.
+My hypothesis is the extra model capacity resuls in overfitting for affinity prediction (because there is less data)
+so we may be able to rectify this with a small hidden layer or a small final convolution
+
+Additionally, setting the middle convolution to kernel size 1 was beneficial, suggesting we try a network in network architecture.
+
+../makemodel.py --ligmap simplelig --recmap simplerec > default.model
+../makemodel.py --ligmap simplelig --recmap simplerec --pool1_size 0 --conv1_width 256 --conv2_width 512 > highcap_np_256_512_128.model
+
+../makemodel.py --ligmap simplelig --recmap simplerec  --conv1_width 256 --conv2_width 512 > highcap_wp_256_512_128.model
+../makemodel.py --ligmap simplelig --recmap simplerec  --conv1_width 256 --conv2_width 512 --fc_affinity_hidden 32 > highcap_wp_256_512_128_a32.model
+../makemodel.py --ligmap simplelig --recmap simplerec  --conv1_width 256 --conv2_width 512 --fc_affinity_hidden 16 > highcap_wp_256_512_128_a16.model
+../makemodel.py --ligmap simplelig --recmap simplerec  --conv1_width 256 --conv2_width 512 --fc_affinity_hidden 16 --pool1_size 0 > highcap_np_256_512_128_a16.model
+
+../makemodel.py --ligmap simplelig --recmap simplerec --pool1_size 0 --conv1_width 256 --conv2_width 512 --conv3_width 8 > highcap_np_256_512_8.model
+../makemodel.py --ligmap simplelig --recmap simplerec  --conv1_width 256 --conv2_width 512 --conv3_width 8 > highcap_wp_256_512_8.model
+
+#netinnet
+../makemodel.py --ligmap simplelig --recmap simplerec --pool2_size 0 --conv2_size 1 --conv2_width 32 --conv3_width 64 --conv4_width 64 --conv4_size 1 --conv5_width 128 --pool5_size 2 > netinnet.model
+
+#the high capacity no pool models were too large
+../makemodel.py --ligmap simplelig --recmap simplerec --pool1_size 0 --conv1_width 256 --conv2_width 256 > highcap_np_256_256_128.model
+../makemodel.py --ligmap simplelig --recmap simplerec  --conv1_width 256 --conv2_width 256 --fc_affinity_hidden 16 --pool1_size 0 > highcap_np_256_256_128_a16.model
+
+
+for m in *.model  ; do   for i in {0..4};     do        echo train.py -m $m -d ../.. -p ../types/all_wlig_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_wlig_$i --seed $i --dynamic --lr_policy fixed ;       done;  done > cmds
+awk '{print "../evaluate.py " $17,$3,$17".summary",$7}' cmds > evals
+
+Try reducing affinity scale parameter: highcap_wp_256_512_128_scale.model
+Also, smaller last conv:
+#ALERT - This was a buggy commandline
+../makemodel.py --ligmap simplelig --recmap simplerec  --conv1_width 256 --conv2_width 512 --conv2_width 32 > highcap_wp_256_512_32.model
+
+
+The higher capacity models outperform at pose selection, even with pooling.  Net in net does okay as well.
+Interestingly, bottlenecking the affinity side sometimes adversely affects pose selection (maybe helps, or doesn't hurt, affinity).
+Net-in-net did better on pose and about the same on affinity, but had higher variance.
+
+
+#followup_8_07
+Reevaluating some models from hyperparameter search as well as modifications.
+aff.model - best model of affinity pred (slooow)
+default.model - default, for yet another baseline
+faster_nin.model - the net-in-net model that had  best combined performance of models < 100ms
+faster_nin_complete.model - try an atom mapping that is complete
+faster_nin_weightedaff2.0.model - affinity weighting in loss layer with stdcut of 2.0
+faster_nin_weightedaff3.0.model - w/3.0
+top.model - best model for pose selection (slow)
+
+for m in *.model  ; do   for i in {0..4};     do        echo train.py -m $m -d ../.. -p ../types/all_wlig_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_wlig_$i --seed $i --dynamic --lr_policy fixed ;       done;  done > cmds
+awk '{print "../evaluate.py " $17,$3,$17".summary",$7}' cmds > evals
+
+#second followup_8_08
+stratified
+avepool 
+avepool+elu
+no pool1
+no pool1 + additional conv
+
+../makemodel.py --ligmap simplelig --recmap simplerec --pool2_size 0 --conv2_size 1 --conv2_width 32 --conv3_width 64 --pool4_size 0 --conv4_size 1 --conv4_width 64 --pool5_size 2 --conv5_width 128 --stratify_affinity 1 > nin_strat.model
+../makemodel.py --ligmap simplelig --pool1_type AVE --pool2_type AVE --pool3_type AVE --pool4_type AVE --pool5_type AVE --recmap simplerec --pool2_size 0 --conv2_size 1 --conv2_width 32 --conv3_width 64 --pool4_size 0 --conv4_size 1 --conv4_width 64 --pool5_size 2 --conv5_width 128  > nin_ave.model
+../makemodel.py --conv1_func ELU --conv2_func ELU --conv3_func ELU --conv4_func ELU --conv5_func ELU --ligmap simplelig --pool1_type AVE --pool2_type AVE --pool3_type AVE --pool4_type AVE --pool5_type AVE --recmap simplerec --pool2_size 0 --conv2_size 1 --conv2_width 32 --conv3_width 64 --pool4_size 0 --conv4_size 1 --conv4_width 64 --pool5_size 2 --conv5_width 128  > nin_aveelu.model
+
+../makemodel.py --ligmap simplelig --recmap simplerec --pool1_size 0 --pool2_size 0 --conv2_size 1 --conv2_width 32 --conv3_width 64 --pool4_size 0 --conv4_size 1 --conv4_width 64 --pool5_size 2 --conv5_width 128  > nin_nopool.model
+
+#manually construct 6th conv
+
+for m in *.model  ; do   for i in {0..4};     do        echo train.py -m $m -d ../.. -p ../types/all_wlig_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_wlig_$i --seed $i --dynamic --lr_policy fixed ;       done;  done > cmds
+awk '{print "../evaluate.py " $17,$3,$17".summary",$7}' cmds > evals
+
+
+TODO
+scan conv output for aff and top and nin
+
+
+#followup_8_11
+
+ave pooling and the complete atom map were better, so combine
+same w/o pseudohuber
+
+ ../makemodel.py --ligmap completelig --pool1_type AVE --pool2_type AVE --pool3_type AVE --pool4_type AVE --pool5_type AVE --recmap completerec --pool2_size 0 --conv2_size 1 --conv2_width 32 --conv3_width 64 --pool4_size 0 --conv4_size 1 --conv4_width 64 --pool5_size 2 --conv5_width 128  > nin_ave_complete.model 
+
+ ../makemodel.py --ligmap completelig --pool1_type AVE --pool2_type AVE --pool3_type AVE --pool4_type AVE --pool5_type AVE --recmap completerec --pool2_size 0 --conv2_size 1 --conv2_width 32 --conv3_width 64 --pool4_size 0 --conv4_size 1 --conv4_width 64 --pool5_size 2 --conv5_width 128 --loss_pseudohuber 0 > nin_ave_complete_nohuber.model
+
+
+for m in *.model  ; do   for i in {0..4};     do        echo train.py --checkpoint -m $m -d ../.. -p ../types/all_wlig_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_wlig_$i --seed $i --dynamic --lr_policy fixed ;       done;  done > cmds
+awk '{print "../evaluate.py " $18,$4,$18".summary",$8}' cmds > evals
+
+#followup_8_12
+
+remove pool from nin_ave_complete_nohuber.model
+
+ ../makemodel.py --ligmap completelig --pool1_size 0 --pool2_type AVE --pool3_type AVE --pool4_type AVE --pool5_type AVE --recmap completerec --pool2_size 0 --conv2_size 1 --conv2_width 32 --conv3_width 64 --pool4_size 0 --conv4_size 1 --conv4_width 64 --pool5_size 2 --conv5_width 128 --loss_pseudohuber 0 > nin_ave_complete_nohuber_nopool.model
+
+for m in *.model  ; do   for i in {0..4};     do        echo train.py --checkpoint -m $m -d ../.. -p ../types/all_wlig_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_wlig_$i --seed $i --dynamic --lr_policy fixed ;       done;  done > cmds
+awk '{print "../evaluate.py " $18,$4,$18".summary",$8}' cmds > evals
+
+
+
+#default2018
+
+#start training on full set
+
+../makemodel.py --ligmap completelig --pool1_type AVE --pool2_type AVE --pool3_type AVE --pool4_type AVE --pool5_type AVE --recmap completerec --pool2_size 0 --conv2_size 1 --conv2_width 32 --conv3_width 64 --pool4_size 0 --conv4_size 1 --conv4_width 64 --pool5_size 2 --conv5_width 128 --loss_pseudohuber 0 > default2018_lo.model
+for m in *.model  ; do   for i in {0..4};     do        echo train.py --checkpoint -m $m -d ../.. -p ../types/all_wlig_all_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_wlig_$i --seed $i --dynamic --lr_policy fixed ;       done;  done > cmds
+
+# REPLACED with re-evals with all complete
+
+#rand2018
+
+../makemodel.py --ligmap completelig --pool1_type AVE --pool2_type AVE --pool3_type AVE --pool4_type AVE --pool5_type AVE --recmap completerec --pool2_size 0 --conv2_size 1 --conv2_width 32 --conv3_width 64 --pool4_size 0 --conv4_size 1 --conv4_width 64 --pool5_size 2 --conv5_width 128 --loss_pseudohuber 0 > default2018_lo.model
+for m in *.model  ; do   for i in {0..4};     do        echo train.py --checkpoint -m $m -d ../.. -p ../types/rand_${i}_ --base_lr 0.01 --keep_best -t 1000 -i 250000 --reduced -o ${m%.model}_rand_$i --seed $i --dynamic --lr_policy fixed ;       done;  done > cmds
+awk '{print "../evaluate.py " $18,$4,$18".summary",$8}' cmds > evals
+
+
+#crossdockign from paul
+
+-change cache in models, add hasrmsd
+
+for i in {0..4}
+do
+for m in *.model  ; do   
+for n in {0..2};     do        
+ echo train.py -m $m -d /net/pulsar/home/koes/paf46/Research/CrossDocking_script/PocketomeOutput/PocketomeGenCross_Output -p crosstypes/probis_3_5_crystal_fn${i}_memsave_ --base_lr 0.01 --keep_best -t 1000 -i 500000 --reduced -o ${m%.model}_cross_$i --seed $i --dynamic --lr_policy fixed -n $n --skip_full 
+done;   done;  done > cmds
+
+
+awk '{print "./evaluate_cross.py", $5,$17, $3, $17,$7}' cmds  | uniq  > evals
+
+awk '{print "./evaluate_cross.py", $5,$17, $3, $17"_quick",$7"downsampled"}' cmds  | uniq  > evalsquick
+
+
+qsub -q dept_gpu_12GB -t 1-3,10-15 run.pbs 
+qsub -q dept_gpu -t 4-9 run.pbs 
+qsub -t 16-21,28-33,40-45,52-57 -q any_gpu run.pbs
+qsub -t 22-27,34-39,46-51,58-60 -q dept_gpu run.pbs
+

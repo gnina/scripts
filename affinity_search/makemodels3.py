@@ -282,4 +282,4 @@ for norm in sorted(norms.keys()):
             
 for m in models:
     for lr in [0.001, 0.01, 0.1]:
-        print "train.py -m %s -p ../types/all_0.5_0_ --base_lr %f --keep_best -t 1000 -i 100000 --reduced -o all_%s_lr%.3f"%(m,lr,m.replace('.model',''),lr)
+        print("train.py -m %s -p ../types/all_0.5_0_ --base_lr %f --keep_best -t 1000 -i 100000 --reduced -o all_%s_lr%.3f"%(m,lr,m.replace('.model',''),lr))

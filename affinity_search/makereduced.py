@@ -18,15 +18,15 @@ for line in open(sys.argv[1]):
         
 if len(bestlig) == 0:
     for line in open(sys.argv[1]):
-        print line.rstrip()
+        print(line.rstrip())
 else:
     diddecoy = set()
     for line in open(sys.argv[1]):
         vals = line.rstrip().split()
         rec = vals[2]
         if rec in bestlig and vals[3] == bestlig[rec]:
-            print line.rstrip()
+            print(line.rstrip())
         elif int(vals[0]) == 0 and rec not in diddecoy:
             diddecoy.add(rec)
-            print line.rstrip()
+            print(line.rstrip())
     
