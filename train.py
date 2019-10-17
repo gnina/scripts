@@ -230,8 +230,12 @@ def evaluate_test_net(test_net, n_tests, n_rotations):
     if result.y_aff and result.y_predaff:
         y_predaff_true = np.array(result.y_predaff)[np.array(result.y_aff)>0]#filter_actives(result.y_predaff, result.y_true)
         y_aff_true = np.array(result.y_aff)[np.array(result.y_aff)>0]#filter_actives(result.y_aff, result.y_true)
-            
-        result.rmsd = np.sqrt(sklearn.metrics.mean_squared_error(y_aff_true, y_predaff_true))
+        
+        if y_aff_true.shape[0] == 0:
+            print("Warning: no true affinities, setting rmsd=-999.0")
+            result.rmsd=-999.0
+        else:
+            result.rmsd = np.sqrt(sklearn.metrics.mean_squared_error(y_aff_true, y_predaff_true))
 
     if any(rmsd_pred):
         result.rmsd_rmse = np.sqrt(sklearn.metrics.mean_squared_error(result.rmsd_pred,result.rmsd_true))
