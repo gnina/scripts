@@ -10,7 +10,7 @@ from pymol import cmd, cgo, CmdException
 
 
 def cgo_arrow(atom1='pk1', atom2='pk2', radius=0.5, gap=0.0, hlength=-1, hradius=-1,
-              color='blue red', name=''):
+              color='blue red', name='', state=0):
     '''
 DESCRIPTION
 
@@ -33,11 +33,14 @@ ARGUMENTS
     color = string: one or two color names {default: blue red}
 
     name = string: name of CGO object
+
+    state = int: arrow state index
     '''
     from chempy import cpv
 
     radius, gap = float(radius), float(gap)
     hlength, hradius = float(hlength), float(hradius)
+    state = int(state)
 
     try:
         color1, color2 = color.split()
@@ -69,13 +72,15 @@ ARGUMENTS
 
     xyz3 = cpv.add(cpv.scale(normal, hlength), xyz2)
 
-    obj = [cgo.CYLINDER] + xyz1 + xyz3 + [radius] + color1 + color2 + \
-          [cgo.CONE] + xyz3 + xyz2 + [hradius, 0.0] + color2 + color2 + \
-          [1.0, 0.0]
+    obj = [cgo.CONE] + xyz3 + xyz2 + [hradius, 0.0] + color2 + color2 + [1.0, 0.0]
+
+    if cpv.distance(xyz1, xyz2) > hlength: # draw cylinder
+        obj += [cgo.CYLINDER] + xyz1 + xyz3 + [radius] + color1 + color2
 
     if not name:
         name = cmd.get_unused_name('arrow')
 
-    cmd.load_cgo(obj, name)
+    cmd.load_cgo(obj, name, state)
 
 cmd.extend('cgo_arrow', cgo_arrow)
+
