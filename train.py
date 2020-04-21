@@ -54,7 +54,9 @@ At the end graphs are made.'''
 
 
 def write_model_file(model_file, template_file, train_file, test_file, root_folder, avg_rotations=False,
-                     percent_reduc=False,train_file2=None, ratio=None, root_folder2=None, test_root_folder=None):
+                     percent_reduc=False,train_file2=None, ratio=None,
+                     root_folder2=None, test_root_folder=None,
+                     force_backward=False):
     '''Writes a model prototxt file based on a provided template file
     with certain placeholders replaced in each MolGridDataLayer.
     For the source parameter, "TRAINFILE" is replaced with train_file
@@ -96,12 +98,17 @@ def write_model_file(model_file, template_file, train_file, test_file, root_fold
             #layer.molgrid_data_param.random_rotation = True
         if percent_reduc and 'TEST' in str(layer) and 'reduced' in model_file:#only shuffle test set for reduced & if percent_reduc was passed
             param.shuffle = True
+    if force_backward:
+        netparam.force_backward = True
     with open(model_file, 'w') as f:
         f.write(str(netparam))
 
 
 def write_solver_file(solver_file, train_model, test_models, type, base_lr, momentum, weight_decay,
-                      lr_policy, gamma, power, random_seed, max_iter, clip_gradients, snapshot_prefix,display=0):
+                      lr_policy, gamma, power, random_seed, max_iter,
+                      clip_gradients, snapshot_prefix, 
+                      minmax_alpha, minmax_eps, minmax_k, minmax_constraint, 
+                      display=0):
     '''Writes a solver prototxt file with parameters set to the
     corresponding argument values. In particular, the train_net
     parameter is set to train_model, and a test_net parameter is
@@ -122,6 +129,11 @@ def write_solver_file(solver_file, train_model, test_models, type, base_lr, mome
     param.display = display #don't print solver iterations unless requested
     param.random_seed = random_seed
     param.max_iter = max_iter
+    if type == "MinMax":
+        param.alpha = minmax_alpha
+        param.epsilon = minmax_eps
+        param.k = minmax_k
+        param.constraint = minmax_constraint
     if clip_gradients > 0:
         param.clip_gradients = clip_gradients
     param.snapshot_prefix = snapshot_prefix
@@ -391,11 +403,15 @@ def train_and_test_model(args, files, outname, cont=0):
                 test_idxs['reduced_train2']+=counter
 
     for test_model, test_file, test_root in zip(test_models, test_files, test_roots):
+        force_backward = True if "MinMax" in args.solver else False
         if args.prefix2:
             write_model_file(test_model, template, files['train'], test_file, args.data_root, args.avg_rotations, args.percent_reduced,
-                             files['train2'], args.data_ratio, args.data_root2, test_root)
+                             files['train2'], args.data_ratio, args.data_root2,
+                             test_root, force_backward)
         else:
-            write_model_file(test_model, template, files['train'], test_file, args.data_root, args.avg_rotations, args.percent_reduced)
+            write_model_file(test_model, template, files['train'], test_file,
+                    args.data_root, args.avg_rotations, args.percent_reduced,
+                    force_backward=force_backward)
 
 
     #initialize variables
@@ -432,7 +448,11 @@ def train_and_test_model(args, files, outname, cont=0):
     #write solver prototxt
     solverf = 'solver.%d.prototxt' % pid
     write_solver_file(solverf, test_models[0], test_models, args.solver, args.base_lr, args.momentum, args.weight_decay,
-                      args.lr_policy, args.gamma, args.power, args.seed, iterations+cont, args.clip_gradients, outname, args.display_iter)
+                      args.lr_policy, args.gamma, args.power, args.seed,
+                      iterations+cont, args.clip_gradients, outname,
+                      args.minmax_alpha,
+                      args.minmax_eps, args.minmax_k,
+                      args.minmax_constraint, args.display_iter)
 
     #set up solver in caffe
     if args.gpu >= 0:
@@ -778,6 +798,10 @@ def parse_args(argv=None):
     parser.add_argument('--skip_full',action='store_true',default=False,help='Use reduced testset on final evaluation, requires passing --reduced')
     parser.add_argument('--display_iter',type=int,default=0,help='Print out network outputs every so many iterations')
     parser.add_argument('--update_ratio',type=float,default=0.001,help="Improvements during training need to be better than this ratio. IE (best-current)/best > update_ratio. Defaults to 0.001")
+    parser.add_argument('-alph', '--minmax_alpha', type=float, default=0.1, help='When training with adversarial examples, the step size for perturbations.')
+    parser.add_argument('-eps', '--minmax_eps', type=float, default=0.3, help='When training with adversarial examples, the maximum distance of a perturbed example from its starting value (this may be interpreted differently depending on the constraint set)')
+    parser.add_argument('-mk', '--minmax_k', type=int, default=40, help='When training with adversarial examples, the number of steps to take when perturbing training examples')
+    parser.add_argument('-constr', '--minmax_constraint', type=str, default="inf", help='When training with adversarial examples, the constraint set to project onto for projected gradient descent')
     args = parser.parse_args(argv)
     
     argdict = vars(args)
