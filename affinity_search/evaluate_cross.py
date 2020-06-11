@@ -103,7 +103,7 @@ def analyze_cross_results(results,outname,uniquify):
 if __name__ == '__main__':
     
     parser=argparse.ArgumentParser(description='Evaluate 3 fold CV data')
-    parser.add_argument('-d','--datadir',default='.',description='ROOT folder for files specified in types files. Defaults to current working directory.')
+    parser.add_argument('-d','--datadir',default='.',help='ROOT folder for files specified in types files. Defaults to current working directory.')
     parser.add_argument('-w','--weights_prefix',type=str, required=True, help='Prefix to the weights. Format <prefix>.<fold>_iter_<number>.caffemodel')
     parser.add_argument('-m','--model',type=str, required=True, help='Caffe model file.')
     parser.add_argument('-o','--outprefix',type=str,required=True, help='Prefix for output files. Generates several <prefix>*.predictions files, and a <prefix>.summary file')
