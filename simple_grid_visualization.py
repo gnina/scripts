@@ -1,4 +1,4 @@
-#!/usr/bin/ python
+#!/usr/bin/env python3
 
 import numpy as np
 import seaborn as sns
@@ -6,7 +6,7 @@ import re
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import matplotlib.cm as cmx
-import gridData, glob, struct
+import glob, struct
 import sys, argparse, os
 
 def parse_args(argv=None):

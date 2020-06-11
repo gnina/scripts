@@ -91,6 +91,8 @@ def make_dx(filename, num_on_axis, min_point, val_delta):
 	with open(filename) as fin:
 		data=fin.readlines()
 
+        if len(data) == 0:
+            return None,None
 	l=filename.split('_predictscores')[0]
 
 	pattern=re.compile("^[0-9]")

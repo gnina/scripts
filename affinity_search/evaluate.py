@@ -73,7 +73,25 @@ def evaluate_fold(testfile, caffemodel, modelname, datadir='../..',hasrmsd=False
         tokens = line.split()
         rmsd = -1
         for t in range(len(tokens)):
-            if tokens[t].endswith('gninatypes'):
+            if tokens[t].lower()=='none':
+                #Flag that none as the receptor file, for ligand-only models
+                ligand=tokens[t+1]
+                
+                #we assume that ligand is rec/<ligname>
+                #set if correct, bail if not.
+                m=re.search(r'(\S+)/(\S+)gninatypes',ligand)
+                
+                #Check that the match is not none, and that ligand ends in gninatypes
+                if m is not None:
+                    receptor=m.group(1)
+                else:
+                    print('Error: none receptor detected and ligand is improperly formatted.')
+                    print('Ligand must be formatted: <rec>/<ligfile>.gninatypes')
+                    print('Bailing.')
+                    sys.exit(1)
+                break
+                
+            elif tokens[t].endswith('gninatypes'):
                 receptor = tokens[t]
                 ligand = tokens[t+1]
                 break
