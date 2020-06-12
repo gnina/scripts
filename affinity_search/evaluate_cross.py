@@ -115,9 +115,9 @@ if __name__ == '__main__':
     datadir = args.datadir
     name = args.weights_prefix
     modelname = args.model
-    out = open(args.outprefix+'.summary','w')
-
     testname = args.outprefix
+    out = open(testname+'.summary','w')
+
     m = re.search(r'(_fn\d)',testname)
     if m: #remove fold name
         testname = testname.replace(m.group(1),'')
@@ -149,10 +149,10 @@ if __name__ == '__main__':
         else:
             assert(len(testresults[0]) == 6)
         
-        allresults.append( (testname,'pose') + analyze_cross_results(testresults,testprefix+'_pose','pose'))
+        allresults.append( (testname,'pose') + analyze_cross_results(testresults,testname+'_pose','pose'))
         if args.has_rmsd:
-            allresults.append( (testname,'rmsd') + analyze_cross_results(testresults,testprefix+'_rmsd','rmsd'))
-        allresults.append( (testname,'affinity') + analyze_cross_results(testresults,testprefix+'_affinity','affinity'))
+            allresults.append( (testname,'rmsd') + analyze_cross_results(testresults,testname+'_rmsd','rmsd'))
+        allresults.append( (testname,'affinity') + analyze_cross_results(testresults,testname+'_affinity','affinity'))
 
          
     for a in allresults:
