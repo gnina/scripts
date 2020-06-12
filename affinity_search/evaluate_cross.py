@@ -6,7 +6,7 @@ a cross-docked formatted dataset.  Will use the last model
 '''
 
 import numpy as np
-import os, sys
+import os, sys, argparse
 #os.environ["GLOG_minloglevel"] = "10"
 sys.path.append("/home/dkoes/git/gninascripts/")
 sys.path.append("/net/pulsar/home/koes/dkoes/git/gninascripts/")
@@ -101,23 +101,30 @@ def analyze_cross_results(results,outname,uniquify):
     
 
 if __name__ == '__main__':
-    if len(sys.argv) <= 4:
-        print("Need data root, caffemodel prefix,  modelname, output prefix and test prefix(es)")
-        sys.exit(1)
-        
-    datadir = sys.argv[1]
-    name = sys.argv[2]
-    modelname = sys.argv[3]
-    out = open(sys.argv[4]+'.summary','w')
+    
+    parser=argparse.ArgumentParser(description='Evaluate 3 fold CV data')
+    parser.add_argument('-d','--datadir',default='.',help='ROOT folder for files specified in types files. Defaults to current working directory.')
+    parser.add_argument('-w','--weights_prefix',type=str, required=True, help='Prefix to the weights. Format <prefix>.<fold>_iter_<number>.caffemodel')
+    parser.add_argument('-m','--model',type=str, required=True, help='Caffe model file.')
+    parser.add_argument('-o','--outprefix',type=str,required=True, help='Prefix for output files. Generates several <prefix>*.predictions files, and a <prefix>.summary file')
+    parser.add_argument('-t','--testprefix',type=str,required=True, nargs='+',help='Prefix to the test types files. Format <prefix>test<fold>.types')
+    parser.add_argument('--has_rmsd',action='store_true', default=False, help='Flag that RMSD values are in the types files. Defaults to False')
+    
+    args=parser.parse_args()
+    
+    datadir = args.datadir
+    name = args.weights_prefix
+    modelname = args.model
+    testname = args.outprefix
+    out = open(testname+'.summary','w')
 
-    testname = sys.argv[4]
     m = re.search(r'(_fn\d)',testname)
     if m: #remove fold name
         testname = testname.replace(m.group(1),'')
     allresults = []
     last = None
     #for each test dataset
-    for testprefix in sys.argv[5:]:
+    for testprefix in args.testprefix:
         print(testprefix)        
         #find the relevant models for each fold
         
@@ -133,15 +140,19 @@ if __name__ == '__main__':
                                  
             #evalute this fold
             testfile = '%stest%d.types' % (testprefix,fold)            
-            testresults += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,lastm), modelname, datadir, True)
+            testresults += evaluate_fold(testfile, '%s.%d_iter_%d.caffemodel' % (name,fold,lastm), modelname, datadir, args.has_rmsd)
             
         if len(testresults) == 0:
             print("Missing data with",testprefix)
-        assert(len(testresults[0]) == 7)
+        if args.has_rmsd:
+            assert(len(testresults[0]) == 7)
+        else:
+            assert(len(testresults[0]) == 6)
         
-        allresults.append( (testname,'pose') + analyze_cross_results(testresults,sys.argv[4]+'_pose','pose'))
-        allresults.append( (testname,'rmsd') + analyze_cross_results(testresults,sys.argv[4]+'_rmsd','rmsd'))
-        allresults.append( (testname,'affinity') + analyze_cross_results(testresults,sys.argv[4]+'_affinity','affinity'))
+        allresults.append( (testname,'pose') + analyze_cross_results(testresults,testname+'_pose','pose'))
+        if args.has_rmsd:
+            allresults.append( (testname,'rmsd') + analyze_cross_results(testresults,testname+'_rmsd','rmsd'))
+        allresults.append( (testname,'affinity') + analyze_cross_results(testresults,testname+'_affinity','affinity'))
 
          
     for a in allresults:
