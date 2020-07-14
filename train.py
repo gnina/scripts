@@ -745,7 +745,7 @@ def parse_args(argv=None):
     parser.add_argument('-a','--allfolds',action='store_true',required=False,help="Train and test file with all data folds, <prefix>.types",default=False)
     parser.add_argument('-i','--iterations',type=int,required=False,help="Number of iterations to run,default 10,000",default=10000)
     parser.add_argument('-s','--seed',type=int,help="Random seed, default 42",default=42)
-    parser.add_argument('-t','--test_interval',type=int,help="How frequently to test (iterations), default 40",default=40)
+    parser.add_argument('-t','--test_interval',type=int,help="How frequently to test (iterations), default 1000",default=1000)
     parser.add_argument('-o','--outprefix',type=str,help="Prefix for output files, default <model>.<pid>",default='')
     parser.add_argument('-g','--gpu',type=int,help='Specify GPU to run on',default=-1)
     parser.add_argument('-c','--cont',type=int,help='Continue a previous simulation from the provided iteration (snapshot must exist)',default=0)
