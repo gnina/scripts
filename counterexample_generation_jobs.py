@@ -45,7 +45,7 @@ parser.add_argument('--cnn',type=str, default='dense',help='Sets the --cnn comma
 parser.add_argument('--cnn_model',type=str,default=None,help='Override --cnn with a user provided caffe model file. If used, requires the user to pass in a weights file as well.')
 parser.add_argument('--cnn_weights',type=str,default=None,help='The weights file to use with the supplied caffemodel file.')
 parser.add_argument('--seed',default=42,type=int,help='Seed for the gnina commands. Defaults to 42')
-parser.add_argument('--dirs',type=str,default=None,help='Supplied directories to do a subset of the dataset. Default behavior is to do every directory.')
+parser.add_argument('--dirs',type=str,default=None,help='Supplied file containing a subset of the dataset (one pocket per line). Default behavior is to do every directory.')
 args=parser.parse_args()
 
 #double checking that the arguments are compatible
