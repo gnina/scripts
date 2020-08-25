@@ -8,6 +8,9 @@
  * combine_rows.py - Script to take outputs of compute_row.py & combine them to avoid needing to do the computation in clustering.py
  * simple_grid_visualization.py - Script to evaluate 2-D single ligatom+receptor atom systems to visualize how CNN score changes with distance between atoms.
  * grid_visualization.py - Script to evaluate a box of single atoms around a receptor of interest to visualize how CNN scores ligand contexts
+ * generate_unique_lig_poses.py - Script for counter-example generation which computes all of the unique ligand poses in a directory
+ * counterexample_generation_jobs.py - Script which generates a file containing all of the gnina commands to generate new counter-examples
+ * generate_counterexample_typeslines.py - Script which generates a file containing the lines to add to the types file for a pocket.
  
 ## Dependencies
 
@@ -16,6 +19,8 @@ sudo pip install matplotlib scipy sklearn scikit-image protobuf psutil numpy sea
 export PYTHONPATH=/usr/local/python:$PYTHONPATH
 ```
 rdkit -- see installation instructions [here](https://www.rdkit.org/docs/Install.html)
+
+openbabel -- see installation instructions [here](http://openbabel.org/wiki/Category:Installation)
 
 ## Training
 ```
@@ -276,6 +281,191 @@ Lastly, we run clustering.py as follows
 ```
 clustering.py --cpickle matrix.pickle --input my_types.types --output my_types_cv_
 ```
+## Generating new counterexamples
+There are 3 scripts here which form a pipeline to generate new counter-examples for a data directory.
+
+The pipeline is as follows: 1) generate_unique_lig_poses.py; 2) counterexample_generation_jobs.py; 3) generate_counterexample_typeslines.py.
+
+Global Assumptions: 1) The data directory structure is <ROOT>/<POCKET>/<FILES>, 2) Crystal ligand files are named <PDBid>_<ligname><CRYSTAL SUFFIX>,
+	3) Receptors are PDB files, 4) output poses are SDF files.
+
+### Step 1) Generating the unique poses for a Pocket
+In order to avoid extra calculations, we need to find the unique poses.
+
+WARNING -- this script performs an O(n^2) calcualtion for each unique ligand name in the pocket!!
+
+This can cause this to run very slowly if there are many receptors for the ligand to be docked into.
+It also can cause problems if there are many crystal ligands for 1 ligand name. 
+In this case, we recommend creating a subdirectory for that pocket, and putting the extra crystal ligand files there.
+
+```
+usage: generate_unique_lig_poses.py [-h] -p POCKET -r ROOT [-ds DOCKED_SUFFIX]
+                                    [-cs CRYSTAL_SUFFIX] -os OUT_SUFFIX
+                                    [--unique_threshold UNIQUE_THRESHOLD]
+
+Create ligname<OUTSUFFIX> files for use with generate_counterexample_typeslines.py.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -p POCKET, --pocket POCKET
+                        Name of the pocket that you will be generating the
+                        file for.
+  -r ROOT, --root ROOT  PATH to the ROOT of the pockets.
+  -ds DOCKED_SUFFIX, --docked_suffix DOCKED_SUFFIX
+                        Expression to glob docked poses. These contain the
+                        poses that need to be uniqified. Default is
+                        "_tt_docked.sdf"
+  -cs CRYSTAL_SUFFIX, --crystal_suffix CRYSTAL_SUFFIX
+                        Expression to glob the crystal ligands. Default is
+                        "_lig.pdb"
+  -os OUT_SUFFIX, --out_suffix OUT_SUFFIX
+                        End of the filename for LIGNAME<OUTSUFFIX>. This will
+                        be the --old_unique_suffix for
+                        generate_counterexample_typeslines.py.
+  --unique_threshold UNIQUE_THRESHOLD
+                        RMSD threshold for unique poses. IE poses with RMSD >
+                        thresh are considered unique. Defaults to 0.25.
+```
+The workflow for this script is to first generate a list of the pockets that you wish to analyze.
+We provide the pockets used for our CrossDocked2020 models in cd2020_pockets.txt.
+
+You can then run the script in a bash for loop:
+```
+for d in `cat cd2020_pockets.txt` do python3 generate_unique_lig_poses.py -p $d -r MYROOT -os _initial_unique.sdf; done
+```
+WARNING -- this will be VERY SLOW. We HIGHLY RECOMMEND running this in a parallel fashion on a super computing cluster if possible.
+
+The output when completed will be a series of LIGNAME_initial_unique.sdf files in each pocket directory.
+
+### Step 2 -- Generating the gnina commands to generate the counterexamples
+We need to create the gnina commands to generate the new counterexample poses.
+```
+usage: counterexample_generation_jobs.py [-h] -o OUTFILE [-r ROOT]
+                                         [-ri REC_ID] [-cs CRYSTAL_SUFFIX]
+                                         [-ds DOCKED_SUFFIX] -i ITERATION
+                                         [--num_modes NUM_MODES] [--cnn CNN]
+                                         [--cnn_model CNN_MODEL]
+                                         [--cnn_weights CNN_WEIGHTS]
+                                         [--seed SEED] [--dirs DIRS]
+
+Create cnn_minimize jobs for a dataset. Assumes dataset file structure is
+<ROOT>/<Identifier>/<FILES>
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -o OUTFILE, --outfile OUTFILE
+                        Name for gnina job commands output file.
+  -r ROOT, --root ROOT  ROOT for data directory structure. Defaults to current
+                        working directory.
+  -ri REC_ID, --rec_id REC_ID
+                        Regular expression to identify the receptor PDB.
+                        Defaults to ...._._rec.pdb
+  -cs CRYSTAL_SUFFIX, --crystal_suffix CRYSTAL_SUFFIX
+                        Expresssion to glob the crystal ligand PDB. Defaults
+                        to _lig.pdb. Assumes filename is
+                        PDBid_LignameLIGSUFFIX
+  -ds DOCKED_SUFFIX, --docked_suffix DOCKED_SUFFIX
+                        Expression to glob docked poses. These contain the
+                        poses that need to be minimized. Default is
+                        "_tt_docked.sdf"
+  -i ITERATION, --iteration ITERATION
+                        Sets what iteration number we are doing. Adds
+                        _it#_docked.sdf to the output file for the gnina job
+                        line.
+  --num_modes NUM_MODES
+                        Sets the --num_modes argument for the gnina command.
+                        Defaults to 20.
+  --cnn CNN             Sets the --cnn command for the gnina command. Defaults
+                        to dense. Must be dense, general_default2018, or
+                        crossdock_default2018.
+  --cnn_model CNN_MODEL
+                        Override --cnn with a user provided caffe model file.
+                        If used, requires the user to pass in a weights file
+                        as well.
+  --cnn_weights CNN_WEIGHTS
+                        The weights file to use with the supplied caffemodel
+                        file.
+  --seed SEED           Seed for the gnina commands. Defaults to 42
+  --dirs DIRS           Supplied file containing a subset of the dataset (one pocket per line).
+                        Default behavior is to do every directory.
+```
+The default behavior is to generate the output file for each directory in ROOT. For CrossDocked2020, we supply more pockets than we used to analyze, so you can pass the cd2020_pockets.txt file in the DIRS argument. The default values match what we used for CrossDocked2020.
+
+Example -- generate the file it3_to_run.txt for CrossDocked2020 available at my_root for iteration 3, using the built-in dense net in gnina
+```
+python3 counter_example_generation_jobs.py -o it3_to_run.txt -r MYROOT -i 3 --cnn dense --dirs cd2020_pockets.txt
+```
+Once this has been created, each of these commands will need to be executed. Note, there will be many commands to run, so we recommend running in parallel across many GPUs on a computing cluster if possible.
+### Step 3 -- Generating the lines to add to the types files.
+Running this script will generate OUTNAME in the supplied pocket, which will contain the lines to add to the types files for that pocket.
+
+WARNING -- This script also performs an O(n^2) calculation per unique ligand in the pocket! This can take a very long time, and scales with the number of receptors and crystal ligands with the same ligand name present in the pocket. If this is to much, we recommend a downsampling strategy by moving files into a sub-directory prior to running the pipeline.
+
+WARNING 2 -- As the calculations are O(n^2), we recommend running each pocket as its own job on a computing cluster if possible.
+
+```
+usage: generate_counterexample_typeslines.py [-h] -p POCKET -r ROOT -i INPUT
+                                             [-cs CRYSTAL_SUFFIX]
+                                             [--old_unique_suffix OLD_UNIQUE_SUFFIX]
+                                             [-us UNIQUE_SUFFIX]
+                                             [--unique_threshold UNIQUE_THRESHOLD]
+                                             [--lower_confusing_threshold LOWER_CONFUSING_THRESHOLD]
+                                             [--upper_confusing_threshold UPPER_CONFUSING_THRESHOLD]
+                                             -o OUTNAME [-a AFFINITY_LOOKUP]
+
+Create lines to add to types files from counterexample generation. Assumes
+data file structure is ROOT/POCKET/FILES.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -p POCKET, --pocket POCKET
+                        Name of the pocket that you will be generating the
+                        lines for.
+  -r ROOT, --root ROOT  PATH to the ROOT of the pockets.
+  -i INPUT, --input INPUT
+                        File that is output from
+                        counterexample_generation_jobs.py
+  -cs CRYSTAL_SUFFIX, --crystal_suffix CRYSTAL_SUFFIX
+                        Expresssion to glob the crystal ligand PDB. Defaults
+                        to _lig.pdb. Needs to match what was used with
+                        counterexample_generation_jobs.py
+  --old_unique_suffix OLD_UNIQUE_SUFFIX
+                        Suffix for the unique ligand sdf file from a previous
+                        run. If set we will load that in and add to it.
+                        Default behavior is to generate it from provided input
+                        file.
+  -us UNIQUE_SUFFIX, --unique_suffix UNIQUE_SUFFIX
+                        Suffix for the unique ligand sdf file for this run.
+                        Defaults to _it1___.sdf. One will be created for each
+                        ligand in the pocket.
+  --unique_threshold UNIQUE_THRESHOLD
+                        RMSD threshold for unique poses. IE poses with RMSD >
+                        thresh are considered unique. Defaults to 0.25.
+  --lower_confusing_threshold LOWER_CONFUSING_THRESHOLD
+                        CNNscore threshold for identifying confusing good
+                        poses. Score < thresh & under 2RMSD is kept and
+                        labelled 1. 0<thresh<1. Default 0.5
+  --upper_confusing_threshold UPPER_CONFUSING_THRESHOLD
+                        CNNscore threshold for identifying confusing poor
+                        poses. If CNNscore > thresh & over 2RMSD pose is kept
+                        and labelled 0. lower<thresh<1. Default 0.9
+  -o OUTNAME, --outname OUTNAME
+                        Name of the text file to write the new lines in. DO
+                        NOT WRITE THE FULL PATH!
+  -a AFFINITY_LOOKUP, --affinity_lookup AFFINITY_LOOKUP
+                        File mapping the PDBid and ligname of the ligand to
+                        its pK value. Assmes space delimited "PDBid ligname
+                        pK". Defaults to pdbbind2017_affs.txt
+```
+
+Example -- finishing the pipeline from the previous examples for ZIPA_ECOLI_187_328_0
+```
+python3 generate_counterexample_typeslines.py -p ZIPA_ECOLI_187_328_0 -r MYROOT -i it3_to_run.txt -us _it3___.sdf -o it3_typeslines_toadd.txt --old_unique_suffix _initial_unique.sdf
+```
+The above command will be need to run for each directory in cd2020_pockets.txt.  It will create the it3_typeslines_toadd.txt in the pocket directory.
+
+That text file contains the lines that need to be added to the training/test types files. The default values match what we used for the CrossDocked2020 paper.
+
 ## Using visualization script
 There are two scripts to help you visualize how the model scores atoms: 1) simple_grid_visualization.py; 2) grid_visualization.py 
 
