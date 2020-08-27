@@ -4,13 +4,13 @@ This script will generate the new types file with the lines from generate_counte
 
 Assumptions
 	i) The data structure is <ROOT>/<POCKET>/<FILES>
-	ii) The name of the file containing the types lines to add is <ligname><SUFFIX> for each ligand in the pocket.
+	ii) The name of the file containing the types lines to add is <NAME> for each pocket in the types file.
 	iii) the input types file has <POCKET>/<receptor file>  from which to parse the needed pockets from.
 
 INPUT
 	i) Original types file
 	ii) New types filename
-	iii) Suffix of file(s) in Pocket that contains the lines to add
+	iii) Name of file in Pocket that contains the lines to add
 	iv) The ROOT of the data directory
 
 OUTPUT
@@ -28,7 +28,7 @@ def check_exists(filename):
 parser=argparse.ArgumentParser(description='Add lines to types file and create a new one. Assumes data file structure is ROOT/POCKET/FILES.')
 parser.add_argument('-i','--input',type=str,required=True,help='Types file you will be extending.')
 parser.add_argument('-o','--output',type=str,required=True,help='Name of the extended types file.')
-parser.add_argument('-s','--suffix',type=str,required=True,help='Suffix of the file(s) containing the lines to add for a given pocket. This is the output of generate_counterexample_typeslines.py.')
+parser.add_argument('-n','--name',type=str,required=True,help='Name of the file containing the lines to add for a given pocket. This is the output of generate_counterexample_typeslines.py.')
 parser.add_argument('-r','--root',default='',help='Root of the data directory. Defaults to current working directory.')
 args=parser.parse_args()
 
@@ -42,8 +42,6 @@ with open(args.output,'w') as outfile:
 
 			if pocket not in completed:
 				completed.add(pocket)
-				toadd=glob.glob(os.path.join(args.root,pocket,'')+'*'+args.suffix)
-				for thing in toadd:
-					with open(thing) as linesfile:
-						for line2 in linesfile:
-							outfile.write(line2)
+				with open(os.path.join(args.root,pocket,args.name)) as linesfile:
+					for line2 in linesfile:
+						outfile.write(line2)
