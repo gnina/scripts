@@ -11,6 +11,7 @@
  * generate_unique_lig_poses.py - Script for counter-example generation which computes all of the unique ligand poses in a directory
  * counterexample_generation_jobs.py - Script which generates a file containing all of the gnina commands to generate new counter-examples
  * generate_counterexample_typeslines.py - Script which generates a file containing the lines to add to the types file for a pocket.
+ * types_extender.py - Script to generate a new types file containing the lines generated from the counterexamples from an existing types file.
  
 ## Dependencies
 
@@ -281,16 +282,16 @@ Lastly, we run clustering.py as follows
 ```
 clustering.py --cpickle matrix.pickle --input my_types.types --output my_types_cv_
 ```
-## Generating new counterexamples
-There are 3 scripts here which form a pipeline to generate new counter-examples for a data directory.
+## Adding new counterexamples to types files
+There are 4 scripts here which form a pipeline to generate new counter-examples for a data directory.
 
-The pipeline is as follows: 1) generate_unique_lig_poses.py; 2) counterexample_generation_jobs.py; 3) generate_counterexample_typeslines.py.
+The pipeline is as follows: 1) generate_unique_lig_poses.py; 2) counterexample_generation_jobs.py; 3) generate_counterexample_typeslines.py; 4) types_extender.py.
 
 Global Assumptions: 1) The data directory structure is <ROOT>/<POCKET>/<FILES>, 2) Crystal ligand files are named <PDBid>_<ligname><CRYSTAL SUFFIX>,
 	3) Receptors are PDB files, 4) output poses are SDF files.
 
 ### Step 1) Generating the unique poses for a Pocket
-In order to avoid extra calculations, we need to find the unique poses.
+In order to avoid extra calculations, we need to find the unique poses. NOTE - This process needs to be done exactly once when generating new counterexamples. After a round of counterexamples are generated, script 3 in the pipeline will generate the updated unique_poses.sdf file.
 
 WARNING -- this script performs an O(n^2) calcualtion for each unique ligand name in the pocket!!
 
@@ -465,6 +466,32 @@ python3 generate_counterexample_typeslines.py -p ZIPA_ECOLI_187_328_0 -r MYROOT 
 The above command will be need to run for each directory in cd2020_pockets.txt.  It will create the it3_typeslines_toadd.txt in the pocket directory.
 
 That text file contains the lines that need to be added to the training/test types files. The default values match what we used for the CrossDocked2020 paper.
+
+### Step 4 -- Adding the lines for the counterexamples to the types file
+Now that the lines we need to add are generated for each pocket, we can run types_extender.py on each of the types files that we use for training and testing to generate new types files with these added lines.
+```
+usage: types_extender.py [-h] -i INPUT -o OUTPUT -n NAME [-r ROOT]
+
+Add lines to types file and create a new one. Assumes data file structure is
+ROOT/POCKET/FILES.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -i INPUT, --input INPUT
+                        Types file you will be extending.
+  -o OUTPUT, --output OUTPUT
+                        Name of the extended types file.
+  -n NAME, --name NAME  Name of the file containing the lines to add for a
+                        given pocket. This is the output of
+                        generate_counterexample_typeslines.py.
+  -r ROOT, --root ROOT  Root of the data directory. Defaults to current
+                        working directory.
+```
+Continuing our example, after running script 3 there will be an it3_typeslines_toadd.txt file in each pocket. So now we generate a new train types file and new test types file as below:
+```
+python3 types_extender.py -i my_initial_train.types -o my_new_train.types -n it3_typeslines_toadd.txt -r MYROOT
+python3 types_extender.py -i my_initial_test.types -o my_new_test.types -n it3_typeslines_toadd.txt -r MYROOT
+```
 
 ## Using visualization script
 There are two scripts to help you visualize how the model scores atoms: 1) simple_grid_visualization.py; 2) grid_visualization.py 
