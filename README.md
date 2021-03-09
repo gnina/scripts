@@ -287,7 +287,14 @@ There are 4 scripts here which form a pipeline to generate new counter-examples 
 
 The pipeline is as follows: 1) generate_unique_lig_poses.py; 2) counterexample_generation_jobs.py; 3) generate_counterexample_typeslines.py; 4) types_extender.py.
 
-Global Assumptions: 1) The data directory structure is <ROOT>/<POCKET>/<FILES>, 2) Crystal ligand files are named <PDBid>_<ligname><CRYSTAL SUFFIX>,
+Global Assumptions: 1) The data directory structure is:
+	```
+	<ROOT>/<POCKET>/<FILES>
+	```, 
+	2) Crystal ligand files are named:
+	```
+	<PDBid>_<ligname><CRYSTAL SUFFIX>
+	```,
 	3) Receptors are PDB files, 4) output poses are SDF files.
 
 ### Step 1) Generating the unique poses for a Pocket
