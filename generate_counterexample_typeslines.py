@@ -90,7 +90,7 @@ def run_obrms(ligand_file,crystal_file):
 	rmsds=[float(x.split()[-1]) for x in rmsds]
 	return rmsds
 
-def get_lines_towrite(crystal_lookup,list_of_docked,affinity_lookup,crystal_suffix):
+def get_lines_towrite(crystal_lookup,list_of_docked,affinity_lookup,crystal_suffix,good_pose_thresh,bad_pose_thresh):
 	'''
 	This function will calculate the RMSD of every input pose, to the provided crystal pose.
 
@@ -110,12 +110,15 @@ def get_lines_towrite(crystal_lookup,list_of_docked,affinity_lookup,crystal_suff
 		counter=0
 		lines[docked]=[]
 		for r in rmsds:
-			if r < 2:
+			if r < good_pose_thresh:
 				label='1'
 				neg_aff=''
-			else:
+			elif r >= bad_pose_thresh:
 				label='0'
 				neg_aff='-'
+			else:
+				#if the pose is in (good_pose_thesh, bad_pose_thresh) it will be skipped
+				continue
 
 			rec_gninatypes=docked.split('rec')[0]+'rec_0.gninatypes'
 			lig_gninatypes=docked.replace('.sdf','_'+str(counter)+'.gninatypes')
@@ -144,6 +147,8 @@ parser.add_argument('-us','--unique_suffix',type=str,default='_it1___.sdf',help=
 parser.add_argument('--unique_threshold',default=0.25,help='RMSD threshold for unique poses. IE poses with RMSD > thresh are considered unique. Defaults to 0.25.')
 parser.add_argument('--lower_confusing_threshold',default=0.5,help='CNNscore threshold for identifying confusing good poses. Score < thresh & under 2RMSD is kept and labelled 1. 0<thresh<1. Default 0.5')
 parser.add_argument('--upper_confusing_threshold',default=0.9,help='CNNscore threshold for identifying confusing poor poses. If CNNscore > thresh & over 2RMSD pose is kept and labelled 0. lower<thresh<1. Default 0.9')
+parser.add_argument('--good_pose_thresh',default=2.0,help='RMSD threshold to identify a good pose. If ligand RMSD to crystal < this value, the pose is labeled good. Defaults to 2.0')
+parser.add_argument('--bad_pose_thresh',default=2.0,help='RMSD threshold to identify a bad pose. If the ligand RMSD to crystal >= this value, the pose is labelled as bad. Defaults to 2.0')
 parser.add_argument('-o','--outname',type=str,required=True,help='Name of the text file to write the new lines in. DO NOT WRITE THE FULL PATH!')
 parser.add_argument('-a','--affinity_lookup',default='pdbbind2017_affs.txt',help='File mapping the PDBid and ligname of the ligand to its pK value. Assmes space delimited "PDBid ligname pK". Defaults to pdbbind2017_affs.txt')
 args=parser.parse_args()
@@ -185,7 +190,7 @@ with open(myroot+args.outname,'w') as outfile:
 			os.remove(sdf_name)
 
 		#1) Figure out ALL of the lines to write
-		line_dic=get_lines_towrite(crystal_lookup=docked_to_crystal_lookup,list_of_docked=list_o_ligs,affinity_lookup=affinity_lookup,crystal_suffix=args.crystal_suffix)
+		line_dic=get_lines_towrite(crystal_lookup=docked_to_crystal_lookup,list_of_docked=list_o_ligs,affinity_lookup=affinity_lookup,crystal_suffix=args.crystal_suffix, good_pose_thresh=args.good_pose_thresh, bad_pose_thresh=args.pad_pose_thresh)
 
 		#2) Set up the 'working sdf' for the obrms -x calculations, consisting of the confusing examples + any possible previously generated examples
 		# i) iterate over the possible lines for this ligand, keep only the confusing ones,

@@ -419,6 +419,8 @@ usage: generate_counterexample_typeslines.py [-h] -p POCKET -r ROOT -i INPUT
                                              [--unique_threshold UNIQUE_THRESHOLD]
                                              [--lower_confusing_threshold LOWER_CONFUSING_THRESHOLD]
                                              [--upper_confusing_threshold UPPER_CONFUSING_THRESHOLD]
+					     [--good_pose_thresh GOOD_POSE_THRESHOLD]
+					     [--bad_pose_thresh BAD_POSE_THRESHOLD]
                                              -o OUTNAME [-a AFFINITY_LOOKUP]
 
 Create lines to add to types files from counterexample generation. Assumes
@@ -457,6 +459,15 @@ optional arguments:
                         CNNscore threshold for identifying confusing poor
                         poses. If CNNscore > thresh & over 2RMSD pose is kept
                         and labelled 0. lower<thresh<1. Default 0.9
+
+  --good_pose_thresh GOOD_POSE_THRESH
+                        RMSD threshold to identify a good pose.
+			If ligand RMSD to crystal < this value, the pose
+			is labeled bad. Defaults to 2.0.
+  --bad_pose_thresh BAD_POSE_THRESH
+                        RMSD threshold to identify a bad pose.
+			If ligand RMSD to crystal >= this value, the pose
+			is labeled bad. Defaults to 2.0.
   -o OUTNAME, --outname OUTNAME
                         Name of the text file to write the new lines in. DO
                         NOT WRITE THE FULL PATH!
