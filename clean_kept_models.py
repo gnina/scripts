@@ -9,10 +9,10 @@ prefixes = sys.argv[1:]
 if not prefixes:
     prefixes = ['.']
 
-for prefix in prefixes:
-    for suffix in ['caffemodel','solverstate']:
+for dirname in prefixes:
+    for suffix in ['caffemodel','solverstate','checkpoint','gen_model_state','gen_solver_state']:
         files = collections.defaultdict(list)
-        for fname in glob.glob('%s/*.%s'%(prefix,suffix)):
+        for fname in glob.glob('%s/*.%s'%(dirname,suffix)):
             m = re.search('(.*)_iter_(\d+)\.%s'%suffix,fname)
             if m:
                 prefix = m.group(1)
