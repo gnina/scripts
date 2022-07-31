@@ -18,6 +18,12 @@ class Range():
         
     def __str__(self): #str
         return '(%f : %f)' % (self.min,self.max)
+
+    def __repr__(self):
+        return '(%f : %f)' % (self.min,self.max)
+
+    def __iter__(self):
+        return [self.min,self.max].__iter__()
     
 parser = argparse.ArgumentParser(description='Create model from parameters.')
 #solver hyper parameters
