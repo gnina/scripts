@@ -476,6 +476,8 @@ def train_and_test_model(args, files, outname, cont=0):
 
     test_nets = {}
     for key, test_file in list(files.items()):
+        if key not in test_idxs:
+            continue
         idx = test_idxs[key]
         if args.percent_reduced and 'reduced' in key:
             test_nets[key] = solver.test_nets[idx], max(int(count_lines(test_file)*args.percent_reduced/100),1)

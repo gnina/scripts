@@ -1,4 +1,4 @@
-Trying to get a handle on how to best train affinity.
+Trying to get a handle on how to best train affinity using manual perturbations of the hyperparameter space.
 
 Variables under consideration:
 gapped loss: 0, 1, 2
