@@ -25,63 +25,53 @@ openbabel -- see installation instructions [here](http://openbabel.org/wiki/Cate
 
 ## Training
 ```
-usage: train.py [-h] -m MODEL -p PREFIX [-d DATA_ROOT] [-n FOLDNUMS] [-a]
-                [-i ITERATIONS] [-s SEED] [-t TEST_INTERVAL] [-o OUTPREFIX]
-                [-g GPU] [-c CONT] [-k] [-r] [--avg_rotations] [--keep_best]
-                [--dynamic] [--cyclic] [--solver SOLVER] [--lr_policy LR_POLICY]
-                [--step_reduce STEP_REDUCE] [--step_end STEP_END]
-                [--step_when STEP_WHEN] [--base_lr BASE_LR]
-                [--momentum MOMENTUM] [--weight_decay WEIGHT_DECAY]
-                [--gamma GAMMA] [--power POWER] [--weights WEIGHTS]
-                [-p2 PREFIX2] [-d2 DATA_ROOT2] [--data_ratio DATA_RATIO]
+usage: train.py [-h] -m MODEL -p PREFIX [-d DATA_ROOT] [-n FOLDNUMS] [-a] [-i ITERATIONS] [-s SEED] [-t TEST_INTERVAL] [-o OUTPREFIX] [-g GPU] [-c CONT] [-k] [-r]
+                [--percent_reduced PERCENT_REDUCED] [--avg_rotations] [--checkpoint] [--keep_best] [--dynamic] [--cyclic] [--solver SOLVER] [--lr_policy LR_POLICY] [--step_reduce STEP_REDUCE]
+                [--step_end STEP_END] [--step_end_cnt STEP_END_CNT] [--step_when STEP_WHEN] [--base_lr BASE_LR] [--momentum MOMENTUM] [--weight_decay WEIGHT_DECAY] [--gamma GAMMA]
+                [--power POWER] [--weights WEIGHTS] [-p2 PREFIX2] [-d2 DATA_ROOT2] [--data_ratio DATA_RATIO] [--test_only] [--clip_gradients CLIP_GRADIENTS] [--skip_full]
+                [--display_iter DISPLAY_ITER] [--update_ratio UPDATE_RATIO]
 
 Train neural net on .types data.
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   -m MODEL, --model MODEL
                         Model template. Must use TRAINFILE and TESTFILE
   -p PREFIX, --prefix PREFIX
-                        Prefix for training/test files:
-                        <prefix>[train|test][num].types
+                        Prefix for training/test files: <prefix>[train|test][num].types
   -d DATA_ROOT, --data_root DATA_ROOT
                         Root folder for relative paths in train/test files
   -n FOLDNUMS, --foldnums FOLDNUMS
-                        Fold numbers to run, default is '0,1,2'
-  -a, --allfolds        Train and test file with all data folds,
-                        <prefix>.types
+                        Fold numbers to run, default is to determine using glob
+  -a, --allfolds        Train and test file with all data folds, <prefix>.types
   -i ITERATIONS, --iterations ITERATIONS
-                        Number of iterations to run,default 10,000
+                        Number of iterations to run,default 250,000
   -s SEED, --seed SEED  Random seed, default 42
   -t TEST_INTERVAL, --test_interval TEST_INTERVAL
-                        How frequently to test (iterations), default 40
+                        How frequently to test (iterations), default 1000
   -o OUTPREFIX, --outprefix OUTPREFIX
                         Prefix for output files, default <model>.<pid>
   -g GPU, --gpu GPU     Specify GPU to run on
-  -c CONT, --cont CONT  Continue a previous simulation from the provided
-                        iteration (snapshot must exist)
+  -c CONT, --cont CONT  Continue a previous simulation from the provided iteration (snapshot must exist)
   -k, --keep            Don't delete prototxt files
-  -r, --reduced         Use a reduced file for model evaluation if exists(<pre
-                        fix>[_reducedtrain|_reducedtest][num].types)
-  --avg_rotations       Use the average of the testfile's 24 rotations in its
-                        evaluation results
+  -r, --reduced         Use a reduced file for model evaluation if exists(<prefix>[reducedtrain|reducedtest][num].types). Incompatible with --percent_reduced
+  --percent_reduced PERCENT_REDUCED
+                        Create a reduced set on the fly based on types file, using the given percentage: to use 10 percent pass 10. Range (0,100). Incompatible with --reduced
+  --avg_rotations       Use the average of the testfile's 24 rotations in its evaluation results
+  --checkpoint          Enable automatic checkpointing
   --keep_best           Store snapshots everytime test AUC improves
-  --dynamic             Attempt to adjust the base_lr in response to training
-                        progress
-  --cyclic		Vary base_lr between fixed values based on test 
-			iteration
+  --dynamic             Attempt to adjust the base_lr in response to training progress, default True
+  --cyclic              Vary base_lr in range of values: 0.015 to 0.001
   --solver SOLVER       Solver type. Default is SGD
   --lr_policy LR_POLICY
-                        Learning policy to use. Default is inv.
+                        Learning policy to use. Default is fixed.
   --step_reduce STEP_REDUCE
-                        Reduce the learning rate by this factor with dynamic
-                        stepping, default 0.5
-  --step_end STEP_END   Terminate training if learning rate gets below this
-                        amount
+                        Reduce the learning rate by this factor with dynamic stepping, default 0.1
+  --step_end STEP_END   Terminate training if learning rate gets below this amount
+  --step_end_cnt STEP_END_CNT
+                        Terminate training after this many lr reductions
   --step_when STEP_WHEN
-                        Perform a dynamic step (reduce base_lr) when training
-                        has not improved after this many test iterations,
-                        default 10
+                        Perform a dynamic step (reduce base_lr) when training has not improved after this many test iterations, default 5
   --base_lr BASE_LR     Initial learning rate, default 0.01
   --momentum MOMENTUM   Momentum parameters, default 0.9
   --weight_decay WEIGHT_DECAY
@@ -90,14 +80,19 @@ optional arguments:
   --power POWER         Power, default 1
   --weights WEIGHTS     Set of weights to initialize the model with
   -p2 PREFIX2, --prefix2 PREFIX2
-                        Second prefix for training/test files for combined
-                        training: <prefix>[train|test][num].types
+                        Second prefix for training/test files for combined training: <prefix>[train|test][num].types
   -d2 DATA_ROOT2, --data_root2 DATA_ROOT2
-                        Root folder for relative paths in second train/test
-                        files for combined training
+                        Root folder for relative paths in second train/test files for combined training
   --data_ratio DATA_RATIO
                         Ratio to combine training data from 2 sources
   --test_only           Don't train, just evaluate test nets once
+  --clip_gradients CLIP_GRADIENTS
+                        Clip gradients threshold (default 10)
+  --skip_full           Use reduced testset on final evaluation, requires passing --reduced
+  --display_iter DISPLAY_ITER
+                        Print out network outputs every so many iterations
+  --update_ratio UPDATE_RATIO
+                        Improvements during training need to be better than this ratio. IE (best-current)/best > update_ratio. Defaults to 0.001
 ```
 
 MODEL is a caffe model file and is required. It should have a MolGridDataLayer
